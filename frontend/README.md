@@ -30,46 +30,58 @@ El frontend de Crypto Trading Analyzer proporciona una interfaz moderna e intuit
 
 ## 🛠️ Tecnologías y Dependencias
 
+> **¿Por qué Next.js para Trading?** Next.js es la opción perfecta para aplicaciones de trading porque ofrece SSR para mejor performance, optimización automática, y manejo eficiente de datos en tiempo real. Tu experiencia con React y Next.js te permitirá enfocarte en la lógica de trading en lugar de configuraciones.
+
 ### Framework Principal
 ```json
-"next": "^14.0.0",              // Framework React con SSR/SSG
-"react": "^18.2.0",             // Biblioteca de UI declarativa
-"react-dom": "^18.2.0"          // Renderizado de React
+"next": "^14.0.0",              // Framework React con SSR/SSG optimizado para trading
+"react": "^18.2.0",             // Biblioteca de UI declarativa (tu experiencia)
+"react-dom": "^18.2.0"          // Renderizado optimizado de React
 ```
 
-### Lenguaje y Tipado
+### Lenguaje y Tipado (Crítico para Trading)
 ```json
-"typescript": "^5.2.0",         // Tipado estático para JavaScript
+"typescript": "^5.2.0",         // Tipado estático - esencial para datos financieros
 "@types/react": "^18.2.0",      // Tipos para React
 "@types/node": "^20.0.0"        // Tipos para Node.js
 ```
 
-### Estilos y UI
+### Estilos y UI (Tu Stack Actual)
 ```json
-"tailwindcss": "^3.3.0",        // Framework CSS utilitario
+"tailwindcss": "^3.3.0",        // Framework CSS utilitario (tu experiencia)
 "@headlessui/react": "^1.7.0",  // Componentes accesibles sin estilos
-"@heroicons/react": "^2.0.0",   // Iconos de alta calidad
-"framer-motion": "^10.16.0"     // Animaciones fluidas
+"@heroicons/react": "^2.0.0",   // Iconos de alta calidad para trading UI
+"framer-motion": "^10.16.0"     // Animaciones fluidas para transiciones
 ```
 
-### Gráficos y Visualización
+### Gráficos Profesionales de Trading
 ```json
-"recharts": "^2.8.0",           // Biblioteca de gráficos para React
-"chart.js": "^4.4.0",           // Gráficos interactivos
-"react-chartjs-2": "^5.2.0",    // Wrapper de Chart.js para React
-"d3": "^7.8.0"                  // Manipulación de datos y visualización
+"@tradingview/charting_library": "^25.0.0", // Gráficos profesionales (principal)
+"chart.js": "^4.4.0",           // Gráficos customizados complementarios
+"react-chartjs-2": "^5.2.0",    // Wrapper de Chart.js para métricas
+"lightweight-charts": "^4.1.0"  // Gráficos ligeros para dashboards
 ```
 
-### Gestión de Estado
+### Gestión de Estado (Optimizado para Trading)
 ```json
-"zustand": "^4.4.0",            // Gestión de estado simple y poderosa
-"@tanstack/react-query": "^4.35.0"  // Cache y sincronización de datos
+"zustand": "^4.4.0",            // Estado global simple - mejor que Redux para trading
+"@tanstack/react-query": "^4.35.0", // Cache inteligente para datos de mercado
+"swr": "^2.2.0"                 // Sincronización de datos en tiempo real
 ```
 
-### Comunicación en Tiempo Real
+### Comunicación en Tiempo Real (Crítico)
 ```json
-"socket.io-client": "^4.7.0",   // Cliente WebSocket
-"axios": "^1.5.0"               // Cliente HTTP para APIs
+"socket.io-client": "^4.7.0",   // WebSocket para datos en tiempo real
+"ws": "^8.14.0",                // WebSocket nativo para Binance API
+"axios": "^1.5.0"               // Cliente HTTP para APIs REST
+```
+
+### Trading y Mercados Específicos
+```json
+"binance-api-node": "^0.12.0",  // Cliente oficial de Binance
+"ccxt": "^4.0.0",               // Biblioteca multi-exchange (backup)
+"moment": "^2.29.0",            // Manejo de fechas para mercados globales
+"date-fns": "^2.30.0"           // Alternativa moderna a moment
 ```
 
 ## ⚙️ Configuración del Entorno
