@@ -24,6 +24,15 @@ aiohttp>=3.12.0           # Cliente HTTP asíncrono (actualizado) ✅
 python-json-logger==3.3.0 # Logging estructurado (actualizado) ✅
 PyYAML>=6.0.2             # Manejo de archivos de configuración ✅
 
+# Visualización y gráficos para backtesting
+matplotlib>=3.8.0        # Gráficos y visualización ✅
+seaborn>=0.13.0           # Gráficos estadísticos avanzados ✅
+plotly>=5.17.0            # Gráficos interactivos ✅
+
+# Base de datos
+sqlalchemy>=2.0.0         # ORM para base de datos ✅
+sqlite3                   # Base de datos SQLite (incluido en Python) ✅
+
 # Testing (para desarrollo)
 pytest>=8.4.0            # Framework de testing (actualizado) ✅
 pytest-asyncio>=1.1.0    # Testing para código asíncrono (actualizado) ✅

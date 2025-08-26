@@ -40,6 +40,11 @@ class TradingSignal:
     timestamp: datetime
     indicators_data: Dict
     notes: str = ""
+    # Atributos adicionales para compatibilidad con enhanced_risk_manager
+    volume_confirmation: bool = False
+    market_regime: str = "NORMAL"  # TRENDING, RANGING, VOLATILE
+    stop_loss_price: float = 0.0
+    risk_reward_ratio: float = 0.0
 
 class TradingStrategy(ABC):
     """

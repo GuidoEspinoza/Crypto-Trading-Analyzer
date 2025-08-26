@@ -6,9 +6,14 @@ Biblioteca completa de indicadores profesionales para análisis técnico
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
+import warnings
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+
+# Suprimir warnings específicos de pandas_ta
+warnings.filterwarnings('ignore', message='.*dtype incompatible.*')
+warnings.filterwarnings('ignore', category=UserWarning, module='pandas_ta')
 
 @dataclass
 class FibonacciLevels:
@@ -466,6 +471,695 @@ class AdvancedIndicators:
             }
     
     @staticmethod
+    def bollinger_bands(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> Dict:
+        """
+        📊 Calcular Bollinger Bands
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            period: Período para la media móvil
+            std_dev: Desviaciones estándar para las bandas
+            
+        Returns:
+            Diccionario con bandas y señales
+        """
+        try:
+            bb = ta.bbands(df['close'], length=period, std=std_dev)
+            
+            if bb is None or bb.empty:
+                # Calcular manualmente
+                sma = df['close'].rolling(window=period).mean()
+                std = df['close'].rolling(window=period).std()
+                upper_band = sma + (std * std_dev)
+                lower_band = sma - (std * std_dev)
+                middle_band = sma
+            else:
+                # Usar pandas-ta
+                columns = bb.columns.tolist()
+                upper_band = bb[columns[0]]  # BBU
+                middle_band = bb[columns[1]]  # BBM
+                lower_band = bb[columns[2]]  # BBL
+            
+            current_price = df['close'].iloc[-1]
+            current_upper = AdvancedIndicators.safe_float(upper_band.iloc[-1])
+            current_middle = AdvancedIndicators.safe_float(middle_band.iloc[-1])
+            current_lower = AdvancedIndicators.safe_float(lower_band.iloc[-1])
+            
+            # Calcular posición del precio en las bandas (0-100%)
+            if current_upper != current_lower:
+                bb_position = ((current_price - current_lower) / (current_upper - current_lower)) * 100
+            else:
+                bb_position = 50.0
+            
+            # Generar señales
+            if current_price <= current_lower:
+                signal = "BUY"
+                interpretation = "🟢 Precio toca banda inferior - Posible rebote"
+            elif current_price >= current_upper:
+                signal = "SELL"
+                interpretation = "🔴 Precio toca banda superior - Posible corrección"
+            elif bb_position < 20:
+                signal = "BUY"
+                interpretation = "📈 Precio cerca de banda inferior - Zona de compra"
+            elif bb_position > 80:
+                signal = "SELL"
+                interpretation = "📉 Precio cerca de banda superior - Zona de venta"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ Precio en rango medio de las bandas"
+            
+            # Calcular ancho de las bandas (volatilidad)
+            band_width = ((current_upper - current_lower) / current_middle) * 100
+            
+            return {
+                "upper_band": round(current_upper, 2),
+                "middle_band": round(current_middle, 2),
+                "lower_band": round(current_lower, 2),
+                "bb_position": round(bb_position, 1),
+                "band_width": round(band_width, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            return {
+                "upper_band": current_price * 1.02,
+                "middle_band": current_price,
+                "lower_band": current_price * 0.98,
+                "bb_position": 50.0,
+                "band_width": 4.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando Bollinger Bands: {str(e)}"
+            }
+    
+    @staticmethod
+    def vwap(df: pd.DataFrame) -> Dict:
+        """
+        📊 Calcular Volume Weighted Average Price (VWAP)
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            
+        Returns:
+            Diccionario con VWAP y señales
+        """
+        try:
+            vwap_data = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
+            
+            if vwap_data is None or vwap_data.empty:
+                # Calcular manualmente
+                typical_price = (df['high'] + df['low'] + df['close']) / 3
+                vwap_data = (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
+            
+            current_vwap = AdvancedIndicators.safe_float(vwap_data.iloc[-1])
+            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            
+            # Calcular desviación del VWAP
+            vwap_deviation = ((current_price - current_vwap) / current_vwap) * 100
+            
+            # Generar señales
+            if current_price > current_vwap:
+                signal = "BUY"
+                interpretation = "🟢 Precio por encima del VWAP - Momentum alcista"
+            elif current_price < current_vwap:
+                signal = "SELL"
+                interpretation = "🔴 Precio por debajo del VWAP - Momentum bajista"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ Precio en línea con VWAP"
+            
+            return {
+                "vwap": round(current_vwap, 2),
+                "current_price": round(current_price, 2),
+                "deviation_percent": round(vwap_deviation, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            return {
+                "vwap": current_price,
+                "current_price": current_price,
+                "deviation_percent": 0.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando VWAP: {str(e)}"
+            }
+    
+    @staticmethod
+    def on_balance_volume(df: pd.DataFrame) -> Dict:
+        """
+        📊 Calcular On Balance Volume (OBV)
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            
+        Returns:
+            Diccionario con OBV y señales
+        """
+        try:
+            obv = ta.obv(df['close'], df['volume'])
+            
+            if obv is None or obv.empty:
+                # Calcular manualmente
+                obv = pd.Series(index=df.index, dtype=float)
+                obv.iloc[0] = df['volume'].iloc[0]
+                
+                for i in range(1, len(df)):
+                    if df['close'].iloc[i] > df['close'].iloc[i-1]:
+                        obv.iloc[i] = obv.iloc[i-1] + df['volume'].iloc[i]
+                    elif df['close'].iloc[i] < df['close'].iloc[i-1]:
+                        obv.iloc[i] = obv.iloc[i-1] - df['volume'].iloc[i]
+                    else:
+                        obv.iloc[i] = obv.iloc[i-1]
+            
+            current_obv = AdvancedIndicators.safe_float(obv.iloc[-1])
+            previous_obv = AdvancedIndicators.safe_float(obv.iloc[-2])
+            
+            # Calcular OBV SMA para tendencia
+            obv_sma = obv.rolling(window=20).mean()
+            current_obv_sma = AdvancedIndicators.safe_float(obv_sma.iloc[-1])
+            
+            # Generar señales basadas en tendencia del OBV
+            if current_obv > current_obv_sma and current_obv > previous_obv:
+                signal = "BUY"
+                interpretation = "🟢 OBV creciente - Acumulación de volumen"
+            elif current_obv < current_obv_sma and current_obv < previous_obv:
+                signal = "SELL"
+                interpretation = "🔴 OBV decreciente - Distribución de volumen"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ OBV neutral - Sin tendencia clara de volumen"
+            
+            return {
+                "obv": round(current_obv, 0),
+                "obv_sma": round(current_obv_sma, 0),
+                "obv_change": round(current_obv - previous_obv, 0),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            return {
+                "obv": 0.0,
+                "obv_sma": 0.0,
+                "obv_change": 0.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando OBV: {str(e)}"
+            }
+    
+    @staticmethod
+    def money_flow_index(df: pd.DataFrame, period: int = 14) -> Dict:
+        """
+        💰 Calcular Money Flow Index (MFI)
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            period: Período para el cálculo
+            
+        Returns:
+            Diccionario con MFI y señales
+        """
+        try:
+            # Convertir todos los datos a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            volume_float = df['volume'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                mfi = ta.mfi(high_float, low_float, close_float, volume_float, length=period)
+            
+            if mfi is None or mfi.empty:
+                # Calcular manualmente
+                typical_price = (df['high'] + df['low'] + df['close']) / 3
+                money_flow = typical_price * df['volume']
+                
+                positive_flow = pd.Series(index=df.index, dtype=float)
+                negative_flow = pd.Series(index=df.index, dtype=float)
+                
+                for i in range(1, len(df)):
+                    if typical_price.iloc[i] > typical_price.iloc[i-1]:
+                        positive_flow.iloc[i] = money_flow.iloc[i]
+                        negative_flow.iloc[i] = 0
+                    elif typical_price.iloc[i] < typical_price.iloc[i-1]:
+                        positive_flow.iloc[i] = 0
+                        negative_flow.iloc[i] = money_flow.iloc[i]
+                    else:
+                        positive_flow.iloc[i] = 0
+                        negative_flow.iloc[i] = 0
+                
+                positive_flow_sum = positive_flow.rolling(window=period).sum()
+                negative_flow_sum = negative_flow.rolling(window=period).sum()
+                
+                money_ratio = positive_flow_sum / negative_flow_sum
+                mfi = 100 - (100 / (1 + money_ratio))
+            
+            current_mfi = AdvancedIndicators.safe_float(mfi.iloc[-1], 50.0)
+            
+            # Generar señales
+            if current_mfi <= 20:
+                signal = "BUY"
+                interpretation = "🟢 MFI oversold (<20) - Posible rebote"
+            elif current_mfi >= 80:
+                signal = "SELL"
+                interpretation = "🔴 MFI overbought (>80) - Posible corrección"
+            elif current_mfi < 40:
+                signal = "BUY"
+                interpretation = "📈 MFI bajo - Presión de compra"
+            elif current_mfi > 60:
+                signal = "SELL"
+                interpretation = "📉 MFI alto - Presión de venta"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ MFI neutral"
+            
+            return {
+                "mfi": round(current_mfi, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            return {
+                "mfi": 50.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando MFI: {str(e)}"
+            }
+    
+    @staticmethod
+    def average_true_range(df: pd.DataFrame, period: int = 14) -> Dict:
+        """
+        📊 Calcular Average True Range (ATR) - Medida de volatilidad
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            period: Período para el cálculo
+            
+        Returns:
+            Diccionario con ATR y análisis de volatilidad
+        """
+        try:
+            atr = ta.atr(df['high'], df['low'], df['close'], length=period)
+            
+            if atr is None or atr.empty:
+                # Calcular manualmente
+                high_low = df['high'] - df['low']
+                high_close_prev = abs(df['high'] - df['close'].shift(1))
+                low_close_prev = abs(df['low'] - df['close'].shift(1))
+                
+                true_range = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
+                atr = true_range.rolling(window=period).mean()
+            
+            current_atr = AdvancedIndicators.safe_float(atr.iloc[-1])
+            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            
+            # Calcular ATR como porcentaje del precio
+            atr_percentage = (current_atr / current_price) * 100
+            
+            # Calcular ATR promedio de los últimos 50 períodos para comparación
+            atr_avg = atr.tail(50).mean()
+            atr_ratio = current_atr / atr_avg if atr_avg > 0 else 1.0
+            
+            # Interpretar volatilidad
+            if atr_percentage > 5.0:
+                volatility_level = "MUY ALTA"
+                interpretation = "🔴 Volatilidad extrema - Alto riesgo"
+            elif atr_percentage > 3.0:
+                volatility_level = "ALTA"
+                interpretation = "🟠 Volatilidad alta - Precaución"
+            elif atr_percentage > 1.5:
+                volatility_level = "MEDIA"
+                interpretation = "🟡 Volatilidad normal"
+            else:
+                volatility_level = "BAJA"
+                interpretation = "🟢 Volatilidad baja - Mercado estable"
+            
+            return {
+                "atr": round(current_atr, 4),
+                "atr_percentage": round(atr_percentage, 2),
+                "atr_ratio": round(atr_ratio, 2),
+                "volatility_level": volatility_level,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            return {
+                "atr": 0.0,
+                "atr_percentage": 1.0,
+                "atr_ratio": 1.0,
+                "volatility_level": "DESCONOCIDA",
+                "interpretation": f"Error calculando ATR: {str(e)}"
+            }
+    
+    @staticmethod
+    def enhanced_rsi(df: pd.DataFrame, period: int = 14) -> Dict:
+        """
+        📊 RSI Mejorado con análisis de divergencias
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            period: Período para el cálculo
+            
+        Returns:
+            Diccionario con RSI mejorado y análisis
+        """
+        try:
+            rsi = ta.rsi(df['close'], length=period)
+            
+            if rsi is None or rsi.empty:
+                # Calcular manualmente
+                delta = df['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            current_rsi = AdvancedIndicators.safe_float(rsi.iloc[-1], 50.0)
+            
+            # Calcular RSI de diferentes períodos para confirmación
+            rsi_fast = ta.rsi(df['close'], length=7)
+            rsi_slow = ta.rsi(df['close'], length=21)
+            
+            current_rsi_fast = AdvancedIndicators.safe_float(rsi_fast.iloc[-1] if rsi_fast is not None else current_rsi, current_rsi)
+            current_rsi_slow = AdvancedIndicators.safe_float(rsi_slow.iloc[-1] if rsi_slow is not None else current_rsi, current_rsi)
+            
+            # Detectar divergencias (simplificado)
+            price_trend = "UP" if df['close'].iloc[-1] > df['close'].iloc[-5] else "DOWN"
+            rsi_trend = "UP" if current_rsi > rsi.iloc[-5] else "DOWN"
+            
+            divergence = "BULLISH" if price_trend == "DOWN" and rsi_trend == "UP" else \
+                        "BEARISH" if price_trend == "UP" and rsi_trend == "DOWN" else "NONE"
+            
+            # Generar señales mejoradas
+            if current_rsi <= 20:
+                signal = "STRONG_BUY"
+                interpretation = "🟢 RSI extremadamente oversold - Fuerte señal de compra"
+            elif current_rsi <= 30:
+                signal = "BUY"
+                interpretation = "📈 RSI oversold - Señal de compra"
+            elif current_rsi >= 80:
+                signal = "STRONG_SELL"
+                interpretation = "🔴 RSI extremadamente overbought - Fuerte señal de venta"
+            elif current_rsi >= 70:
+                signal = "SELL"
+                interpretation = "📉 RSI overbought - Señal de venta"
+            elif current_rsi > 50 and current_rsi_fast > current_rsi_slow:
+                signal = "BUY"
+                interpretation = "🟢 RSI alcista - Momentum positivo"
+            elif current_rsi < 50 and current_rsi_fast < current_rsi_slow:
+                signal = "SELL"
+                interpretation = "🔴 RSI bajista - Momentum negativo"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ RSI neutral"
+            
+            # Ajustar señal por divergencia
+            if divergence == "BULLISH" and signal in ["SELL", "STRONG_SELL"]:
+                signal = "HOLD"
+                interpretation += " (Divergencia alcista detectada)"
+            elif divergence == "BEARISH" and signal in ["BUY", "STRONG_BUY"]:
+                signal = "HOLD"
+                interpretation += " (Divergencia bajista detectada)"
+            
+            return {
+                "rsi": round(current_rsi, 2),
+                "rsi_fast": round(current_rsi_fast, 2),
+                "rsi_slow": round(current_rsi_slow, 2),
+                "divergence": divergence,
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            return {
+                "rsi": 50.0,
+                "rsi_fast": 50.0,
+                "rsi_slow": 50.0,
+                "divergence": "NONE",
+                "signal": "HOLD",
+                "interpretation": f"Error calculando RSI mejorado: {str(e)}"
+            }
+    
+    @staticmethod
+    def rate_of_change(df: pd.DataFrame, period: int = 12) -> Dict:
+        """
+        📊 Calcular Rate of Change (ROC) - Indicador de momentum
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            period: Período para el cálculo
+            
+        Returns:
+            Diccionario con ROC y análisis de momentum
+        """
+        try:
+            roc = ta.roc(df['close'], length=period)
+            
+            if roc is None or roc.empty:
+                # Calcular manualmente
+                roc = ((df['close'] - df['close'].shift(period)) / df['close'].shift(period)) * 100
+            
+            current_roc = AdvancedIndicators.safe_float(roc.iloc[-1], 0.0)
+            
+            # Calcular ROC promedio para contexto
+            roc_avg = roc.tail(50).mean()
+            roc_std = roc.tail(50).std()
+            
+            # Calcular z-score del ROC actual
+            roc_zscore = (current_roc - roc_avg) / roc_std if roc_std > 0 else 0
+            
+            # Generar señales basadas en ROC
+            if current_roc > 5.0:
+                signal = "STRONG_BUY"
+                interpretation = "🟢 ROC muy positivo - Fuerte momentum alcista"
+            elif current_roc > 2.0:
+                signal = "BUY"
+                interpretation = "📈 ROC positivo - Momentum alcista"
+            elif current_roc < -5.0:
+                signal = "STRONG_SELL"
+                interpretation = "🔴 ROC muy negativo - Fuerte momentum bajista"
+            elif current_roc < -2.0:
+                signal = "SELL"
+                interpretation = "📉 ROC negativo - Momentum bajista"
+            elif abs(roc_zscore) > 2.0:
+                if current_roc > 0:
+                    signal = "BUY"
+                    interpretation = "🟢 ROC anormalmente alto - Momentum excepcional"
+                else:
+                    signal = "SELL"
+                    interpretation = "🔴 ROC anormalmente bajo - Momentum negativo excepcional"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ ROC neutral - Sin momentum claro"
+            
+            return {
+                "roc": round(current_roc, 2),
+                "roc_avg": round(roc_avg, 2),
+                "roc_zscore": round(roc_zscore, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            return {
+                "roc": 0.0,
+                "roc_avg": 0.0,
+                "roc_zscore": 0.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando ROC: {str(e)}"
+            }
+    
+    @staticmethod
+    def volume_profile(df: pd.DataFrame, bins: int = 20) -> Dict:
+        """
+        📊 Calcular Volume Profile - Análisis de distribución de volumen por precio
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            bins: Número de niveles de precio para el análisis
+            
+        Returns:
+            Diccionario con análisis de volume profile
+        """
+        try:
+            # Calcular precio típico
+            typical_price = (df['high'] + df['low'] + df['close']) / 3
+            
+            # Crear bins de precio
+            price_min = df['low'].min()
+            price_max = df['high'].max()
+            price_bins = pd.cut(typical_price, bins=bins, include_lowest=True)
+            
+            # Agrupar volumen por bins de precio
+            volume_by_price = df.groupby(price_bins, observed=True)['volume'].sum().sort_index()
+            
+            # Encontrar el Point of Control (POC) - nivel con mayor volumen
+            poc_bin = volume_by_price.idxmax()
+            poc_price = poc_bin.mid
+            poc_volume = volume_by_price.max()
+            
+            # Calcular Value Area (70% del volumen total)
+            total_volume = volume_by_price.sum()
+            target_volume = total_volume * 0.7
+            
+            # Encontrar Value Area High (VAH) y Value Area Low (VAL)
+            sorted_volumes = volume_by_price.sort_values(ascending=False)
+            cumulative_volume = 0
+            value_area_bins = []
+            
+            for bin_name, volume in sorted_volumes.items():
+                cumulative_volume += volume
+                value_area_bins.append(bin_name)
+                if cumulative_volume >= target_volume:
+                    break
+            
+            # Extraer precios de los bins del value area
+            value_area_prices = [bin_interval.mid for bin_interval in value_area_bins]
+            vah = max(value_area_prices)  # Value Area High
+            val = min(value_area_prices)  # Value Area Low
+            
+            current_price = df['close'].iloc[-1]
+            
+            # Generar señales basadas en la posición del precio
+            if current_price > vah:
+                signal = "SELL"
+                interpretation = "🔴 Precio por encima del Value Area High - Zona de venta"
+            elif current_price < val:
+                signal = "BUY"
+                interpretation = "🟢 Precio por debajo del Value Area Low - Zona de compra"
+            elif abs(current_price - poc_price) / poc_price < 0.01:  # Cerca del POC (1%)
+                signal = "HOLD"
+                interpretation = "⚪ Precio cerca del Point of Control - Zona de equilibrio"
+            elif current_price > poc_price:
+                signal = "BUY"
+                interpretation = "📈 Precio por encima del POC - Bias alcista"
+            else:
+                signal = "SELL"
+                interpretation = "📉 Precio por debajo del POC - Bias bajista"
+            
+            return {
+                "poc_price": round(poc_price, 2),
+                "poc_volume": round(poc_volume, 0),
+                "vah": round(vah, 2),
+                "val": round(val, 2),
+                "current_price": round(current_price, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            return {
+                "poc_price": current_price,
+                "poc_volume": 0.0,
+                "vah": current_price * 1.02,
+                "val": current_price * 0.98,
+                "current_price": current_price,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando Volume Profile: {str(e)}"
+            }
+    
+    @staticmethod
+    def support_resistance_levels(df: pd.DataFrame, window: int = 20, min_touches: int = 2) -> Dict:
+        """
+        📊 Detectar niveles de soporte y resistencia
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            window: Ventana para detectar máximos y mínimos locales
+            min_touches: Mínimo número de toques para confirmar un nivel
+            
+        Returns:
+            Diccionario con niveles de soporte y resistencia
+        """
+        try:
+            # Detectar máximos y mínimos locales
+            highs = df['high'].rolling(window=window, center=True).max() == df['high']
+            lows = df['low'].rolling(window=window, center=True).min() == df['low']
+            
+            # Extraer precios de máximos y mínimos
+            resistance_prices = df.loc[highs, 'high'].tolist()
+            support_prices = df.loc[lows, 'low'].tolist()
+            
+            current_price = df['close'].iloc[-1]
+            
+            # Agrupar niveles similares (tolerancia del 1%)
+            def group_levels(prices, tolerance=0.01):
+                if not prices:
+                    return []
+                
+                grouped = []
+                prices_sorted = sorted(prices)
+                
+                current_group = [prices_sorted[0]]
+                
+                for price in prices_sorted[1:]:
+                    if abs(price - current_group[-1]) / current_group[-1] <= tolerance:
+                        current_group.append(price)
+                    else:
+                        if len(current_group) >= min_touches:
+                            grouped.append(sum(current_group) / len(current_group))
+                        current_group = [price]
+                
+                if len(current_group) >= min_touches:
+                    grouped.append(sum(current_group) / len(current_group))
+                
+                return grouped
+            
+            resistance_levels = group_levels(resistance_prices)
+            support_levels = group_levels(support_prices)
+            
+            # Encontrar el soporte y resistencia más cercanos
+            nearest_resistance = None
+            nearest_support = None
+            
+            for level in resistance_levels:
+                if level > current_price:
+                    if nearest_resistance is None or level < nearest_resistance:
+                        nearest_resistance = level
+            
+            for level in support_levels:
+                if level < current_price:
+                    if nearest_support is None or level > nearest_support:
+                        nearest_support = level
+            
+            # Generar señales
+            signal = "HOLD"
+            interpretation = "⚪ Precio en rango normal"
+            
+            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < 0.02:
+                signal = "SELL"
+                interpretation = "🔴 Precio cerca de resistencia - Posible rechazo"
+            elif nearest_support and abs(current_price - nearest_support) / current_price < 0.02:
+                signal = "BUY"
+                interpretation = "🟢 Precio cerca de soporte - Posible rebote"
+            
+            return {
+                "nearest_resistance": round(nearest_resistance, 2) if nearest_resistance else None,
+                "nearest_support": round(nearest_support, 2) if nearest_support else None,
+                "resistance_levels": [round(level, 2) for level in resistance_levels[-5:]],  # Últimos 5
+                "support_levels": [round(level, 2) for level in support_levels[-5:]],  # Últimos 5
+                "current_price": round(current_price, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+        except Exception as e:
+            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            return {
+                "nearest_resistance": None,
+                "nearest_support": None,
+                "resistance_levels": [],
+                "support_levels": [],
+                "current_price": current_price,
+                "signal": "HOLD",
+                "interpretation": f"Error detectando S/R: {str(e)}"
+            }
+    
+    @staticmethod
     def detect_candlestick_patterns(df: pd.DataFrame) -> Dict:
         """
         🕯️ Detectar patrones de velas japonesas
@@ -544,3 +1238,217 @@ class AdvancedIndicators:
                 "patterns_detected": 0,
                 "patterns": [{"name": "Error", "signal": "NEUTRAL", "description": f"Error detectando patrones: {str(e)}"}]
             }
+
+    @staticmethod
+    def trend_lines_analysis(df: pd.DataFrame, lookback: int = 50) -> Dict:
+        """
+        🔍 Detecta líneas de tendencia y breakouts
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            lookback: Número de períodos para análisis
+            
+        Returns:
+            Diccionario con análisis de líneas de tendencia
+        """
+        try:
+            if len(df) < lookback:
+                return {"trend_lines": [], "signal": "HOLD", "interpretation": "Insufficient data"}
+            
+            recent_data = df.tail(lookback)
+            highs = recent_data['high'].values
+            lows = recent_data['low'].values
+            closes = recent_data['close'].values
+            
+            # Detectar línea de tendencia alcista (conectando mínimos)
+            def find_uptrend_line(lows, closes):
+                min_points = []
+                for i in range(2, len(lows) - 2):
+                    if lows[i] < lows[i-1] and lows[i] < lows[i+1] and lows[i] < lows[i-2] and lows[i] < lows[i+2]:
+                        min_points.append((i, lows[i]))
+                
+                if len(min_points) < 2:
+                    return None
+                
+                # Tomar los dos puntos más recientes
+                p1, p2 = min_points[-2], min_points[-1]
+                slope = (p2[1] - p1[1]) / (p2[0] - p1[0])
+                
+                # Proyectar línea al presente
+                current_trend_value = p2[1] + slope * (len(lows) - 1 - p2[0])
+                return {"slope": slope, "current_value": current_trend_value, "type": "uptrend"}
+            
+            # Detectar línea de tendencia bajista (conectando máximos)
+            def find_downtrend_line(highs, closes):
+                max_points = []
+                for i in range(2, len(highs) - 2):
+                    if highs[i] > highs[i-1] and highs[i] > highs[i+1] and highs[i] > highs[i-2] and highs[i] > highs[i+2]:
+                        max_points.append((i, highs[i]))
+                
+                if len(max_points) < 2:
+                    return None
+                
+                # Tomar los dos puntos más recientes
+                p1, p2 = max_points[-2], max_points[-1]
+                slope = (p2[1] - p1[1]) / (p2[0] - p1[0])
+                
+                # Proyectar línea al presente
+                current_trend_value = p2[1] + slope * (len(highs) - 1 - p2[0])
+                return {"slope": slope, "current_value": current_trend_value, "type": "downtrend"}
+            
+            uptrend = find_uptrend_line(lows, closes)
+            downtrend = find_downtrend_line(highs, closes)
+            
+            current_price = closes[-1]
+            signal = "HOLD"
+            interpretation = "No clear trend lines"
+            
+            # Analizar breakouts
+            if uptrend and current_price > uptrend["current_value"]:
+                distance_pct = (current_price - uptrend["current_value"]) / uptrend["current_value"] * 100
+                if distance_pct > 0.5:  # Breakout significativo
+                    signal = "BUY"
+                    interpretation = f"🟢 Uptrend line breakout ({distance_pct:.2f}%)"
+                else:
+                    interpretation = f"📈 Near uptrend line support"
+            
+            if downtrend and current_price < downtrend["current_value"]:
+                distance_pct = (downtrend["current_value"] - current_price) / downtrend["current_value"] * 100
+                if distance_pct > 0.5:  # Breakout significativo
+                    signal = "SELL"
+                    interpretation = f"🔴 Downtrend line breakdown ({distance_pct:.2f}%)"
+                else:
+                    interpretation = f"📉 Near downtrend line resistance"
+            
+            return {
+                "trend_lines": {
+                    "uptrend": uptrend,
+                    "downtrend": downtrend
+                },
+                "signal": signal,
+                "interpretation": interpretation,
+                "current_price": current_price
+            }
+            
+        except Exception as e:
+            return {"trend_lines": [], "signal": "HOLD", "interpretation": f"Error: {str(e)}"}
+
+    @staticmethod
+    def chart_patterns_detection(df: pd.DataFrame, window: int = 20) -> Dict:
+        """
+        📈 Detecta patrones de gráficos comunes
+        
+        Args:
+            df: DataFrame con datos OHLCV
+            window: Ventana para análisis de patrones
+            
+        Returns:
+            Diccionario con patrones detectados
+        """
+        try:
+            if len(df) < window * 2:
+                return {"patterns": [], "signal": "HOLD", "interpretation": "Insufficient data"}
+            
+            recent_data = df.tail(window * 2)
+            highs = recent_data['high'].values
+            lows = recent_data['low'].values
+            closes = recent_data['close'].values
+            
+            patterns_detected = []
+            
+            # Detectar Triángulo Ascendente
+            def detect_ascending_triangle():
+                # Buscar resistencia horizontal y soporte ascendente
+                resistance_level = max(highs[-window:])
+                resistance_touches = sum(1 for h in highs[-window:] if abs(h - resistance_level) / resistance_level < 0.01)
+                
+                # Verificar si los mínimos están subiendo
+                recent_lows = lows[-window//2:]
+                if len(recent_lows) >= 3:
+                    low_trend = (recent_lows[-1] - recent_lows[0]) / len(recent_lows)
+                    if resistance_touches >= 2 and low_trend > 0:
+                        return {"pattern": "Ascending Triangle", "signal": "BUY", "confidence": 70}
+                return None
+            
+            # Detectar Triángulo Descendente
+            def detect_descending_triangle():
+                # Buscar soporte horizontal y resistencia descendente
+                support_level = min(lows[-window:])
+                support_touches = sum(1 for l in lows[-window:] if abs(l - support_level) / support_level < 0.01)
+                
+                # Verificar si los máximos están bajando
+                recent_highs = highs[-window//2:]
+                if len(recent_highs) >= 3:
+                    high_trend = (recent_highs[-1] - recent_highs[0]) / len(recent_highs)
+                    if support_touches >= 2 and high_trend < 0:
+                        return {"pattern": "Descending Triangle", "signal": "SELL", "confidence": 70}
+                return None
+            
+            # Detectar Doble Techo
+            def detect_double_top():
+                if len(highs) < window:
+                    return None
+                
+                # Buscar dos picos similares
+                peaks = []
+                for i in range(5, len(highs) - 5):
+                    if all(highs[i] >= highs[i+j] for j in range(-5, 6) if j != 0):
+                        peaks.append((i, highs[i]))
+                
+                if len(peaks) >= 2:
+                    last_two_peaks = peaks[-2:]
+                    height_diff = abs(last_two_peaks[1][1] - last_two_peaks[0][1]) / last_two_peaks[0][1]
+                    if height_diff < 0.03:  # Diferencia menor al 3%
+                        return {"pattern": "Double Top", "signal": "SELL", "confidence": 75}
+                return None
+            
+            # Detectar Doble Suelo
+            def detect_double_bottom():
+                if len(lows) < window:
+                    return None
+                
+                # Buscar dos valles similares
+                valleys = []
+                for i in range(5, len(lows) - 5):
+                    if all(lows[i] <= lows[i+j] for j in range(-5, 6) if j != 0):
+                        valleys.append((i, lows[i]))
+                
+                if len(valleys) >= 2:
+                    last_two_valleys = valleys[-2:]
+                    depth_diff = abs(last_two_valleys[1][1] - last_two_valleys[0][1]) / last_two_valleys[0][1]
+                    if depth_diff < 0.03:  # Diferencia menor al 3%
+                        return {"pattern": "Double Bottom", "signal": "BUY", "confidence": 75}
+                return None
+            
+            # Ejecutar detecciones
+            pattern_functions = [
+                detect_ascending_triangle,
+                detect_descending_triangle,
+                detect_double_top,
+                detect_double_bottom
+            ]
+            
+            for pattern_func in pattern_functions:
+                pattern = pattern_func()
+                if pattern:
+                    patterns_detected.append(pattern)
+            
+            # Determinar señal principal
+            if patterns_detected:
+                # Tomar el patrón con mayor confianza
+                best_pattern = max(patterns_detected, key=lambda x: x["confidence"])
+                signal = best_pattern["signal"]
+                interpretation = f"{best_pattern['pattern']} detected (confidence: {best_pattern['confidence']}%)"
+            else:
+                signal = "HOLD"
+                interpretation = "No clear chart patterns detected"
+            
+            return {
+                "patterns": patterns_detected,
+                "signal": signal,
+                "interpretation": interpretation,
+                "current_price": closes[-1]
+            }
+            
+        except Exception as e:
+            return {"patterns": [], "signal": "HOLD", "interpretation": f"Error: {str(e)}"}

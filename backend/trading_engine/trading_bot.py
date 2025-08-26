@@ -14,9 +14,10 @@ import threading
 import json
 
 # Importar todos nuestros componentes
-from .strategies import RSIStrategy, MACDStrategy, IchimokuStrategy, TradingSignal
+from .strategies import TradingSignal
+from .enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
-from .risk_manager import RiskManager, RiskAssessment
+from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from database.database import db_manager
 from database.models import Strategy as DBStrategy
 
@@ -66,13 +67,13 @@ class TradingBot:
         
         # Componentes principales
         self.paper_trader = PaperTrader()
-        self.risk_manager = RiskManager()
+        self.risk_manager = EnhancedRiskManager()
         
-        # Estrategias disponibles
+        # Estrategias disponibles (Enhanced)
         self.strategies = {
-            "RSI": RSIStrategy(),
-            "MACD": MACDStrategy(),
-            "Ichimoku": IchimokuStrategy()
+            "ProfessionalRSI": ProfessionalRSIStrategy(),
+            "MultiTimeframe": MultiTimeframeStrategy(),
+            "Ensemble": EnsembleStrategy()
         }
         
         # Símbolos a analizar

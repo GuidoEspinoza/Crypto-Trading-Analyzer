@@ -3,17 +3,47 @@
 Motor de trading automático con estrategias inteligentes
 """
 
-from .strategies import TradingStrategy, RSIStrategy, MACDStrategy, IchimokuStrategy
+# Estrategias de trading (clases base)
+from .strategies import TradingStrategy, TradingSignal
+
+# Estrategias mejoradas
+from .enhanced_strategies import (
+    EnhancedTradingStrategy, 
+    ProfessionalRSIStrategy, 
+    MultiTimeframeStrategy, 
+    EnsembleStrategy
+)
+
+# Gestión de riesgo
+from .enhanced_risk_manager import EnhancedRiskManager
+
+# Trading y backtesting
 from .paper_trader import PaperTrader
-from .risk_manager import RiskManager
 from .trading_bot import TradingBot
+from .backtesting_engine import BacktestingEngine, BacktestConfig
+from .data_fetcher import DataFetcher
 
 __all__ = [
+    # Estrategias base
     'TradingStrategy',
     'RSIStrategy', 
     'MACDStrategy',
     'IchimokuStrategy',
-    'PaperTrader',
+    
+    # Estrategias mejoradas
+    'EnhancedTradingStrategy',
+    'ProfessionalRSIStrategy',
+    'MultiTimeframeStrategy',
+    'EnsembleStrategy',
+    
+    # Gestión de riesgo
     'RiskManager',
-    'TradingBot'
+    'EnhancedRiskManager',
+    
+    # Trading y backtesting
+    'PaperTrader',
+    'TradingBot',
+    'BacktestingEngine',
+    'BacktestConfig',
+    'DataFetcher'
 ]

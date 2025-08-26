@@ -23,9 +23,11 @@ from database.models import Trade, Portfolio, Strategy, TradingSignal
 
 # 🤖 Importar Trading Engine
 from trading_engine.trading_bot import trading_bot
-from trading_engine.strategies import RSIStrategy, MACDStrategy, IchimokuStrategy
+# Estrategias originales removidas - usando solo enhanced strategies
+from trading_engine.enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from trading_engine.paper_trader import PaperTrader
-from trading_engine.risk_manager import RiskManager
+from trading_engine.enhanced_risk_manager import EnhancedRiskManager
+from trading_engine.backtesting_engine import BacktestingEngine, BacktestConfig
 
 # Crear instancia de FastAPI
 app = FastAPI(
@@ -350,7 +352,7 @@ async def get_risk_analysis(symbol: str):
     """
     try:
         # Crear señal simulada para análisis
-        risk_manager = RiskManager()
+        risk_manager = EnhancedRiskManager()
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
         portfolio_value = portfolio_summary.get("total_value", 10000)
         
@@ -359,8 +361,8 @@ async def get_risk_analysis(symbol: str):
         current_price = ticker['last']
         
         # Crear señal dummy para análisis
-        from trading_engine.strategies import TradingSignal
-        dummy_signal = TradingSignal(
+        from trading_engine.enhanced_strategies import EnhancedSignal
+        dummy_signal = EnhancedSignal(
             symbol=symbol,
             strategy_name="Risk_Analysis",
             signal_type="BUY",
@@ -369,7 +371,14 @@ async def get_risk_analysis(symbol: str):
             strength="Moderate",
             timestamp=datetime.now(),
             indicators_data={},
-            notes="Risk analysis simulation"
+            notes="Risk analysis simulation",
+            volume_confirmation=True,
+            trend_confirmation="NEUTRAL",
+            risk_reward_ratio=2.0,
+            stop_loss_price=current_price * 0.95,
+            take_profit_price=current_price * 1.05,
+            market_regime="NORMAL",
+            confluence_score=3
         )
         
         risk_assessment = risk_manager.assess_trade_risk(dummy_signal, portfolio_value)
@@ -381,12 +390,13 @@ async def get_risk_analysis(symbol: str):
             "portfolio_value": portfolio_value,
             "risk_assessment": {
                 "is_approved": risk_assessment.is_approved,
-                "risk_score": risk_assessment.risk_score,
-                "recommended_position_size": f"{risk_assessment.position_size:.1%}",
-                "stop_loss": risk_assessment.stop_loss,
-                "take_profit": risk_assessment.take_profit,
-                "max_loss_amount": risk_assessment.max_loss_amount,
-                "risk_reason": risk_assessment.risk_reason,
+                "overall_risk_score": risk_assessment.overall_risk_score,
+                "risk_level": risk_assessment.risk_level.value,
+                "recommended_position_size": risk_assessment.position_sizing.recommended_size,
+                "stop_loss_price": risk_assessment.dynamic_stop_loss.stop_loss_price,
+                "correlation_risk": risk_assessment.correlation_risk,
+                "volatility_risk": risk_assessment.volatility_risk,
+                "liquidity_risk": risk_assessment.liquidity_risk,
                 "recommendations": risk_assessment.recommendations
             },
             "timestamp": datetime.now().isoformat()
@@ -394,7 +404,321 @@ async def get_risk_analysis(symbol: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing risk: {str(e)}")
 
-# ... resto de tus endpoints existentes (mantener todos los de database, price, etc.)
+# 🚀 NUEVOS ENDPOINTS PARA ESTRATEGIAS MEJORADAS Y BACKTESTING
+
+@app.get("/enhanced/strategies/list")
+async def get_enhanced_strategies():
+    """📊 Obtener lista de estrategias mejoradas disponibles"""
+    try:
+        return {
+            "enhanced_strategies": [
+                {
+                    "name": "ProfessionalRSI",
+                    "description": "RSI profesional con análisis de volumen y tendencia",
+                    "features": ["Volume confirmation", "Trend analysis", "Risk management"]
+                },
+                {
+                    "name": "MultiTimeframe", 
+                    "description": "Análisis multi-timeframe con votación ponderada",
+                    "features": ["1h, 4h, 1d analysis", "Weighted voting", "Confluence scoring"]
+                },
+                {
+                    "name": "Ensemble",
+                    "description": "Estrategia ensemble que combina múltiples señales",
+                    "features": ["Multiple strategies", "Intelligent voting", "Advanced risk management"]
+                }
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/enhanced/analyze/{strategy_name}/{symbol}")
+async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timeframe: str = "1h"):
+    """🔍 Analizar símbolo con estrategia mejorada"""
+    try:
+        # Crear instancia de la estrategia
+        if strategy_name.lower() == "professionalrsi":
+            strategy = ProfessionalRSIStrategy()
+        elif strategy_name.lower() == "multitimeframe":
+            strategy = MultiTimeframeStrategy()
+        elif strategy_name.lower() == "ensemble":
+            strategy = EnsembleStrategy()
+        else:
+            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
+        
+        # Analizar
+        signal = strategy.analyze(symbol, timeframe)
+        
+        return {
+            "strategy": strategy_name,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "signal": {
+                "type": signal.signal_type,
+                "confidence": signal.confidence_score,
+                "strength": signal.strength,
+                "price": signal.price,
+                "volume_confirmation": signal.volume_confirmation,
+                "trend_confirmation": signal.trend_confirmation,
+                "risk_reward_ratio": signal.risk_reward_ratio,
+                "stop_loss_price": signal.stop_loss_price,
+                "take_profit_price": signal.take_profit_price,
+                "market_regime": signal.market_regime,
+                "confluence_score": signal.confluence_score,
+                "notes": signal.notes
+            },
+            "timestamp": signal.timestamp.isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/backtesting/run")
+async def run_backtest(request: dict):
+    """📈 Ejecutar backtesting de estrategia"""
+    try:
+        strategy_name = request.get("strategy", "ProfessionalRSI")
+        symbol = request.get("symbol", "BTC/USDT")
+        start_date = datetime.fromisoformat(request.get("start_date", "2024-01-01T00:00:00"))
+        end_date = datetime.fromisoformat(request.get("end_date", "2024-12-31T23:59:59"))
+        initial_capital = request.get("initial_capital", 10000)
+        
+        # Crear configuración de backtesting
+        config = BacktestConfig(
+            symbols=[symbol],
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=initial_capital,
+            timeframe="1h"
+        )
+        
+        # Crear estrategia
+        if strategy_name.lower() == "professionalrsi":
+            strategy = ProfessionalRSIStrategy()
+        elif strategy_name.lower() == "multitimeframe":
+            strategy = MultiTimeframeStrategy()
+        elif strategy_name.lower() == "ensemble":
+            strategy = EnsembleStrategy()
+        else:
+            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
+        
+        # Ejecutar backtesting
+        engine = BacktestingEngine(config)
+        metrics = engine.run_backtest(strategy, start_date, end_date)
+        
+        return {
+            "backtest_results": {
+                "strategy": strategy_name,
+                "symbol": symbol,
+                "period": f"{start_date.date()} to {end_date.date()}",
+                "metrics": {
+                    "total_return": metrics.total_return,
+                    "annualized_return": metrics.annualized_return,
+                    "max_drawdown": metrics.max_drawdown,
+                    "sharpe_ratio": metrics.sharpe_ratio,
+                    "win_rate": metrics.win_rate,
+                    "total_trades": metrics.total_trades,
+                    "avg_trade_return": metrics.avg_trade_return,
+                    "profit_factor": metrics.profit_factor,
+                    "final_capital": metrics.final_capital
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/enhanced/backtest/{strategy_name}/{symbol}")
+async def run_enhanced_backtest(strategy_name: str, symbol: str, 
+                               start_date: str = "2024-01-01", 
+                               end_date: str = "2024-12-31",
+                               initial_capital: float = 10000):
+    """📈 Ejecutar backtesting mejorado con estrategias avanzadas"""
+    try:
+        # Convertir fechas
+        start_dt = datetime.fromisoformat(start_date + "T00:00:00")
+        end_dt = datetime.fromisoformat(end_date + "T23:59:59")
+        
+        # Crear estrategia
+        if strategy_name.lower() == "professionalrsi":
+            strategy = ProfessionalRSIStrategy()
+        elif strategy_name.lower() == "multitimeframe":
+            strategy = MultiTimeframeStrategy()
+        elif strategy_name.lower() == "ensemble":
+            strategy = EnsembleStrategy()
+        else:
+            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
+        
+        # Configurar backtesting
+        config = BacktestConfig(
+            symbols=[symbol],
+            start_date=start_dt,
+            end_date=end_dt,
+            initial_capital=initial_capital,
+            timeframe="1h"
+        )
+        
+        # Ejecutar backtesting
+        engine = BacktestingEngine(config)
+        metrics = engine.run_backtest(strategy, start_dt, end_dt)
+        
+        return {
+            "enhanced_backtest_results": {
+                "strategy": strategy_name,
+                "symbol": symbol,
+                "period": f"{start_date} to {end_date}",
+                "initial_capital": initial_capital,
+                "performance_metrics": {
+                    "total_return_percentage": metrics.total_return,
+                    "annualized_return": metrics.annualized_return,
+                    "max_drawdown": metrics.max_drawdown,
+                    "sharpe_ratio": metrics.sharpe_ratio,
+                    "win_rate": metrics.win_rate,
+                    "total_trades": metrics.total_trades,
+                    "average_trade_return": metrics.average_trade_return,
+                    "profit_factor": metrics.profit_factor,
+                    "final_capital": getattr(metrics, 'final_capital', initial_capital + metrics.total_return),
+                    "volatility": metrics.volatility,
+                    "calmar_ratio": metrics.calmar_ratio
+                },
+                "risk_metrics": {
+                    "max_drawdown": metrics.max_drawdown,
+                    "max_drawdown_percentage": metrics.max_drawdown_percentage,
+                    "consecutive_losses": metrics.consecutive_losses,
+                    "recovery_factor": metrics.recovery_factor
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en backtesting mejorado: {str(e)}")
+
+@app.get("/test/strategy/{strategy_name}/{symbol}")
+async def test_strategy_comprehensive(strategy_name: str, symbol: str, 
+                                    timeframe: str = "1h",
+                                    test_mode: str = "signal_only"):
+    """🧪 Prueba comprehensiva de estrategias con diferentes modos"""
+    try:
+        # Crear estrategia
+        if strategy_name.lower() == "professionalrsi":
+            strategy = ProfessionalRSIStrategy()
+        elif strategy_name.lower() == "multitimeframe":
+            strategy = MultiTimeframeStrategy()
+        elif strategy_name.lower() == "ensemble":
+            strategy = EnsembleStrategy()
+        else:
+            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
+        
+        # Analizar señal
+        signal = strategy.analyze(symbol, timeframe)
+        
+        # Análisis de riesgo si está disponible
+        risk_analysis = None
+        if test_mode in ["full", "risk_analysis"]:
+            try:
+                risk_manager = EnhancedRiskManager()
+                risk_assessment = risk_manager.assess_trade_risk(signal, 10000)
+                risk_analysis = {
+                    "overall_risk_score": risk_assessment.overall_risk_score,
+                    "risk_level": risk_assessment.risk_level.value,
+                    "position_sizing": {
+                        "recommended_size": risk_assessment.position_sizing.recommended_size,
+                        "max_position_size": risk_assessment.position_sizing.max_position_size,
+                        "risk_per_trade": risk_assessment.position_sizing.risk_per_trade
+                    },
+                    "recommendations": risk_assessment.recommendations
+                }
+            except Exception as risk_error:
+                risk_analysis = {"error": f"Error en análisis de riesgo: {str(risk_error)}"}
+        
+        # Backtesting rápido si está en modo completo
+        quick_backtest = None
+        if test_mode == "full":
+            try:
+                from datetime import timedelta
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=30)  # Último mes
+                
+                config = BacktestConfig(
+                    symbols=[symbol],
+                    start_date=start_date,
+                    end_date=end_date,
+                    initial_capital=10000,
+                    timeframe=timeframe
+                )
+                
+                engine = BacktestingEngine(config)
+                metrics = engine.run_backtest(strategy, start_date, end_date)
+                
+                quick_backtest = {
+                    "period": "last_30_days",
+                    "total_return": metrics.total_return,
+                    "win_rate": metrics.win_rate,
+                    "total_trades": metrics.total_trades,
+                    "sharpe_ratio": metrics.sharpe_ratio
+                }
+            except Exception as bt_error:
+                quick_backtest = {"error": f"Error en backtesting rápido: {str(bt_error)}"}
+        
+        return {
+            "strategy_test_results": {
+                "strategy_name": strategy_name,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "test_mode": test_mode,
+                "signal_analysis": {
+                    "action": signal.signal_type if signal else "NO_SIGNAL",
+                    "confidence": signal.confidence_score if signal else 0,
+                    "entry_price": signal.price if signal else None,
+                    "stop_loss_price": getattr(signal, 'stop_loss_price', None) if signal else None,
+                    "take_profit_price": getattr(signal, 'take_profit_price', None) if signal else None,
+                    "volume_confirmation": getattr(signal, 'volume_confirmation', None) if signal else None,
+                    "market_regime": getattr(signal, 'market_regime', None) if signal else None,
+                    "risk_reward_ratio": getattr(signal, 'risk_reward_ratio', None) if signal else None,
+                    "notes": signal.notes if signal else "No signal generated"
+                },
+                "risk_analysis": risk_analysis,
+                "quick_backtest": quick_backtest
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en prueba de estrategia: {str(e)}")
+
+@app.get("/enhanced/risk-analysis/{symbol}")
+async def get_enhanced_risk_analysis(symbol: str):
+    """🛡️ Análisis de riesgo mejorado"""
+    try:
+        # Crear señal de prueba para análisis
+        strategy = ProfessionalRSIStrategy()
+        signal = strategy.analyze(symbol, "1h")
+        
+        # Analizar riesgo
+        risk_manager = EnhancedRiskManager()
+        risk_assessment = risk_manager.assess_trade_risk(signal, 10000)
+        
+        return {
+            "symbol": symbol,
+            "risk_analysis": {
+                "overall_risk_score": risk_assessment.overall_risk_score,
+                "risk_level": risk_assessment.risk_level.value,
+                "position_sizing": {
+                    "recommended_size": risk_assessment.position_sizing.recommended_size,
+                    "max_position_size": risk_assessment.position_sizing.max_position_size,
+                    "risk_per_trade": risk_assessment.position_sizing.risk_per_trade
+                },
+                "stop_loss": {
+                    "price": risk_assessment.dynamic_stop_loss.stop_loss_price,
+                    "type": risk_assessment.dynamic_stop_loss.stop_type,
+                    "trailing_distance": risk_assessment.dynamic_stop_loss.trailing_distance
+                },
+                "recommendations": risk_assessment.recommendations,
+                "market_risk_factors": risk_assessment.market_risk_factors
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():
