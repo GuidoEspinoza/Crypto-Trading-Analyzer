@@ -123,12 +123,12 @@ class TradingBot:
         schedule.clear()
         schedule.every(self.analysis_interval).minutes.do(self._run_analysis_cycle)
         
-        # Análisis inicial inmediato
-        self._run_analysis_cycle()
-        
-        # Iniciar thread de ejecución
+        # Iniciar thread de ejecución (sin análisis inicial inmediato)
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.analysis_thread.start()
+        
+        # Programar primer análisis en 30 segundos para evitar bloqueo
+        schedule.every(30).seconds.do(self._run_first_analysis).tag('first_analysis')
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
@@ -425,6 +425,20 @@ class TradingBot:
             
         except Exception as e:
             self.logger.error(f"❌ Error updating configuration: {e}")
+    
+    def _run_first_analysis(self):
+        """
+        🔄 Ejecutar primer análisis y eliminar del schedule
+        """
+        try:
+            self.logger.info("🔄 Running first analysis...")
+            self._run_analysis_cycle()
+            # Eliminar este job del schedule después de ejecutarlo
+            schedule.clear('first_analysis')
+            self.logger.info("✅ First analysis completed and removed from schedule")
+        except Exception as e:
+            self.logger.error(f"❌ Error in first analysis: {e}")
+            schedule.clear('first_analysis')
     
     def force_analysis(self):
         """

@@ -50,6 +50,22 @@ class TradingStrategy(ABC):
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         return df
+    
+    def get_current_price(self, symbol: str) -> float:
+        """Obtener precio actual del símbolo"""
+        try:
+            import ccxt
+            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
+            ticker = exchange.fetch_ticker(symbol)
+            return float(ticker['last']) if ticker['last'] else 0.0
+        except Exception as e:
+            logging.error(f"Error getting current price for {symbol}: {e}")
+            # Fallback: usar el último precio de los datos históricos
+            try:
+                df = self.get_market_data(symbol, "1m", limit=1)
+                return float(df['close'].iloc[-1]) if not df.empty else 0.0
+            except:
+                return 0.0
 
 # Importar AdvancedIndicators con path absoluto
 import sys
