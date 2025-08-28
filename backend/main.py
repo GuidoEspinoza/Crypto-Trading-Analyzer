@@ -540,7 +540,76 @@ async def get_enhanced_risk_analysis(symbol: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# 🎭 Paper Trading Endpoints
+@app.get("/paper-trading/summary")
+async def get_paper_trading_summary():
+    """
+    📊 Obtener resumen del portfolio de paper trading
+    """
+    try:
+        summary = db_manager.get_portfolio_summary(is_paper=True)
+        return {
+            "status": "success",
+            "portfolio": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/paper-trading/positions")
+async def get_paper_trading_positions():
+    """
+    📈 Obtener posiciones abiertas del portfolio
+    """
+    try:
+        paper_trader = PaperTrader()
+        positions = paper_trader.get_open_positions()
+        return {
+            "status": "success",
+            "positions": positions,
+            "total_positions": len(positions),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/paper-trading/performance")
+async def get_paper_trading_performance():
+    """
+    📊 Obtener métricas de performance del portfolio
+    """
+    try:
+        paper_trader = PaperTrader()
+        performance = paper_trader.calculate_portfolio_performance()
+        return {
+            "status": "success",
+            "performance": performance,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/paper-trading/reset")
+async def reset_paper_trading():
+    """
+    🔄 Resetear el portfolio de paper trading a los valores por defecto
+    """
+    try:
+        paper_trader = PaperTrader()
+        result = paper_trader.reset_portfolio()
+        
+        if result["success"]:
+            return {
+                "status": "success",
+                "message": result["message"],
+                "initial_balance": result["initial_balance"],
+                "timestamp": result["timestamp"]
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result["message"])
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Ejecutar servidor si se ejecuta directamente
 if __name__ == "__main__":

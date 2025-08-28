@@ -63,6 +63,51 @@ class PaperTrader:
         
         self.logger.info(f"🎭 Paper Trader initialized with ${initial_balance:,.2f}")
     
+    def reset_portfolio(self) -> Dict:
+        """
+        🔄 Resetear el portfolio a los valores por defecto
+        
+        Returns:
+            Dict con el resultado del reset
+        """
+        try:
+            with db_manager.get_db_session() as session:
+                # Eliminar todos los trades
+                session.query(Trade).filter(Trade.is_paper_trade == True).delete()
+                
+                # Resetear portfolio a valores iniciales
+                portfolio_entries = session.query(Portfolio).filter(Portfolio.is_paper == True).all()
+                
+                for entry in portfolio_entries:
+                    if entry.symbol == "USDT":
+                        # Restaurar balance inicial de USDT
+                        entry.quantity = self.initial_balance
+                        entry.avg_price = 1.0
+                        entry.last_updated = datetime.now()
+                    else:
+                        # Eliminar todas las otras posiciones
+                        session.delete(entry)
+                
+                session.commit()
+                
+                self.logger.info(f"🔄 Portfolio reset to initial balance: ${self.initial_balance:,.2f}")
+                
+                return {
+                    "success": True,
+                    "message": f"Portfolio reset successfully to ${self.initial_balance:,.2f}",
+                    "initial_balance": self.initial_balance,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            error_msg = f"Error resetting portfolio: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "success": False,
+                "message": error_msg,
+                "timestamp": datetime.now().isoformat()
+            }
+    
     def execute_signal(self, signal: TradingSignal) -> TradeResult:
         """
         🎯 Ejecutar una señal de trading
