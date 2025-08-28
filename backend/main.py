@@ -27,7 +27,7 @@ from trading_engine.trading_bot import trading_bot
 from trading_engine.enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from trading_engine.paper_trader import PaperTrader
 from trading_engine.enhanced_risk_manager import EnhancedRiskManager
-from trading_engine.backtesting_engine import BacktestingEngine, BacktestConfig
+# BacktestingEngine removido durante la limpieza del proyecto
 
 # Crear instancia de FastAPI
 app = FastAPI(
@@ -61,45 +61,82 @@ class BotConfigUpdate(BaseModel):
     enable_trading: Optional[bool] = None
     symbols: Optional[List[str]] = None
 
+# 🔧 **UTILIDADES**
+
 @app.get("/")
 async def root():
     """
-    🏠 Endpoint raíz - Bienvenida a la API
+    🏠 Endpoint raíz - Información de la API
     """
     return {
         "message": "🤖 Universal Trading Analyzer API v4.0 + Autonomous Trading Bot",
         "status": "active",
-        "features": [
-            "💰 Precios en tiempo real",
-            "📊 Indicadores técnicos básicos",
-            "🔥 Indicadores avanzados",
-            "🕯️ Patrones de velas japonesas",
-            "☁️ Ichimoku Cloud",
-            "🔢 Fibonacci Retracements",
-            "🎯 Señales de trading profesionales",
-            "🗄️ Base de datos SQLite",
-            "🤖 Trading Bot Automático 24/7",
-            "🛡️ Risk Management Avanzado",
-            "🎭 Paper Trading Inteligente",
-            "📈 Portfolio Management",
-            "📊 Backtesting Engine"
-        ],
+        "endpoints": {
+            "utilities": {
+                "title": "🔧 Utilidades",
+                "endpoints": [
+                    "GET / - Información de la API",
+                    "GET /health - Estado de salud del servidor"
+                ]
+            },
+            "trading_bot": {
+                "title": "🤖 Trading Bot",
+                "endpoints": [
+                    "GET /bot/status - Estado del bot",
+                    "POST /bot/start - Iniciar trading bot",
+                    "POST /bot/stop - Detener trading bot",
+                    "GET /bot/report - Reporte detallado",
+                    "GET /bot/config - Configuración actual",
+                    "PUT /bot/config - Actualizar configuración",
+                    "POST /bot/force-analysis - Análisis forzado",
+                    "POST /bot/emergency-stop - Parada de emergencia"
+                ]
+            },
+            "real_time_analysis": {
+                "title": "📊 Análisis en tiempo real",
+                "endpoints": [
+                    "GET /enhanced/analyze/{strategy_name}/{symbol} - Análisis con estrategias avanzadas",
+                    "GET /test/strategy/{strategy_name}/{symbol} - Prueba de estrategias",
+                    "GET /enhanced/risk-analysis/{symbol} - Análisis de riesgo",
+                    "GET /enhanced/strategies/list - Lista de estrategias disponibles"
+                ]
+            }
+        },
         "timestamp": datetime.now().isoformat(),
         "docs": "/docs",
-        "redoc": "/redoc",
-        "trading_bot": {
-            "status": "available",
-            "endpoints": [
-                "/bot/status",
-                "/bot/start", 
-                "/bot/stop",
-                "/bot/report",
-                "/bot/config"
-            ]
-        }
+        "redoc": "/redoc"
     }
 
-# 🤖 **ENDPOINTS DEL TRADING BOT**
+@app.get("/health")
+async def health_check():
+    """
+    🏥 Estado de salud del servidor
+    """
+    try:
+        # Verificar conexión a exchange
+        ticker = exchange.fetch_ticker('BTC/USDT')
+        exchange_status = "connected" if ticker else "disconnected"
+        
+        # Verificar base de datos
+        db_status = "connected" if db_manager else "disconnected"
+        
+        # Verificar trading bot
+        bot_status = "running" if trading_bot.is_running else "stopped"
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "exchange": exchange_status,
+                "database": db_status,
+                "trading_bot": bot_status
+            },
+            "version": "4.0.0"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+
+# 🤖 **TRADING BOT**
 
 @app.get("/bot/status")
 async def get_bot_status():
@@ -305,106 +342,7 @@ async def emergency_stop_bot():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during emergency stop: {str(e)}")
 
-# 🧪 **ENDPOINTS PARA TESTING MANUAL DE ESTRATEGIAS**
-
-@app.get("/bot/test-strategy/{strategy_name}/{symbol}")
-async def test_strategy_manual(strategy_name: str, symbol: str, timeframe: str = "1h"):
-    """
-    🧪 Probar una estrategia manualmente
-    """
-    try:
-        strategies = {
-            "rsi": RSIStrategy(),
-            "macd": MACDStrategy(), 
-            "ichimoku": IchimokuStrategy()
-        }
-        
-        if strategy_name.lower() not in strategies:
-            raise HTTPException(status_code=400, detail=f"Strategy '{strategy_name}' not found. Available: {list(strategies.keys())}")
-        
-        strategy = strategies[strategy_name.lower()]
-        signal = strategy.analyze(symbol, timeframe)
-        
-        return {
-            "status": "success",
-            "strategy": strategy_name,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "signal": {
-                "type": signal.signal_type,
-                "confidence_score": signal.confidence_score,
-                "strength": signal.strength,
-                "price": signal.price,
-                "indicators_data": signal.indicators_data,
-                "notes": signal.notes,
-                "timestamp": signal.timestamp.isoformat()
-            },
-            "recommendation": "🟢 EXECUTE" if signal.confidence_score >= 65 else "🔴 SKIP",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error testing strategy: {str(e)}")
-
-@app.get("/bot/risk-analysis/{symbol}")
-async def get_risk_analysis(symbol: str):
-    """
-    🛡️ Obtener análisis de riesgo para un símbolo
-    """
-    try:
-        # Crear señal simulada para análisis
-        risk_manager = EnhancedRiskManager()
-        portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-        portfolio_value = portfolio_summary.get("total_value", 10000)
-        
-        # Obtener precio actual
-        ticker = exchange.fetch_ticker(symbol)
-        current_price = ticker['last']
-        
-        # Crear señal dummy para análisis
-        from trading_engine.enhanced_strategies import EnhancedSignal
-        dummy_signal = EnhancedSignal(
-            symbol=symbol,
-            strategy_name="Risk_Analysis",
-            signal_type="BUY",
-            price=current_price,
-            confidence_score=70.0,
-            strength="Moderate",
-            timestamp=datetime.now(),
-            indicators_data={},
-            notes="Risk analysis simulation",
-            volume_confirmation=True,
-            trend_confirmation="NEUTRAL",
-            risk_reward_ratio=2.0,
-            stop_loss_price=current_price * 0.95,
-            take_profit_price=current_price * 1.05,
-            market_regime="NORMAL",
-            confluence_score=3
-        )
-        
-        risk_assessment = risk_manager.assess_trade_risk(dummy_signal, portfolio_value)
-        
-        return {
-            "status": "success",
-            "symbol": symbol,
-            "current_price": current_price,
-            "portfolio_value": portfolio_value,
-            "risk_assessment": {
-                "is_approved": risk_assessment.is_approved,
-                "overall_risk_score": risk_assessment.overall_risk_score,
-                "risk_level": risk_assessment.risk_level.value,
-                "recommended_position_size": risk_assessment.position_sizing.recommended_size,
-                "stop_loss_price": risk_assessment.dynamic_stop_loss.stop_loss_price,
-                "correlation_risk": risk_assessment.correlation_risk,
-                "volatility_risk": risk_assessment.volatility_risk,
-                "liquidity_risk": risk_assessment.liquidity_risk,
-                "recommendations": risk_assessment.recommendations
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error analyzing risk: {str(e)}")
-
-# 🚀 NUEVOS ENDPOINTS PARA ESTRATEGIAS MEJORADAS Y BACKTESTING
+# 📊 **ANÁLISIS EN TIEMPO REAL**
 
 @app.get("/enhanced/strategies/list")
 async def get_enhanced_strategies():
@@ -473,125 +411,7 @@ async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timefr
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/backtesting/run")
-async def run_backtest(request: dict):
-    """📈 Ejecutar backtesting de estrategia"""
-    try:
-        strategy_name = request.get("strategy", "ProfessionalRSI")
-        symbol = request.get("symbol", "BTC/USDT")
-        start_date = datetime.fromisoformat(request.get("start_date", "2024-01-01T00:00:00"))
-        end_date = datetime.fromisoformat(request.get("end_date", "2024-12-31T23:59:59"))
-        initial_capital = request.get("initial_capital", 10000)
-        
-        # Crear configuración de backtesting
-        config = BacktestConfig(
-            symbols=[symbol],
-            start_date=start_date,
-            end_date=end_date,
-            initial_capital=initial_capital,
-            timeframe="1h"
-        )
-        
-        # Crear estrategia
-        if strategy_name.lower() == "professionalrsi":
-            strategy = ProfessionalRSIStrategy()
-        elif strategy_name.lower() == "multitimeframe":
-            strategy = MultiTimeframeStrategy()
-        elif strategy_name.lower() == "ensemble":
-            strategy = EnsembleStrategy()
-        else:
-            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
-        
-        # Ejecutar backtesting
-        engine = BacktestingEngine(config)
-        metrics = engine.run_backtest(strategy, start_date, end_date)
-        
-        return {
-            "backtest_results": {
-                "strategy": strategy_name,
-                "symbol": symbol,
-                "period": f"{start_date.date()} to {end_date.date()}",
-                "metrics": {
-                    "total_return": metrics.total_return,
-                    "annualized_return": metrics.annualized_return,
-                    "max_drawdown": metrics.max_drawdown,
-                    "sharpe_ratio": metrics.sharpe_ratio,
-                    "win_rate": metrics.win_rate,
-                    "total_trades": metrics.total_trades,
-                    "avg_trade_return": metrics.avg_trade_return,
-                    "profit_factor": metrics.profit_factor,
-                    "final_capital": metrics.final_capital
-                }
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/enhanced/backtest/{strategy_name}/{symbol}")
-async def run_enhanced_backtest(strategy_name: str, symbol: str, 
-                               start_date: str = "2024-01-01", 
-                               end_date: str = "2024-12-31",
-                               initial_capital: float = 10000):
-    """📈 Ejecutar backtesting mejorado con estrategias avanzadas"""
-    try:
-        # Convertir fechas
-        start_dt = datetime.fromisoformat(start_date + "T00:00:00")
-        end_dt = datetime.fromisoformat(end_date + "T23:59:59")
-        
-        # Crear estrategia
-        if strategy_name.lower() == "professionalrsi":
-            strategy = ProfessionalRSIStrategy()
-        elif strategy_name.lower() == "multitimeframe":
-            strategy = MultiTimeframeStrategy()
-        elif strategy_name.lower() == "ensemble":
-            strategy = EnsembleStrategy()
-        else:
-            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
-        
-        # Configurar backtesting
-        config = BacktestConfig(
-            symbols=[symbol],
-            start_date=start_dt,
-            end_date=end_dt,
-            initial_capital=initial_capital,
-            timeframe="1h"
-        )
-        
-        # Ejecutar backtesting
-        engine = BacktestingEngine(config)
-        metrics = engine.run_backtest(strategy, start_dt, end_dt)
-        
-        return {
-            "enhanced_backtest_results": {
-                "strategy": strategy_name,
-                "symbol": symbol,
-                "period": f"{start_date} to {end_date}",
-                "initial_capital": initial_capital,
-                "performance_metrics": {
-                    "total_return_percentage": metrics.total_return,
-                    "annualized_return": metrics.annualized_return,
-                    "max_drawdown": metrics.max_drawdown,
-                    "sharpe_ratio": metrics.sharpe_ratio,
-                    "win_rate": metrics.win_rate,
-                    "total_trades": metrics.total_trades,
-                    "average_trade_return": metrics.average_trade_return,
-                    "profit_factor": metrics.profit_factor,
-                    "final_capital": getattr(metrics, 'final_capital', initial_capital + metrics.total_return),
-                    "volatility": metrics.volatility,
-                    "calmar_ratio": metrics.calmar_ratio
-                },
-                "risk_metrics": {
-                    "max_drawdown": metrics.max_drawdown,
-                    "max_drawdown_percentage": metrics.max_drawdown_percentage,
-                    "consecutive_losses": metrics.consecutive_losses,
-                    "recovery_factor": metrics.recovery_factor
-                }
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en backtesting mejorado: {str(e)}")
 
 @app.get("/test/strategy/{strategy_name}/{symbol}")
 async def test_strategy_comprehensive(strategy_name: str, symbol: str, 
@@ -720,43 +540,7 @@ async def get_enhanced_risk_analysis(symbol: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
-async def health_check():
-    """
-    ❤️ Health check - Verificar estado de la API, base de datos y trading bot
-    """
-    try:
-        # Verificar conexión con Binance
-        ticker = exchange.fetch_ticker('BTC/USDT')
-        
-        # Verificar base de datos
-        with db_manager.get_db_session() as session:
-            db_status = "connected"
-            trade_count = session.query(Trade).count()
-        
-        # Verificar estado del bot
-        bot_status = trading_bot.get_status()
-        
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "exchange_connection": "OK",
-            "database_connection": db_status,
-            "trading_bot": {
-                "is_running": bot_status.is_running,
-                "uptime": bot_status.uptime,
-                "total_trades": trade_count,
-                "portfolio_value": bot_status.current_portfolio_value
-            },
-            "last_btc_price": ticker['last'],
-            "api_version": "4.0.0"
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "timestamp": datetime.now().isoformat(),
-            "error": str(e)
-        }
+
 
 # Ejecutar servidor si se ejecuta directamente
 if __name__ == "__main__":

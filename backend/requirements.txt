@@ -31,7 +31,7 @@ plotly>=5.17.0            # Gráficos interactivos ✅
 
 # Base de datos
 sqlalchemy>=2.0.0         # ORM para base de datos ✅
-sqlite3                   # Base de datos SQLite (incluido en Python) ✅
+# sqlite3 está incluido en Python por defecto, no necesita instalación
 
 # Testing (para desarrollo)
 pytest>=8.4.0            # Framework de testing (actualizado) ✅
