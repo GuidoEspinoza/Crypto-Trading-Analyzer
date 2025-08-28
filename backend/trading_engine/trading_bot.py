@@ -14,8 +14,7 @@ import threading
 import json
 
 # Importar todos nuestros componentes
-from .strategies import TradingSignal
-from .enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
+from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from database.database import db_manager

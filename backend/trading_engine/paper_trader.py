@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.database import db_manager
 from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
-from .strategies import TradingSignal
+from .enhanced_strategies import TradingSignal
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)

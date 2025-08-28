@@ -14,15 +14,42 @@ from datetime import datetime
 import logging
 from abc import ABC, abstractmethod
 
-# Importar componentes existentes
-try:
-    from .strategies import TradingStrategy, TradingSignal
-except ImportError:
-    # Fallback para importación directa
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from trading_engine.strategies import TradingStrategy, TradingSignal
+# Clases base para estrategias de trading
+@dataclass
+class TradingSignal:
+    """📊 Señal de trading generada por una estrategia"""
+    symbol: str
+    signal_type: str  # BUY, SELL, HOLD
+    price: float
+    confidence_score: float
+    strength: str  # Weak, Moderate, Strong, Very Strong
+    strategy_name: str
+    timestamp: datetime
+    indicators_data: Dict = None
+    notes: str = ""
+
+class TradingStrategy(ABC):
+    """🧠 Clase base abstracta para todas las estrategias de trading"""
+    
+    def __init__(self, name: str):
+        self.name = name
+        self.is_active = True
+        self.min_confidence = 60.0  # Mínima confianza para ejecutar trade
+        self.advanced_indicators = AdvancedIndicators()
+    
+    @abstractmethod
+    def analyze(self, symbol: str, timeframe: str = "1h") -> TradingSignal:
+        """Analizar símbolo y generar señal"""
+        pass
+    
+    def get_market_data(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> pd.DataFrame:
+        """Obtener datos de mercado"""
+        import ccxt
+        exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        return df
 
 # Importar AdvancedIndicators con path absoluto
 import sys
@@ -53,20 +80,8 @@ class EnhancedTradingStrategy(TradingStrategy):
         super().__init__(name)
         self.min_volume_ratio = 1.2  # Volumen debe ser 20% mayor al promedio
         self.min_confluence = 2  # Mínimo 2 indicadores deben confirmar
-        # Importación dinámica para evitar importación circular
-        if enable_filters:
-            try:
-                from .signal_filters import AdvancedSignalFilter
-                self.signal_filter = AdvancedSignalFilter()
-            except ImportError:
-                # Fallback para importación directa
-                import sys
-                import os
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from trading_engine.signal_filters import AdvancedSignalFilter
-                self.signal_filter = AdvancedSignalFilter()
-        else:
-            self.signal_filter = None
+        # Signal filters deshabilitados (módulo eliminado)
+        self.signal_filter = None
         
     def analyze_volume(self, df: pd.DataFrame) -> Dict:
         """Analizar volumen para confirmación de señales"""
