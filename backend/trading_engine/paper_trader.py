@@ -22,6 +22,14 @@ from .enhanced_strategies import TradingSignal
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 📊 CONFIGURACIÓN DEL PAPER TRADER
+# ================================
+# Parámetros de gestión de riesgo y trading
+DEFAULT_INITIAL_BALANCE = 10000.0     # Balance inicial en USDT
+MAX_POSITION_SIZE = 0.10              # Máximo 10% del portfolio por trade
+MAX_TOTAL_EXPOSURE = 0.80             # Máximo 80% del portfolio invertido
+MIN_TRADE_VALUE = 10.0                # Mínimo $10 por trade
+
 @dataclass
 class TradeResult:
     """
@@ -45,7 +53,7 @@ class PaperTrader:
     - Cálculo de P&L en tiempo real
     """
     
-    def __init__(self, initial_balance: float = 10000.0):
+    def __init__(self, initial_balance: float = DEFAULT_INITIAL_BALANCE):
         """
         Inicializar Paper Trader
         
@@ -53,9 +61,9 @@ class PaperTrader:
             initial_balance: Balance inicial en USDT
         """
         self.initial_balance = initial_balance
-        self.max_position_size = 0.10  # Máximo 10% del portfolio por trade
-        self.max_total_exposure = 0.80  # Máximo 80% del portfolio invertido
-        self.min_trade_value = 10.0  # Mínimo $10 por trade
+        self.max_position_size = MAX_POSITION_SIZE
+        self.max_total_exposure = MAX_TOTAL_EXPOSURE
+        self.min_trade_value = MIN_TRADE_VALUE
         
         # Configurar logging
         logging.basicConfig(level=logging.INFO)
