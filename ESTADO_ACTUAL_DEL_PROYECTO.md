@@ -120,7 +120,7 @@ Cada estrategia genera señales con:
 Actualmente el bot analiza estos pares de trading:
 - **BTC/USDT** (Bitcoin)
 - **ETH/USDT** (Ethereum)
-- **ADA/USDT** (Cardano)
+- **MATIC/USDT** (Polygon)
 - **SOL/USDT** (Solana)
 
 ## ⚙️ Configuración Actual

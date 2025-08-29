@@ -37,3 +37,7 @@ sqlalchemy>=2.0.0         # ORM para base de datos ✅
 pytest>=8.4.0            # Framework de testing (actualizado) ✅
 pytest-asyncio>=1.1.0    # Testing para código asíncrono (actualizado) ✅
 httpx>=0.28.0             # Cliente HTTP para testing (actualizado) ✅
+
+# Display en tiempo real para live trading bot
+colorama>=0.4.6           # Colores en terminal ✅
+rich>=13.7.0              # Display avanzado en terminal ✅

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # 📊 CONFIGURACIÓN DEL PAPER TRADER
 # ================================
 # Parámetros de gestión de riesgo y trading
-DEFAULT_INITIAL_BALANCE = 10000.0     # Balance inicial en USDT
+DEFAULT_INITIAL_BALANCE = 100.0     # Balance inicial en USDT
 MAX_POSITION_SIZE = 0.10              # Máximo 10% del portfolio por trade
 MAX_TOTAL_EXPOSURE = 0.80             # Máximo 80% del portfolio invertido
 MIN_TRADE_VALUE = 10.0                # Mínimo $10 por trade

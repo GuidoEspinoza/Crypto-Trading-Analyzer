@@ -64,23 +64,24 @@ class TradingBot:
         self.is_running = False
         self.start_time = None
         
+        # Configurar logger PRIMERO
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
         # Componentes principales
         self.paper_trader = PaperTrader()
         self.risk_manager = EnhancedRiskManager()
         
         # Estrategias disponibles (Enhanced)
-        self.strategies = {
-            "ProfessionalRSI": ProfessionalRSIStrategy(),
-            "MultiTimeframe": MultiTimeframeStrategy(),
-            "Ensemble": EnsembleStrategy()
-        }
+        self.strategies = {}
+        self._initialize_strategies()
         
         # Símbolos a analizar
         self.symbols = [
             "BTC/USDT",
             "ETH/USDT", 
-            "ADA/USDT",
-            "SOL/USDT"
+            "MATIC/USDT",
+            "SOL/USDT",
+            "BNB/USDT"
         ]
         
         # Configuración de trading
@@ -102,10 +103,20 @@ class TradingBot:
         self.analysis_thread = None
         self.stop_event = threading.Event()
         
-        # ARREGLO: Configurar logger como atributo de instancia
-        self.logger = logging.getLogger(f"{__name__}.TradingBot")
-        
         self.logger.info("🤖 Trading Bot initialized")
+    
+    def _initialize_strategies(self):
+        """🔧 Inicializar estrategias de trading"""
+        try:
+            self.strategies = {
+                "ProfessionalRSI": ProfessionalRSIStrategy(),
+                "MultiTimeframe": MultiTimeframeStrategy(),
+                "Ensemble": EnsembleStrategy()
+            }
+            self.logger.info(f"✅ {len(self.strategies)} strategies initialized")
+        except Exception as e:
+            self.logger.error(f"❌ Error initializing strategies: {e}")
+            self.strategies = {}
     
     def start(self):
         """
