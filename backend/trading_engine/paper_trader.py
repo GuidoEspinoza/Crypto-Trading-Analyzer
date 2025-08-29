@@ -14,6 +14,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from .config import PaperTraderConfig
+
 from database.database import db_manager
 from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
 from .enhanced_strategies import TradingSignal
@@ -24,13 +26,8 @@ logger = logging.getLogger(__name__)
 
 # 📊 CONFIGURACIÓN DEL PAPER TRADER PROFESIONAL
 # ===============================================
-# Parámetros de gestión de riesgo y trading optimizados
-DEFAULT_INITIAL_BALANCE = 1000.0     # Balance inicial en USDT (más realista)
-MAX_POSITION_SIZE = 0.08              # Máximo 8% del portfolio por trade
-MAX_TOTAL_EXPOSURE = 0.75             # Máximo 75% del portfolio invertido (más conservador)
-MIN_TRADE_VALUE = 25.0               # Mínimo $25 por trade (más profesional)
-MAX_SLIPPAGE = 0.001                 # Máximo 0.1% de slippage permitido
-MIN_LIQUIDITY_RATIO = 0.05           # Mínimo 5% del volumen diario para ejecutar
+# Todos los parámetros se obtienen desde config.py para centralizar la configuración
+# Los valores hardcodeados han sido eliminados para evitar inconsistencias
 
 @dataclass
 class TradeResult:
@@ -55,23 +52,26 @@ class PaperTrader:
     - Cálculo de P&L en tiempo real
     """
     
-    def __init__(self, initial_balance: float = DEFAULT_INITIAL_BALANCE):
+    def __init__(self, initial_balance: float = None):
         """
         Inicializar Paper Trader
         
         Args:
-            initial_balance: Balance inicial en USDT
+            initial_balance: Balance inicial en USDT (opcional, usa config si no se especifica)
         """
-        self.initial_balance = initial_balance
-        self.max_position_size = MAX_POSITION_SIZE
-        self.max_total_exposure = MAX_TOTAL_EXPOSURE
-        self.min_trade_value = MIN_TRADE_VALUE
+        # Configuración del paper trader desde archivo centralizado
+        self.config = PaperTraderConfig()
+        self.initial_balance = initial_balance if initial_balance is not None else self.config.INITIAL_BALANCE
+        self.max_position_size = self.config.MAX_POSITION_SIZE
+        self.max_total_exposure = self.config.MAX_TOTAL_EXPOSURE
+        self.min_trade_value = self.config.MIN_TRADE_VALUE
+        self.max_balance_usage = self.config.MAX_BALANCE_USAGE
         
         # Configurar logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
-        self.logger.info(f"🎭 Paper Trader initialized with ${initial_balance:,.2f}")
+        self.logger.info(f"🎭 Paper Trader initialized with ${self.initial_balance:,.2f}")
     
     def reset_portfolio(self) -> Dict:
         """
@@ -232,8 +232,8 @@ class PaperTrader:
             with db_manager.get_db_session() as session:
                 # Calcular cantidad a comprar
                 usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * self.max_position_size
-                trade_value = min(max_trade_value, usdt_balance * 0.95)  # 95% para fees
+                max_trade_value = usdt_balance * (self.max_position_size / 100.0)  # Convertir % a decimal
+                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage / 100.0))  # Límite configurable para fees
                 
                 if trade_value < self.min_trade_value:
                     return TradeResult(

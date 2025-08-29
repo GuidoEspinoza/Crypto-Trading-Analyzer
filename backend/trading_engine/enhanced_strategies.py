@@ -14,6 +14,8 @@ from datetime import datetime
 import logging
 from abc import ABC, abstractmethod
 
+from .config import StrategyConfig
+
 # Clases base para estrategias de trading
 @dataclass
 class TradingSignal:
@@ -249,20 +251,21 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Professional_RSI_Enhanced")
         
-        # Configuración profesional de RSI
-        self.min_confidence = 70.0  # Confianza mínima más alta (70%)
-        self.rsi_oversold = 25      # Nivel de sobreventa más estricto
-        self.rsi_overbought = 75    # Nivel de sobrecompra más estricto
-        self.rsi_period = 14        # Período estándar RSI
+        # Configuración desde archivo centralizado
+        self.config = StrategyConfig.ProfessionalRSI()
+        self.min_confidence = self.config.MIN_CONFIDENCE
+        self.rsi_oversold = self.config.RSI_OVERSOLD
+        self.rsi_overbought = self.config.RSI_OVERBOUGHT
+        self.rsi_period = self.config.RSI_PERIOD
         
         # Configuración de confirmaciones
-        self.min_volume_ratio = 1.5  # Volumen 50% mayor al promedio
-        self.min_confluence = 3      # Mínimo 3 indicadores deben confirmar
-        self.trend_strength_threshold = 30  # ADX mínimo para tendencia fuerte
+        self.min_volume_ratio = self.config.MIN_VOLUME_RATIO
+        self.min_confluence = self.config.MIN_CONFLUENCE
+        self.trend_strength_threshold = self.config.TREND_STRENGTH_THRESHOLD
         
         # Configuración de filtros de calidad
-        self.min_atr_ratio = 0.8    # ATR mínimo para volatilidad adecuada
-        self.max_spread_threshold = 0.002  # Spread máximo 0.2%
+        self.min_atr_ratio = self.config.MIN_ATR_RATIO
+        self.max_spread_threshold = self.config.MAX_SPREAD_THRESHOLD
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis RSI profesional con confirmaciones avanzadas"""
@@ -532,23 +535,14 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Multi_Timeframe")
         
-        # Configuración profesional de timeframes
-        self.timeframes = ["1h", "4h", "1d"]  # Timeframes para análisis
-        self.min_confidence = 68.0  # Confianza mínima 68%
-        
-        # Configuración de RSI por timeframe
-        self.rsi_config = {
-            "1h": {"oversold": 28, "overbought": 72, "period": 14},
-            "4h": {"oversold": 25, "overbought": 75, "period": 14}, 
-            "1d": {"oversold": 20, "overbought": 80, "period": 14}
-        }
-        
-        # Pesos por timeframe (mayor peso a timeframes más largos)
-        self.timeframe_weights = {"1h": 1, "4h": 2, "1d": 3}
-        
-        # Configuración de confirmaciones
-        self.min_timeframe_consensus = 2  # Mínimo 2 timeframes deben coincidir
-        self.trend_alignment_required = True  # Requiere alineación de tendencias
+        # Configuración desde archivo centralizado
+        self.config = StrategyConfig.MultiTimeframe()
+        self.timeframes = self.config.TIMEFRAMES
+        self.min_confidence = self.config.MIN_CONFIDENCE
+        self.rsi_config = self.config.RSI_CONFIG
+        self.timeframe_weights = self.config.TIMEFRAME_WEIGHTS
+        self.min_timeframe_consensus = self.config.MIN_TIMEFRAME_CONSENSUS
+        self.trend_alignment_required = self.config.TREND_ALIGNMENT_REQUIRED
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis multi-timeframe"""
@@ -670,19 +664,19 @@ class EnsembleStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Ensemble_Master")
         
+        # Configuración desde archivo centralizado
+        self.config = StrategyConfig.Ensemble()
+        
         # Inicializar sub-estrategias
         self.rsi_strategy = ProfessionalRSIStrategy()
         self.mtf_strategy = MultiTimeframeStrategy()
         
         # Pesos para cada estrategia (basado en performance histórica)
-        self.strategy_weights = {
-            "Professional_RSI": 0.4,
-            "Multi_Timeframe": 0.6
-        }
+        self.strategy_weights = self.config.STRATEGY_WEIGHTS
         
         # Configuración de ensemble
-        self.min_consensus_threshold = 0.6  # 60% de consenso mínimo
-        self.confidence_boost_factor = 1.2  # Factor de boost cuando hay consenso
+        self.min_consensus_threshold = self.config.MIN_CONSENSUS_THRESHOLD
+        self.confidence_boost_factor = self.config.CONFIDENCE_BOOST_FACTOR
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis ensemble combinando múltiples estrategias"""

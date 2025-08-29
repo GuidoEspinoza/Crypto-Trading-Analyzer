@@ -15,6 +15,7 @@ from enum import Enum
 
 # Importar componentes existentes
 from .enhanced_strategies import EnhancedSignal
+from .config import RiskManagerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -70,25 +71,26 @@ class EnhancedRiskManager:
     """🛡️ Gestor de Riesgo Avanzado"""
     
     def __init__(self):
-        # Configuración de riesgo profesional
-        self.max_portfolio_risk = 0.015  # 1.5% del portfolio por trade (más conservador)
-        self.max_daily_risk = 0.04  # 4% del portfolio por día (reducido)
-        self.max_drawdown_threshold = 0.12  # 12% drawdown máximo (más estricto)
-        self.correlation_threshold = 0.6  # Correlación máxima entre posiciones (más estricto)
+        # Configuración de riesgo desde archivo centralizado
+        self.config = RiskManagerConfig()
+        self.max_portfolio_risk = self.config.MAX_RISK_PER_TRADE / 100  # Convertir de % a decimal
+        self.max_daily_risk = self.config.MAX_DAILY_RISK / 100  # Convertir de % a decimal
+        self.max_drawdown_threshold = self.config.MAX_DRAWDOWN_THRESHOLD / 100  # Convertir de % a decimal
+        self.correlation_threshold = self.config.CORRELATION_THRESHOLD
         
-        # Position sizing profesional
-        self.min_position_size = 0.005  # Tamaño mínimo de posición (0.5%)
-        self.max_position_size = 0.08  # 8% del portfolio máximo por posición (reducido)
-        self.kelly_fraction = 0.20  # Fracción Kelly más conservadora
+        # Position sizing profesional desde configuración centralizada
+        self.min_position_size = self.config.MIN_POSITION_SIZE
+        self.max_position_size = self.config.MAX_POSITION_SIZE / 100  # Convertir de % a decimal
+        self.kelly_fraction = self.config.KELLY_FRACTION
         self.volatility_adjustment = True  # Ajustar tamaño según volatilidad
         
-        # Stop loss dinámico profesional
-        self.atr_multiplier_range = (2.0, 3.5)  # Rango de multiplicadores ATR más amplio
-        self.trailing_stop_activation = 0.025  # 2.5% de ganancia para activar trailing
-        self.breakeven_stop_threshold = 0.015  # 1.5% para mover stop a breakeven
+        # Stop loss dinámico profesional desde configuración centralizada
+        self.atr_multiplier_range = (self.config.ATR_MULTIPLIER_MIN, self.config.ATR_MULTIPLIER_MAX)
+        self.trailing_stop_activation = self.config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
+        self.breakeven_stop_threshold = self.config.BREAKEVEN_THRESHOLD / 100  # Convertir de % a decimal
         
-        # Métricas de portfolio
-        self.portfolio_value = 10000.0  # Valor inicial del portfolio
+        # Métricas de portfolio desde configuración centralizada
+        self.portfolio_value = self.config.INITIAL_PORTFOLIO_VALUE
         self.current_drawdown = 0.0
         self.max_historical_drawdown = 0.0
         self.daily_pnl = 0.0

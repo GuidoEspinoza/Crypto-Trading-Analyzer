@@ -14,6 +14,7 @@ import threading
 import json
 
 # Importar todos nuestros componentes
+from .config import TradingBotConfig
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
@@ -53,14 +54,17 @@ class TradingBot:
     - Dashboard en tiempo real
     """
     
-    def __init__(self, analysis_interval_minutes: int = 30):
+    def __init__(self, analysis_interval_minutes: int = None):
         """
         Inicializar Trading Bot Profesional
         
         Args:
-            analysis_interval_minutes: Intervalo entre análisis (por defecto 30 min para mayor calidad)
+            analysis_interval_minutes: Intervalo entre análisis (usa configuración centralizada si no se especifica)
         """
-        self.analysis_interval = analysis_interval_minutes
+        # Configuración centralizada del bot
+        self.config = TradingBotConfig()
+        
+        self.analysis_interval = analysis_interval_minutes or self.config.ANALYSIS_INTERVAL
         self.is_running = False
         self.start_time = None
         
@@ -75,30 +79,19 @@ class TradingBot:
         self.strategies = {}
         self._initialize_strategies()
         
-        # Símbolos a analizar (Top criptomonedas por liquidez y volumen)
-        self.symbols = [
-            "BTC/USDT",   # Bitcoin - Máxima liquidez
-            "ETH/USDT",   # Ethereum - DeFi líder
-            "BNB/USDT",   # Binance Coin - Exchange token
-            "SOL/USDT",   # Solana - High performance blockchain
-            "ADA/USDT",   # Cardano - Academic blockchain
-            "AVAX/USDT",  # Avalanche - Fast consensus
-            "MATIC/USDT", # Polygon - Layer 2 scaling
-            "DOT/USDT",   # Polkadot - Interoperability
-            "LINK/USDT",  # Chainlink - Oracle network
-            "UNI/USDT"    # Uniswap - DEX protocol
-        ]
+        # Símbolos a analizar desde configuración centralizada
+        self.symbols = self.config.SYMBOLS
         
-        # Configuración de trading profesional
-        self.min_confidence_threshold = 72.0  # Mínimo 72% confianza (más selectivo)
-        self.max_daily_trades = 8  # Máximo 8 trades por día (calidad > cantidad)
-        self.max_concurrent_positions = 5  # Máximo 5 posiciones simultáneas
+        # Configuración de trading profesional desde configuración centralizada
+        self.min_confidence_threshold = self.config.MIN_CONFIDENCE_THRESHOLD
+        self.max_daily_trades = self.config.MAX_DAILY_TRADES
+        self.max_concurrent_positions = self.config.MAX_CONCURRENT_POSITIONS
         self.enable_trading = True  # Activar/desactivar ejecución de trades
         
-        # Configuración de timeframes profesional
-        self.primary_timeframe = "1h"    # Timeframe principal para análisis
-        self.confirmation_timeframe = "4h"  # Timeframe para confirmación
-        self.trend_timeframe = "1d"      # Timeframe para análisis de tendencia
+        # Configuración de timeframes profesional desde configuración centralizada
+        self.primary_timeframe = self.config.PRIMARY_TIMEFRAME
+        self.confirmation_timeframe = self.config.CONFIRMATION_TIMEFRAME
+        self.trend_timeframe = self.config.TREND_TIMEFRAME
         
         # Estadísticas
         self.stats = {

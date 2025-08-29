@@ -21,6 +21,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from trading_engine.trading_bot import TradingBot
 from trading_engine.paper_trader import PaperTrader
 from trading_engine.enhanced_risk_manager import EnhancedRiskManager
+from trading_engine.config import TradingBotConfig
 from database.database import db_manager
 
 # Configurar logging con colores
@@ -103,6 +104,7 @@ class LiveTradingBot:
     """
     
     def __init__(self):
+        self.config = TradingBotConfig()
         self.trading_bot = TradingBot()
         self.paper_trader = PaperTrader()
         self.risk_manager = EnhancedRiskManager()
@@ -136,15 +138,15 @@ class LiveTradingBot:
             # Mostrar configuración del Paper Trader
             logger.info("💰 CONFIGURACIÓN DEL PAPER TRADER:")
             logger.info(f"   • Balance inicial: ${self.paper_trader.initial_balance:,.2f}")
-            logger.info(f"   • Tamaño máximo por posición: {self.paper_trader.max_position_size*100:.1f}%")
-            logger.info(f"   • Exposición máxima total: {self.paper_trader.max_total_exposure*100:.1f}%")
+            logger.info(f"   • Tamaño máximo por posición: {self.paper_trader.max_position_size:.1f}%")
+            logger.info(f"   • Exposición máxima total: {self.paper_trader.max_total_exposure:.1f}%")
             logger.info(f"   • Valor mínimo por trade: ${self.paper_trader.min_trade_value}")
             
             # Mostrar configuración del bot
             logger.info("⚙️ CONFIGURACIÓN DEL BOT:")
             logger.info(f"   • Símbolos: {', '.join(self.symbols)}")
             logger.info(f"   • Intervalo de análisis: {self.update_interval} segundos")
-            logger.info(f"   • Confianza mínima para trades: 65.0%")
+            logger.info(f"   • Confianza mínima para trades: {self.config.MIN_CONFIDENCE_THRESHOLD}%")
             
         except Exception as e:
             logger.error(f"❌ Error inicializando estrategias: {e}")
