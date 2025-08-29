@@ -53,12 +53,12 @@ class TradingBot:
     - Dashboard en tiempo real
     """
     
-    def __init__(self, analysis_interval_minutes: int = 15):
+    def __init__(self, analysis_interval_minutes: int = 30):
         """
-        Inicializar Trading Bot
+        Inicializar Trading Bot Profesional
         
         Args:
-            analysis_interval_minutes: Intervalo entre análisis (por defecto 15 min)
+            analysis_interval_minutes: Intervalo entre análisis (por defecto 30 min para mayor calidad)
         """
         self.analysis_interval = analysis_interval_minutes
         self.is_running = False
@@ -75,19 +75,30 @@ class TradingBot:
         self.strategies = {}
         self._initialize_strategies()
         
-        # Símbolos a analizar
+        # Símbolos a analizar (Top criptomonedas por liquidez y volumen)
         self.symbols = [
-            "BTC/USDT",
-            "ETH/USDT", 
-            "MATIC/USDT",
-            "SOL/USDT",
-            "BNB/USDT"
+            "BTC/USDT",   # Bitcoin - Máxima liquidez
+            "ETH/USDT",   # Ethereum - DeFi líder
+            "BNB/USDT",   # Binance Coin - Exchange token
+            "SOL/USDT",   # Solana - High performance blockchain
+            "ADA/USDT",   # Cardano - Academic blockchain
+            "AVAX/USDT",  # Avalanche - Fast consensus
+            "MATIC/USDT", # Polygon - Layer 2 scaling
+            "DOT/USDT",   # Polkadot - Interoperability
+            "LINK/USDT",  # Chainlink - Oracle network
+            "UNI/USDT"    # Uniswap - DEX protocol
         ]
         
-        # Configuración de trading
-        self.min_confidence_threshold = 65.0  # Mínimo 65% confianza
-        self.max_daily_trades = 10  # Máximo 10 trades por día
+        # Configuración de trading profesional
+        self.min_confidence_threshold = 72.0  # Mínimo 72% confianza (más selectivo)
+        self.max_daily_trades = 8  # Máximo 8 trades por día (calidad > cantidad)
+        self.max_concurrent_positions = 5  # Máximo 5 posiciones simultáneas
         self.enable_trading = True  # Activar/desactivar ejecución de trades
+        
+        # Configuración de timeframes profesional
+        self.primary_timeframe = "1h"    # Timeframe principal para análisis
+        self.confirmation_timeframe = "4h"  # Timeframe para confirmación
+        self.trend_timeframe = "1d"      # Timeframe para análisis de tendencia
         
         # Estadísticas
         self.stats = {

@@ -22,13 +22,15 @@ from .enhanced_strategies import TradingSignal
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 📊 CONFIGURACIÓN DEL PAPER TRADER
-# ================================
-# Parámetros de gestión de riesgo y trading
-DEFAULT_INITIAL_BALANCE = 100.0     # Balance inicial en USDT
-MAX_POSITION_SIZE = 0.10              # Máximo 10% del portfolio por trade
-MAX_TOTAL_EXPOSURE = 0.80             # Máximo 80% del portfolio invertido
-MIN_TRADE_VALUE = 10.0                # Mínimo $10 por trade
+# 📊 CONFIGURACIÓN DEL PAPER TRADER PROFESIONAL
+# ===============================================
+# Parámetros de gestión de riesgo y trading optimizados
+DEFAULT_INITIAL_BALANCE = 1000.0     # Balance inicial en USDT (más realista)
+MAX_POSITION_SIZE = 0.08              # Máximo 8% del portfolio por trade
+MAX_TOTAL_EXPOSURE = 0.75             # Máximo 75% del portfolio invertido (más conservador)
+MIN_TRADE_VALUE = 25.0               # Mínimo $25 por trade (más profesional)
+MAX_SLIPPAGE = 0.001                 # Máximo 0.1% de slippage permitido
+MIN_LIQUIDITY_RATIO = 0.05           # Mínimo 5% del volumen diario para ejecutar
 
 @dataclass
 class TradeResult:
@@ -91,6 +93,10 @@ class PaperTrader:
                         # Restaurar balance inicial de USDT
                         entry.quantity = self.initial_balance
                         entry.avg_price = 1.0
+                        entry.current_price = 1.0
+                        entry.current_value = self.initial_balance
+                        entry.unrealized_pnl = 0.0
+                        entry.unrealized_pnl_percentage = 0.0
                         entry.last_updated = datetime.now()
                     else:
                         # Eliminar todas las otras posiciones

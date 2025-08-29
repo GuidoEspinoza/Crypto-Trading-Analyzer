@@ -70,20 +70,22 @@ class EnhancedRiskManager:
     """🛡️ Gestor de Riesgo Avanzado"""
     
     def __init__(self):
-        # Configuración de riesgo
-        self.max_portfolio_risk = 0.02  # 2% del portfolio por trade
-        self.max_daily_risk = 0.06  # 6% del portfolio por día
-        self.max_drawdown_threshold = 0.15  # 15% drawdown máximo
-        self.correlation_threshold = 0.7  # Correlación máxima entre posiciones
+        # Configuración de riesgo profesional
+        self.max_portfolio_risk = 0.015  # 1.5% del portfolio por trade (más conservador)
+        self.max_daily_risk = 0.04  # 4% del portfolio por día (reducido)
+        self.max_drawdown_threshold = 0.12  # 12% drawdown máximo (más estricto)
+        self.correlation_threshold = 0.6  # Correlación máxima entre posiciones (más estricto)
         
-        # Position sizing
-        self.min_position_size = 0.001  # Tamaño mínimo de posición
-        self.max_position_size = 0.1  # 10% del portfolio máximo por posición
-        self.kelly_fraction = 0.25  # Fracción Kelly conservadora
+        # Position sizing profesional
+        self.min_position_size = 0.005  # Tamaño mínimo de posición (0.5%)
+        self.max_position_size = 0.08  # 8% del portfolio máximo por posición (reducido)
+        self.kelly_fraction = 0.20  # Fracción Kelly más conservadora
+        self.volatility_adjustment = True  # Ajustar tamaño según volatilidad
         
-        # Stop loss dinámico
-        self.atr_multiplier_range = (1.5, 3.0)  # Rango de multiplicadores ATR
-        self.trailing_stop_activation = 0.03  # 3% de ganancia para activar trailing
+        # Stop loss dinámico profesional
+        self.atr_multiplier_range = (2.0, 3.5)  # Rango de multiplicadores ATR más amplio
+        self.trailing_stop_activation = 0.025  # 2.5% de ganancia para activar trailing
+        self.breakeven_stop_threshold = 0.015  # 1.5% para mover stop a breakeven
         
         # Métricas de portfolio
         self.portfolio_value = 10000.0  # Valor inicial del portfolio

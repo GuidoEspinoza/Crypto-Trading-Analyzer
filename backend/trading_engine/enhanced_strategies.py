@@ -249,6 +249,21 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Professional_RSI_Enhanced")
         
+        # Configuración profesional de RSI
+        self.min_confidence = 70.0  # Confianza mínima más alta (70%)
+        self.rsi_oversold = 25      # Nivel de sobreventa más estricto
+        self.rsi_overbought = 75    # Nivel de sobrecompra más estricto
+        self.rsi_period = 14        # Período estándar RSI
+        
+        # Configuración de confirmaciones
+        self.min_volume_ratio = 1.5  # Volumen 50% mayor al promedio
+        self.min_confluence = 3      # Mínimo 3 indicadores deben confirmar
+        self.trend_strength_threshold = 30  # ADX mínimo para tendencia fuerte
+        
+        # Configuración de filtros de calidad
+        self.min_atr_ratio = 0.8    # ATR mínimo para volatilidad adecuada
+        self.max_spread_threshold = 0.002  # Spread máximo 0.2%
+        
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis RSI profesional con confirmaciones avanzadas"""
         try:
@@ -516,7 +531,24 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
     
     def __init__(self):
         super().__init__("Multi_Timeframe")
-        self.timeframes = ["1h", "4h", "1d"]
+        
+        # Configuración profesional de timeframes
+        self.timeframes = ["1h", "4h", "1d"]  # Timeframes para análisis
+        self.min_confidence = 68.0  # Confianza mínima 68%
+        
+        # Configuración de RSI por timeframe
+        self.rsi_config = {
+            "1h": {"oversold": 28, "overbought": 72, "period": 14},
+            "4h": {"oversold": 25, "overbought": 75, "period": 14}, 
+            "1d": {"oversold": 20, "overbought": 80, "period": 14}
+        }
+        
+        # Pesos por timeframe (mayor peso a timeframes más largos)
+        self.timeframe_weights = {"1h": 1, "4h": 2, "1d": 3}
+        
+        # Configuración de confirmaciones
+        self.min_timeframe_consensus = 2  # Mínimo 2 timeframes deben coincidir
+        self.trend_alignment_required = True  # Requiere alineación de tendencias
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis multi-timeframe"""
