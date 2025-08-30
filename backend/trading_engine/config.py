@@ -18,6 +18,9 @@ class TradingBotConfig:
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT",
         "SOLUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT", "UNIUSDT"
     ]
+
+    # Símbolos a usar en el bot de trading en vivo (agregar [:X] para limitar cantidad)
+    SYMBOLS_LIVE_BOT = SYMBOLS
     
     # Intervalo de análisis en minutos - tiempo entre análisis automáticos (óptimo: 30)
     ANALYSIS_INTERVAL: int = 30

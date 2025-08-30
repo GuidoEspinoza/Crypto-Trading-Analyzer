@@ -110,7 +110,7 @@ class LiveTradingBot:
         self.risk_manager = EnhancedRiskManager()
         
         # Configuración del bot
-        self.symbols = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "MATIC/USDT", "SOL/USDT"]
+        self.symbols = TradingBotConfig.SYMBOLS_LIVE_BOT
         self.update_interval = 30  # segundos
         self.running = False
         
