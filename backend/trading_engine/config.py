@@ -27,12 +27,15 @@ class TradingBotConfig:
     
     # Umbral mínimo de confianza para ejecutar trades en % (óptimo: 75.0)
     MIN_CONFIDENCE_THRESHOLD: float = 75.0
+    # Parámetro para prueba rápida: 50.0 (permite más señales para testing)
     
     # Número máximo de trades por día - control de sobreoperación (óptimo: 6)
     MAX_DAILY_TRADES: int = 6
+    # Parámetro para prueba rápida: 20 (permite más actividad para testing)
     
     # Límite de posiciones concurrentes - diversificación controlada (óptimo: 4)
     MAX_CONCURRENT_POSITIONS: int = 4
+    # Parámetro para prueba rápida: 8 (permite más posiciones simultáneas)
     
     # Timeframes para análisis profesional - marcos temporales múltiples (óptimo: ["1h", "4h", "1d"])
     PROFESSIONAL_TIMEFRAMES: List[str] = ["1h", "4h", "1d"]
@@ -59,15 +62,19 @@ class PaperTraderConfig:
     
     # Balance inicial en USDT para simulación (óptimo: 1000)
     INITIAL_BALANCE: float = 100.0
+    # Parámetro para prueba rápida: 1000.0 (balance mayor para testing)
     
     # Tamaño máximo de posición como % del portfolio (óptimo: 6.0)
     MAX_POSITION_SIZE: float = 6.0  # Formato: porcentaje (6.0 = 6%)
+    # Parámetro para prueba rápida: 10.0 (posiciones más grandes para testing)
     
     # Exposición total máxima del portfolio en % (óptimo: 60.0)
     MAX_TOTAL_EXPOSURE: float = 60.0
+    # Parámetro para prueba rápida: 80.0 (mayor exposición para testing)
     
     # Valor mínimo por trade en USDT (óptimo: 5.0)
     MIN_TRADE_VALUE: float = 5.0
+    # Parámetro para prueba rápida: 1.0 (trades más pequeños para testing)
     
     # Slippage máximo permitido en % (óptimo: 0.08)
     MAX_SLIPPAGE: float = 0.08
@@ -88,12 +95,15 @@ class RiskManagerConfig:
     
     # Riesgo máximo por trade como % del portfolio (óptimo: 1.0)
     MAX_RISK_PER_TRADE: float = 1.0
+    # Parámetro para prueba rápida: 2.0 (mayor riesgo para testing)
     
     # Riesgo máximo diario como % del portfolio (óptimo: 3.0)
     MAX_DAILY_RISK: float = 3.0
+    # Parámetro para prueba rápida: 5.0 (mayor riesgo diario para testing)
     
     # Umbral de drawdown máximo antes de parar trading en % (óptimo: 8.0)
     MAX_DRAWDOWN_THRESHOLD: float = 8.0
+    # Parámetro para prueba rápida: 15.0 (mayor tolerancia para testing)
     
     # Umbral de correlación máxima entre posiciones (óptimo: 0.6)
     CORRELATION_THRESHOLD: float = 0.6
@@ -139,12 +149,15 @@ class StrategyConfig:
         
         # Confianza mínima requerida en % (óptimo: 72.0)
         MIN_CONFIDENCE: float = 72.0
+        # Parámetro para prueba rápida: 50.0 (menor confianza para más señales)
         
         # Nivel de sobreventa del RSI - señal de compra (óptimo: 20)
         RSI_OVERSOLD: int = 20
+        # Parámetro para prueba rápida: 30 (menos estricto para más señales)
         
         # Nivel de sobrecompra del RSI - señal de venta (óptimo: 80)
         RSI_OVERBOUGHT: int = 80
+        # Parámetro para prueba rápida: 70 (menos estricto para más señales)
         
         # Período del RSI - ventana de cálculo (óptimo: 14)
         RSI_PERIOD: int = 14
@@ -170,6 +183,7 @@ class StrategyConfig:
         
         # Confianza mínima requerida en % (óptimo: 70.0)
         MIN_CONFIDENCE: float = 70.0
+        # Parámetro para prueba rápida: 45.0 (menor confianza para más señales)
         
         # Timeframes utilizados para análisis (óptimo: ["1h", "4h", "1d"])
         TIMEFRAMES: List[str] = ["1h", "4h", "1d"]
@@ -212,6 +226,7 @@ class StrategyConfig:
         
         # Umbral mínimo de consenso entre estrategias (óptimo: 0.7)
         MIN_CONSENSUS_THRESHOLD: float = 0.7
+        # Parámetro para prueba rápida: 0.5 (menor consenso para más señales)
         
         # Factor de boost de confianza cuando hay consenso (óptimo: 1.15)
         CONFIDENCE_BOOST_FACTOR: float = 1.15
@@ -320,3 +335,23 @@ DEV_CONFIG = {
     'min_confidence': 60.0,  # Umbral más bajo para testing
     'paper_balance': 100.0,  # Balance menor para testing
 }
+
+# ============================================================================
+# GUÍA DE PARÁMETROS PARA PRUEBAS RÁPIDAS
+# ============================================================================
+"""
+PARA PRUEBAS RÁPIDAS, MODIFICA ESTOS VALORES:
+
+1. MIN_CONFIDENCE_THRESHOLD: 50.0 (más señales)
+2. MAX_DAILY_TRADES: 20 (más actividad)
+3. MAX_CONCURRENT_POSITIONS: 8 (más posiciones)
+4. INITIAL_BALANCE: 1000.0 (balance mayor)
+5. MAX_POSITION_SIZE: 10.0 (posiciones más grandes)
+6. MIN_TRADE_VALUE: 1.0 (trades más pequeños)
+7. MAX_RISK_PER_TRADE: 2.0 (mayor riesgo)
+8. RSI_OVERSOLD: 30 (menos estricto)
+9. RSI_OVERBOUGHT: 70 (menos estricto)
+10. MIN_CONSENSUS_THRESHOLD: 0.5 (menor consenso)
+
+ESTOS VALORES PERMITEN MÁS ACTIVIDAD Y SEÑALES PARA VALIDAR FUNCIONALIDAD.
+"""
