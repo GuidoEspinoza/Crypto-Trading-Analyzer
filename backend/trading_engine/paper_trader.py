@@ -278,7 +278,11 @@ class PaperTrader:
                 
                 session.commit()
                 
+                # Obtener balance de USDT después de la compra
+                usdt_balance_after = self._get_usdt_balance()
+                
                 self.logger.info(f"✅ BUY executed: {quantity:.6f} {asset_symbol} @ ${signal.price:.2f}")
+                self.logger.info(f"💰 USDT Balance after purchase: ${usdt_balance_after:.2f}")
                 
                 return TradeResult(
                     success=True,
@@ -381,7 +385,11 @@ class PaperTrader:
                 
                 session.commit()
                 
+                # Obtener balance de USDT después de la venta
+                usdt_balance_after = self._get_usdt_balance()
+                
                 self.logger.info(f"✅ SELL executed: {quantity:.6f} {asset_symbol} @ ${signal.price:.2f} (PnL: ${total_pnl:.2f})")
+                self.logger.info(f"💰 USDT Balance after sale: ${usdt_balance_after:.2f}")
                 
                 return TradeResult(
                     success=True,

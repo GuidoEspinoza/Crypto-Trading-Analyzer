@@ -23,13 +23,26 @@ class DatabaseManager:
     🗄️ Gestor principal de la base de datos SQLite
     """
     
-    def __init__(self, database_url: str = "sqlite:///./trading_bot.db"):
+    def __init__(self, database_url: str = None):
         """
         Inicializar el gestor de base de datos
         
         Args:
             database_url: URL de la base de datos SQLite
         """
+        # Configurar ruta de base de datos usando ruta absoluta
+        if database_url is None:
+            # Obtener directorio actual del archivo
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # Subir un nivel para llegar al directorio backend
+            backend_dir = os.path.dirname(current_dir)
+            # Crear ruta completa para la base de datos
+            db_path = os.path.join(backend_dir, "trading_bot.db")
+            database_url = f"sqlite:///{db_path}"
+            
+            # Crear directorio si no existe
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            
         self.database_url = database_url
         self.engine = create_engine(
             database_url,

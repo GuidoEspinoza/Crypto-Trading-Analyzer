@@ -18,6 +18,7 @@ from .config import TradingBotConfig
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
+from .position_monitor import PositionMonitor
 from database.database import db_manager
 from database.models import Strategy as DBStrategy
 
@@ -75,6 +76,12 @@ class TradingBot:
         self.paper_trader = PaperTrader()
         self.risk_manager = EnhancedRiskManager()
         
+        # Sistema de monitoreo de posiciones
+        self.position_monitor = PositionMonitor(
+            price_fetcher=self._get_current_price,
+            paper_trader=self.paper_trader
+        )
+        
         # Estrategias disponibles (Enhanced)
         self.strategies = {}
         self._initialize_strategies()
@@ -107,7 +114,7 @@ class TradingBot:
         self.analysis_thread = None
         self.stop_event = threading.Event()
         
-        self.logger.info("🤖 Trading Bot initialized")
+        self.logger.info("🤖 Trading Bot initialized with Position Monitor")
     
     def _initialize_strategies(self):
         """🔧 Inicializar estrategias de trading"""
@@ -142,12 +149,16 @@ class TradingBot:
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.analysis_thread.start()
         
+        # Iniciar monitoreo de posiciones
+        self.position_monitor.start_monitoring()
+        
         # Programar primer análisis para evitar bloqueo
         schedule.every(self.config.FIRST_ANALYSIS_DELAY).seconds.do(self._run_first_analysis).tag('first_analysis')
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
         self.logger.info(f"🧠 Active strategies: {', '.join(self.strategies.keys())}")
+        self.logger.info("🔍 Position monitoring started")
     
     def stop(self):
         """
@@ -161,10 +172,33 @@ class TradingBot:
         self.stop_event.set()
         schedule.clear()
         
+        # Detener monitoreo de posiciones
+        self.position_monitor.stop_monitoring()
+        
         if self.analysis_thread and self.analysis_thread.is_alive():
             self.analysis_thread.join(timeout=10)
         
         self.logger.info("🛑 Trading Bot stopped")
+        self.logger.info("🔍 Position monitoring stopped")
+    
+    def _get_current_price(self, symbol: str) -> float:
+        """💰 Obtener precio actual del símbolo para el position monitor"""
+        try:
+            import ccxt
+            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
+            ticker = exchange.fetch_ticker(symbol)
+            return float(ticker['last']) if ticker['last'] else 0.0
+        except Exception as e:
+            self.logger.error(f"❌ Error getting current price for {symbol}: {e}")
+            # Fallback: intentar obtener desde estrategias
+            try:
+                if self.strategies:
+                    strategy = next(iter(self.strategies.values()))
+                    df = strategy.get_market_data(symbol, "1m", limit=1)
+                    return float(df['close'].iloc[-1]) if not df.empty else 0.0
+            except:
+                pass
+            return 0.0
     
     def _run_scheduler(self):
         """
@@ -401,6 +435,10 @@ class TradingBot:
             },
             "risk_management": risk_report,
             "open_positions": open_positions,
+            "position_monitor": {
+                "status": self.position_monitor.get_monitoring_status(),
+                "active_positions": len(open_positions)
+            },
             "configuration": {
                 "analysis_interval_minutes": self.analysis_interval,
                 "max_daily_trades": self.max_daily_trades,

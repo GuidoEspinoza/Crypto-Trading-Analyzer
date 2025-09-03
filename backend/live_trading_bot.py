@@ -502,6 +502,8 @@ class LiveTradingBot:
         """📊 Mostrar estadísticas actuales usando datos del TradingBot"""
         try:
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
+            portfolio_summary = self.trading_bot.paper_trader.get_portfolio_summary()
+            
             current_balance = portfolio_performance.get('cash_balance', 0)
             total_value = portfolio_performance.get('total_value', 0)
             pnl = portfolio_performance.get('total_pnl', 0)
@@ -517,6 +519,25 @@ class LiveTradingBot:
             if self.session_stats['total_trades'] > 0:
                 success_rate = (self.session_stats['successful_trades'] / self.session_stats['total_trades']) * 100
                 logger.info(f"✅ Tasa de éxito: {success_rate:.1f}%")
+            
+            # Mostrar balances de cada activo
+            logger.info("\n🪙 BALANCES POR ACTIVO:")
+            assets = portfolio_summary.get('assets', [])
+            if assets:
+                for asset in assets:
+                    symbol = asset.get('symbol', '')
+                    quantity = asset.get('quantity', 0)
+                    current_value = asset.get('current_value', 0)
+                    
+                    if symbol == 'USDT':
+                        # Para USDT solo mostrar el valor
+                        logger.info(f"   💵 {symbol}: ${current_value:,.2f}")
+                    else:
+                        # Para otros activos mostrar cantidad y valor en USDT
+                        logger.info(f"   🪙 {symbol}: {quantity:.6f} (${current_value:,.2f})")
+            else:
+                logger.info("   📭 No hay activos en el portfolio")
+            
             logger.info("="*60 + "\n")
         except Exception as e:
             logger.error(f"❌ Error mostrando estadísticas: {e}")

@@ -42,6 +42,7 @@ class Trade(Base):
     # Risk management
     stop_loss = Column(Float, nullable=True)
     take_profit = Column(Float, nullable=True)
+    trailing_stop = Column(Float, nullable=True)  # Trailing stop dinámico
     
     # Metadatos
     timeframe = Column(String(10), nullable=False)  # 1h, 4h, 1d

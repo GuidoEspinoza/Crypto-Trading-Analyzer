@@ -10,54 +10,67 @@ from typing import List, Dict, Any
 # CONFIGURACIÓN DEL TRADING BOT PRINCIPAL
 # ============================================================================
 
+# Balance inicial global para todas las posiciones en USDT
+GLOBAL_INITIAL_BALANCE = 500.0
+
 class TradingBotConfig:
     """Configuración principal del bot de trading."""
     
-    # Lista de símbolos a analizar - criptomonedas de alta liquidez (óptimo: 8-10 símbolos)
+    # Lista de símbolos a analizar - criptomonedas de alta volatilidad y liquidez para ganancias rápidas
     SYMBOLS: List[str] = [
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT",
-        "SOLUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT", "UNIUSDT"
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT",
+        "ADAUSDT", "DOTUSDT", "LINKUSDT", "MATICUSDT", "ATOMUSDT",
+        "NEARUSDT", "FTMUSDT", "SANDUSDT", "MANAUSDT", "GALAUSDT"
     ]
 
     # Símbolos a usar en el bot de trading en vivo (agregar [:X] para limitar cantidad)
     SYMBOLS_LIVE_BOT = SYMBOLS
     
-    # Intervalo de análisis en minutos - tiempo entre análisis automáticos (óptimo: 30)
-    ANALYSIS_INTERVAL: int = 30
+    # Intervalo de análisis en minutos - tiempo entre análisis automáticos (agresivo: 15 - óptimo: 30)
+    ANALYSIS_INTERVAL: int = 15
+    # ANALYSIS_INTERVAL: int = 30  # Configuración óptima conservadora
     
-    # Umbral mínimo de confianza para ejecutar trades en % (óptimo: 70.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 70.0
-    # Parámetro para prueba rápida: 50.0 (permite más señales para testing)
+    # Umbral mínimo de confianza para ejecutar trades en % (agresivo: 65.0 - óptimo: 70.0)
+    MIN_CONFIDENCE_THRESHOLD: float = 65.0
+    # MIN_CONFIDENCE_THRESHOLD: float = 70.0  # Configuración óptima conservadora
+    # Parámetro optimizado para ganancias rápidas con riesgo controlado
     
-    # Número máximo de trades por día - control de sobreoperación (óptimo: 8)
-    MAX_DAILY_TRADES: int = 8
-    # Parámetro para prueba rápida: 20 (permite más actividad para testing)
+    # Número máximo de trades por día - control de sobreoperación (agresivo: 12 - óptimo: 8)
+    MAX_DAILY_TRADES: int = 12
+    # MAX_DAILY_TRADES: int = 8  # Configuración óptima conservadora
+    # Parámetro optimizado para maximizar oportunidades diarias
     
-    # Límite de posiciones concurrentes - diversificación controlada (óptimo: 4)
-    MAX_CONCURRENT_POSITIONS: int = 4
-    # Parámetro para prueba rápida: 8 (permite más posiciones simultáneas)
+    # Límite de posiciones concurrentes - diversificación controlada (agresivo: 6 - óptimo: 4)
+    MAX_CONCURRENT_POSITIONS: int = 6
+    # MAX_CONCURRENT_POSITIONS: int = 4  # Configuración óptima conservadora
+    # Parámetro optimizado para diversificación sin sobreexposición
     
-    # Timeframes para análisis profesional - marcos temporales múltiples (óptimo: ["1h", "4h", "1d"])
-    PROFESSIONAL_TIMEFRAMES: List[str] = ["1h", "4h", "1d"]
+    # Timeframes para análisis profesional - marcos temporales (agresivo: ["15m", "1h", "4h"] - óptimo: ["1h", "4h", "1d"])
+    PROFESSIONAL_TIMEFRAMES: List[str] = ["15m", "1h", "4h"]
+    # PROFESSIONAL_TIMEFRAMES: List[str] = ["1h", "4h", "1d"]  # Configuración óptima conservadora
     
-    # Timeframe principal para análisis - marco temporal base (óptimo: "1h")
-    PRIMARY_TIMEFRAME: str = "1h"
+    # Timeframe principal para análisis - marco temporal base (agresivo: "15m" - óptimo: "1h")
+    PRIMARY_TIMEFRAME: str = "15m"
+    # PRIMARY_TIMEFRAME: str = "1h"  # Configuración óptima conservadora
     
-    # Valor por defecto del portfolio para cálculos cuando no hay datos (óptimo: 10000)
-    DEFAULT_PORTFOLIO_VALUE: float = 10000.0
+    # Valor por defecto del portfolio para cálculos cuando no hay datos
+    DEFAULT_PORTFOLIO_VALUE: float = GLOBAL_INITIAL_BALANCE
     
-    # Timeframe para confirmación - validación de señales (óptimo: "4h")
-    CONFIRMATION_TIMEFRAME: str = "4h"
+    # Timeframe para confirmación - validación de señales (agresivo: "1h" - óptimo: "4h")
+    CONFIRMATION_TIMEFRAME: str = "1h"
+    # CONFIRMATION_TIMEFRAME: str = "4h"  # Configuración óptima conservadora
     
-    # Timeframe para análisis de tendencia - dirección general (óptimo: "1d")
-    TREND_TIMEFRAME: str = "1d"
+    # Timeframe para análisis de tendencia - dirección general (agresivo: "4h" - óptimo: "1d")
+    TREND_TIMEFRAME: str = "4h"
+    # TREND_TIMEFRAME: str = "1d"  # Configuración óptima conservadora
     
     # Descripción del bot - identificación del perfil (óptimo: "Profesional")
     BOT_DESCRIPTION: str = "Profesional"
     
     # Configuración específica para Live Trading Bot
-    # Intervalo de actualización en segundos para live bot (óptimo: 30)
-    LIVE_UPDATE_INTERVAL: int = 30
+    # Intervalo de actualización en segundos para live bot (agresivo: 20 - óptimo: 30)
+    LIVE_UPDATE_INTERVAL: int = 20
+    # LIVE_UPDATE_INTERVAL: int = 30  # Configuración óptima conservadora
     
     # Umbral mínimo de confianza para live trading (óptimo: 65.0)
     LIVE_MIN_CONFIDENCE_THRESHOLD: float = 65.0
@@ -73,25 +86,28 @@ class TradingBotConfig:
 class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
     
-    # Balance inicial en USDT para simulación (óptimo: 1000)
-    INITIAL_BALANCE: float = 200.0
-    # Parámetro para prueba rápida: 1000.0 (balance mayor para testing)
+    # Balance inicial en USDT para simulación
+    INITIAL_BALANCE: float = GLOBAL_INITIAL_BALANCE
     
-    # Tamaño máximo de posición como % del portfolio (óptimo: 6.0)
-    MAX_POSITION_SIZE: float = 6.0  # Formato: porcentaje (6.0 = 6%)
-    # Parámetro para prueba rápida: 10.0 (posiciones más grandes para testing)
+    # Tamaño máximo de posición como % del portfolio (agresivo: 8.0 - óptimo: 6.0)
+    MAX_POSITION_SIZE: float = 8.0  # Formato: porcentaje (8.0 = 8%)
+    # MAX_POSITION_SIZE: float = 6.0  # Configuración óptima conservadora
+    # Parámetro optimizado para maximizar ganancias con riesgo controlado
     
-    # Exposición total máxima del portfolio en % (óptimo: 60.0)
-    MAX_TOTAL_EXPOSURE: float = 60.0
-    # Parámetro para prueba rápida: 80.0 (mayor exposición para testing)
+    # Exposición total máxima del portfolio en % (agresivo: 75.0 - óptimo: 60.0)
+    MAX_TOTAL_EXPOSURE: float = 75.0
+    # MAX_TOTAL_EXPOSURE: float = 60.0  # Configuración óptima conservadora
+    # Parámetro optimizado para mayor exposición con diversificación
     
-    # Valor mínimo por trade en USDT (óptimo: 5.0)
-    MIN_TRADE_VALUE: float = 5.0
-    # Parámetro para prueba rápida: 1.0 (trades más pequeños para testing)
+    # Valor mínimo por trade en USDT (agresivo: 10.0 - óptimo: 5.0)
+    MIN_TRADE_VALUE: float = 10.0
+    # MIN_TRADE_VALUE: float = 5.0  # Configuración óptima conservadora
+    # Parámetro optimizado para trades más significativos
     
-    # Umbral mínimo de confianza para ejecutar trades (óptimo: 60.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 60.0
-    # Parámetro para prueba rápida: 50.0 (umbral más bajo para testing)
+    # Umbral mínimo de confianza para ejecutar trades (agresivo: 62.0 - óptimo: 60.0)
+    MIN_CONFIDENCE_THRESHOLD: float = 62.0
+    # MIN_CONFIDENCE_THRESHOLD: float = 60.0  # Configuración óptima conservadora
+    # Parámetro optimizado para balance entre oportunidades y calidad
     
     # Slippage máximo permitido en % (óptimo: 0.08)
     MAX_SLIPPAGE: float = 0.08
@@ -110,17 +126,20 @@ class PaperTraderConfig:
 class RiskManagerConfig:
     """Configuración del gestor de riesgo avanzado."""
     
-    # Riesgo máximo por trade como % del portfolio (óptimo: 1.0)
-    MAX_RISK_PER_TRADE: float = 1.0
-    # Parámetro para prueba rápida: 2.0 (mayor riesgo para testing)
+    # Riesgo máximo por trade como % del portfolio (agresivo: 1.5 - óptimo: 1.0)
+    MAX_RISK_PER_TRADE: float = 1.5
+    # MAX_RISK_PER_TRADE: float = 1.0  # Configuración óptima conservadora
+    # Parámetro optimizado para ganancias rápidas con riesgo controlado
     
-    # Riesgo máximo diario como % del portfolio (óptimo: 3.0)
-    MAX_DAILY_RISK: float = 3.0
-    # Parámetro para prueba rápida: 5.0 (mayor riesgo diario para testing)
+    # Riesgo máximo diario como % del portfolio (agresivo: 4.5 - óptimo: 3.0)
+    MAX_DAILY_RISK: float = 4.5
+    # MAX_DAILY_RISK: float = 3.0  # Configuración óptima conservadora
+    # Parámetro optimizado para maximizar oportunidades diarias
     
-    # Umbral de drawdown máximo antes de parar trading en % (óptimo: 8.0)
-    MAX_DRAWDOWN_THRESHOLD: float = 8.0
-    # Parámetro para prueba rápida: 15.0 (mayor tolerancia para testing)
+    # Umbral de drawdown máximo antes de parar trading en % (agresivo: 10.0 - óptimo: 8.0)
+    MAX_DRAWDOWN_THRESHOLD: float = 10.0
+    # MAX_DRAWDOWN_THRESHOLD: float = 8.0  # Configuración óptima conservadora
+    # Parámetro optimizado para mayor tolerancia en mercados volátiles
     
     # Umbral de correlación máxima entre posiciones (óptimo: 0.6)
     CORRELATION_THRESHOLD: float = 0.6
@@ -128,8 +147,9 @@ class RiskManagerConfig:
     # Tamaño mínimo de posición como % del portfolio (óptimo: 0.005)
     MIN_POSITION_SIZE: float = 0.005
     
-    # Tamaño máximo de posición como % del portfolio (óptimo: 6.0)
-    MAX_POSITION_SIZE: float = 6.0  # Formato: porcentaje (6.0 = 6%)
+    # Tamaño máximo de posición como % del portfolio (agresivo: 8.0 - óptimo: 6.0)
+    MAX_POSITION_SIZE: float = 8.0  # Formato: porcentaje (8.0 = 8%)
+    # MAX_POSITION_SIZE: float = 6.0  # Configuración óptima conservadora
     
     # Fracción Kelly conservadora para sizing (óptimo: 0.15)
     KELLY_FRACTION: float = 0.15
@@ -148,11 +168,13 @@ class RiskManagerConfig:
     ATR_VOLATILE: float = 3.0  # Para mercados volátiles
     ATR_SIDEWAYS: float = 1.5  # Para mercados laterales
     
-    # Umbral de ganancia para activar trailing stop en % (óptimo: 2.0)
-    TRAILING_STOP_ACTIVATION: float = 2.0
+    # Umbral de ganancia para activar trailing stop en % (agresivo: 1.5 - óptimo: 2.0)
+    TRAILING_STOP_ACTIVATION: float = 1.5
+    # TRAILING_STOP_ACTIVATION: float = 2.0  # Configuración óptima conservadora
     
-    # Umbral para mover stop-loss a breakeven en % (óptimo: 1.2)
-    BREAKEVEN_THRESHOLD: float = 1.2
+    # Umbral para mover stop-loss a breakeven en % (agresivo: 1.0 - óptimo: 1.2)
+    BREAKEVEN_THRESHOLD: float = 1.0
+    # BREAKEVEN_THRESHOLD: float = 1.2  # Configuración óptima conservadora
     
     # Valor inicial del portfolio para cálculos de riesgo en USDT - Se alimenta del PaperTrader para consistencia
     INITIAL_PORTFOLIO_VALUE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
@@ -190,29 +212,35 @@ class StrategyConfig:
         # Confianza para señales HOLD (óptimo: 45.0)
         HOLD_CONFIDENCE: float = 45.0
         
-        # Confianza mínima requerida en % (óptimo: 72.0)
-        MIN_CONFIDENCE: float = 72.0
-        # Parámetro para prueba rápida: 50.0 (menor confianza para más señales)
+        # Confianza mínima requerida en % (agresivo: 68.0 - óptimo: 72.0)
+        MIN_CONFIDENCE: float = 68.0
+        # MIN_CONFIDENCE: float = 72.0  # Configuración óptima conservadora
+        # Parámetro optimizado para balance entre calidad y oportunidades
         
-        # Nivel de sobreventa del RSI - señal de compra (óptimo: 25)
-        RSI_OVERSOLD: int = 25
-        # Parámetro para prueba rápida: 30 (menos estricto para más señales)
+        # Nivel de sobreventa del RSI - señal de compra (agresivo: 30 - óptimo: 25)
+        RSI_OVERSOLD: int = 30
+        # RSI_OVERSOLD: int = 25  # Configuración óptima conservadora
+        # Parámetro optimizado para capturar más oportunidades de compra
         
-        # Nivel de sobrecompra del RSI - señal de venta (óptimo: 75)
-        RSI_OVERBOUGHT: int = 75
-        # Parámetro para prueba rápida: 70 (menos estricto para más señales)
+        # Nivel de sobrecompra del RSI - señal de venta (agresivo: 70 - óptimo: 75)
+        RSI_OVERBOUGHT: int = 70
+        # RSI_OVERBOUGHT: int = 75  # Configuración óptima conservadora
+        # Parámetro optimizado para capturar más oportunidades de venta
         
         # Período del RSI - ventana de cálculo (óptimo: 14)
         RSI_PERIOD: int = 14
         
-        # Ratio mínimo de volumen vs promedio (óptimo: 1.8)
-        MIN_VOLUME_RATIO: float = 1.8
+        # Ratio mínimo de volumen vs promedio (agresivo: 1.5 - óptimo: 1.8)
+        MIN_VOLUME_RATIO: float = 1.5
+        # MIN_VOLUME_RATIO: float = 1.8  # Configuración óptima conservadora
         
-        # Confluencia mínima de indicadores requerida (óptimo: 4)
-        MIN_CONFLUENCE: int = 4
+        # Confluencia mínima de indicadores requerida (agresivo: 3 - óptimo: 4)
+        MIN_CONFLUENCE: int = 3
+        # MIN_CONFLUENCE: int = 4  # Configuración óptima conservadora
         
-        # Umbral de fuerza de tendencia ADX (óptimo: 35)
-        TREND_STRENGTH_THRESHOLD: float = 35
+        # Umbral de fuerza de tendencia ADX (agresivo: 30 - óptimo: 35)
+        TREND_STRENGTH_THRESHOLD: float = 30
+        # TREND_STRENGTH_THRESHOLD: float = 35  # Configuración óptima conservadora
         
         # Ratio ATR mínimo para volatilidad (óptimo: 1.0)
         MIN_ATR_RATIO: float = 1.0
@@ -230,25 +258,27 @@ class StrategyConfig:
         # Confianza para señales HOLD (óptimo: 45.0)
         HOLD_CONFIDENCE: float = 45.0
         
-        # Confianza mínima requerida en % (óptimo: 70.0)
-        MIN_CONFIDENCE: float = 70.0
-        # Parámetro para prueba rápida: 45.0 (menor confianza para más señales)
+        # Confianza mínima requerida en % (agresivo: 65.0 - óptimo: 70.0)
+        MIN_CONFIDENCE: float = 65.0
+        # MIN_CONFIDENCE: float = 70.0  # Configuración óptima conservadora
+        # Parámetro optimizado para balance entre calidad y frecuencia
         
-        # Timeframes utilizados para análisis (óptimo: ["1h", "4h", "1d"])
-        TIMEFRAMES: List[str] = ["1h", "4h", "1d"]
+        # Timeframes utilizados para análisis (agresivo: ["15m", "1h", "4h"] - óptimo: ["1h", "4h", "1d"])
+        TIMEFRAMES: List[str] = ["15m", "1h", "4h"]
+        # TIMEFRAMES: List[str] = ["1h", "4h", "1d"]  # Configuración óptima conservadora
         
-        # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra
+        # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra (agresivo)
         RSI_CONFIG: Dict[str, Dict[str, int]] = {
-            "1h": {"oversold": 25, "overbought": 75},   # Timeframe corto - menos estricto
-            "4h": {"oversold": 25, "overbought": 75},   # Timeframe medio - balanceado
-            "1d": {"oversold": 30, "overbought": 70}    # Timeframe largo - moderado
+            "15m": {"oversold": 35, "overbought": 65},  # Timeframe muy corto - más agresivo
+            "1h": {"oversold": 30, "overbought": 70},   # Timeframe corto - agresivo
+            "4h": {"oversold": 25, "overbought": 75}    # Timeframe medio - balanceado
         }
         
-        # Pesos por timeframe - mayor peso a timeframes largos (óptimo: suma = 1.0)
+        # Pesos por timeframe - balance entre corto y medio plazo (agresivo: suma = 1.0)
         TIMEFRAME_WEIGHTS: Dict[str, float] = {
-            "1h": 0.2,   # Peso menor para decisiones a corto plazo
-            "4h": 0.3,   # Peso medio para tendencia intermedia
-            "1d": 0.5    # Peso mayor para tendencia principal
+            "15m": 0.3,  # Peso significativo para oportunidades rápidas
+            "1h": 0.4,   # Peso principal para decisiones a corto plazo
+            "4h": 0.3    # Peso para confirmación de tendencia
         }
         
         # Consenso mínimo de timeframes requerido (óptimo: 2)
@@ -279,12 +309,14 @@ class StrategyConfig:
             "Multi_Timeframe": 0.6
         }
         
-        # Umbral mínimo de consenso entre estrategias (óptimo: 0.7)
-        MIN_CONSENSUS_THRESHOLD: float = 0.7
-        # Parámetro para prueba rápida: 0.5 (menor consenso para más señales)
+        # Umbral mínimo de consenso entre estrategias (agresivo: 0.6 - óptimo: 0.7)
+        MIN_CONSENSUS_THRESHOLD: float = 0.6
+        # MIN_CONSENSUS_THRESHOLD: float = 0.7  # Configuración óptima conservadora
+        # Parámetro optimizado para balance entre consenso y oportunidades
         
-        # Factor de boost de confianza cuando hay consenso (óptimo: 1.15)
-        CONFIDENCE_BOOST_FACTOR: float = 1.15
+        # Factor de boost de confianza cuando hay consenso (agresivo: 1.2 - óptimo: 1.15)
+        CONFIDENCE_BOOST_FACTOR: float = 1.2
+        # CONFIDENCE_BOOST_FACTOR: float = 1.15  # Configuración óptima conservadora
 
 
 # ============================================================================
@@ -463,21 +495,38 @@ DEV_CONFIG = {
 }
 
 # ============================================================================
-# GUÍA DE PARÁMETROS PARA PRUEBAS RÁPIDAS
+# CONFIGURACIÓN OPTIMIZADA PARA TRADING AGRESIVO PERO SEGURO
 # ============================================================================
 """
-PARA PRUEBAS RÁPIDAS, MODIFICA ESTOS VALORES:
+CONFIGURACIÓN ACTUAL OPTIMIZADA PARA GANANCIAS RÁPIDAS Y SEGURAS:
 
-1. MIN_CONFIDENCE_THRESHOLD: 50.0 (más señales)
-2. MAX_DAILY_TRADES: 20 (más actividad)
-3. MAX_CONCURRENT_POSITIONS: 8 (más posiciones)
-4. INITIAL_BALANCE: 1000.0 (balance mayor)
-5. MAX_POSITION_SIZE: 10.0 (posiciones más grandes)
-6. MIN_TRADE_VALUE: 1.0 (trades más pequeños)
-7. MAX_RISK_PER_TRADE: 2.0 (mayor riesgo)
-8. RSI_OVERSOLD: 30 (menos estricto)
-9. RSI_OVERBOUGHT: 70 (menos estricto)
-10. MIN_CONSENSUS_THRESHOLD: 0.5 (menor consenso)
+🎯 TIMEFRAMES AGRESIVOS:
+- Análisis cada 15 minutos (captura oportunidades rápidas)
+- Timeframes: 15m, 1h, 4h (balance entre velocidad y confirmación)
+- Actualización live cada 20 segundos
 
-ESTOS VALORES PERMITEN MÁS ACTIVIDAD Y SEÑALES PARA VALIDAR FUNCIONALIDAD.
+💰 GESTIÓN DE RIESGO OPTIMIZADA:
+- Riesgo por trade: 1.5% (mayor que conservador, menor que arriesgado)
+- Riesgo diario: 4.5% (permite múltiples oportunidades)
+- Posición máxima: 8% (significativa pero controlada)
+- Exposición total: 75% (alta pero diversificada)
+
+📊 SEÑALES OPTIMIZADAS:
+- Confianza mínima: 65-68% (balance calidad/frecuencia)
+- RSI: 30/70 (captura más oportunidades)
+- Confluencia mínima: 3 indicadores
+- Consenso estrategias: 60%
+
+🚀 CONFIGURACIÓN AGRESIVA:
+- 12 trades diarios máximo
+- 6 posiciones concurrentes
+- 15 símbolos de alta volatilidad
+- Trailing stop desde 1.5% ganancia
+- Breakeven en 1% ganancia
+
+⚡ RESULTADO ESPERADO:
+- Mayor frecuencia de trades
+- Captura rápida de movimientos
+- Riesgo controlado pero optimizado
+- ROI mensual objetivo: 15-25%
 """
