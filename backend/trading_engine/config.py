@@ -74,7 +74,7 @@ class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
     
     # Balance inicial en USDT para simulación (óptimo: 1000)
-    INITIAL_BALANCE: float = 1000.0
+    INITIAL_BALANCE: float = 200.0
     # Parámetro para prueba rápida: 1000.0 (balance mayor para testing)
     
     # Tamaño máximo de posición como % del portfolio (óptimo: 6.0)
