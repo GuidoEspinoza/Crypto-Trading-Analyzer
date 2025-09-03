@@ -11,6 +11,9 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
+# Importar configuración centralizada
+from .config import AdvancedIndicatorsConfig
+
 # Suprimir warnings específicos de pandas_ta
 warnings.filterwarnings('ignore', message='.*dtype incompatible.*')
 warnings.filterwarnings('ignore', category=UserWarning, module='pandas_ta')
@@ -60,7 +63,7 @@ class AdvancedIndicators:
             return default
     
     @staticmethod
-    def fibonacci_retracement(df: pd.DataFrame, lookback: int = 50) -> FibonacciLevels:
+    def fibonacci_retracement(df: pd.DataFrame, lookback: int = None) -> FibonacciLevels:
         """
         🔢 Calcular niveles de Fibonacci para retracements
         
@@ -71,6 +74,9 @@ class AdvancedIndicators:
         Returns:
             FibonacciLevels con todos los niveles calculados
         """
+        if lookback is None:
+            lookback = AdvancedIndicatorsConfig.FIBONACCI_LOOKBACK
+        
         # Encontrar máximo y mínimo en el período
         recent_data = df.tail(lookback)
         swing_high = recent_data['high'].max()
@@ -129,25 +135,25 @@ class AdvancedIndicators:
         except Exception:
             # Método 2: Calcular manualmente si falla el método automático
             # Tenkan-sen (9 períodos)
-            high_9 = df['high'].rolling(window=9).max()
-            low_9 = df['low'].rolling(window=9).min()
+            high_9 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_TENKAN_PERIOD).max()
+            low_9 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_TENKAN_PERIOD).min()
             tenkan_sen = (high_9 + low_9) / 2
             
             # Kijun-sen (26 períodos)
-            high_26 = df['high'].rolling(window=26).max()
-            low_26 = df['low'].rolling(window=26).min()
+            high_26 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_KIJUN_PERIOD).max()
+            low_26 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_KIJUN_PERIOD).min()
             kijun_sen = (high_26 + low_26) / 2
             
             # Senkou Span A
-            senkou_a = ((tenkan_sen + kijun_sen) / 2).shift(26)
+            senkou_a = ((tenkan_sen + kijun_sen) / 2).shift(AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
             
             # Senkou Span B (52 períodos)
-            high_52 = df['high'].rolling(window=52).max()
-            low_52 = df['low'].rolling(window=52).min()
-            senkou_b = ((high_52 + low_52) / 2).shift(26)
+            high_52 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_SENKOU_B_PERIOD).max()
+            low_52 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_SENKOU_B_PERIOD).min()
+            senkou_b = ((high_52 + low_52) / 2).shift(AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
             
             # Chikou Span
-            chikou_span = df['close'].shift(-26)
+            chikou_span = df['close'].shift(-AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
             
             # Obtener valores actuales
             tenkan_sen = tenkan_sen.iloc[-1]
@@ -190,7 +196,7 @@ class AdvancedIndicators:
         )
     
     @staticmethod
-    def stochastic_oscillator(df: pd.DataFrame, k_period: int = 14, d_period: int = 3) -> Dict:
+    def stochastic_oscillator(df: pd.DataFrame, k_period: int = None, d_period: int = None) -> Dict:
         """
         📊 Calcular Oscilador Estocástico
         
@@ -202,6 +208,11 @@ class AdvancedIndicators:
         Returns:
             Diccionario con valores y señales del estocástico
         """
+        if k_period is None:
+            k_period = AdvancedIndicatorsConfig.STOCHASTIC_K_PERIOD
+        if d_period is None:
+            d_period = AdvancedIndicatorsConfig.STOCHASTIC_D_PERIOD
+            
         try:
             stoch_data = ta.stoch(df['high'], df['low'], df['close'], k=k_period, d=d_period)
             
@@ -257,17 +268,20 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def williams_percent_r(df: pd.DataFrame, period: int = 14) -> Dict:
+    def williams_percent_r(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Williams %R
         
         Args:
             df: DataFrame con datos OHLCV
-            period: Período para el cálculo
+            period: Período de cálculo
             
         Returns:
-            Diccionario con valor y señales de Williams %R
+            Diccionario con valores y señales de Williams %R
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.WILLIAMS_R_PERIOD
+            
         try:
             willr = ta.willr(df['high'], df['low'], df['close'], length=period)
             
@@ -360,17 +374,20 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def commodity_channel_index(df: pd.DataFrame, period: int = 20) -> Dict:
+    def commodity_channel_index(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Commodity Channel Index (CCI)
         
         Args:
             df: DataFrame con datos OHLCV
-            period: Período para el cálculo
+            period: Período de cálculo
             
         Returns:
-            Diccionario con valor y señales del CCI
+            Diccionario con valores y señales del CCI
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.CCI_PERIOD
+            
         try:
             cci = ta.cci(df['high'], df['low'], df['close'], length=period)
             
@@ -471,9 +488,9 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def bollinger_bands(df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> Dict:
+    def bollinger_bands(df: pd.DataFrame, period: int = None, std_dev: float = None) -> Dict:
         """
-        📊 Calcular Bollinger Bands
+        📊 Calcular Bandas de Bollinger
         
         Args:
             df: DataFrame con datos OHLCV
@@ -483,6 +500,11 @@ class AdvancedIndicators:
         Returns:
             Diccionario con bandas y señales
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.BOLLINGER_PERIOD
+        if std_dev is None:
+            std_dev = AdvancedIndicatorsConfig.BOLLINGER_STD_DEV
+            
         try:
             bb = ta.bbands(df['close'], length=period, std=std_dev)
             
@@ -670,17 +692,20 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def money_flow_index(df: pd.DataFrame, period: int = 14) -> Dict:
+    def money_flow_index(df: pd.DataFrame, period: int = None) -> Dict:
         """
         💰 Calcular Money Flow Index (MFI)
         
         Args:
             df: DataFrame con datos OHLCV
-            period: Período para el cálculo
+            period: Período de cálculo
             
         Returns:
-            Diccionario con MFI y señales
+            Diccionario con valores y señales del MFI
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.MFI_PERIOD
+            
         try:
             # Convertir todos los datos a float64 para evitar warnings de dtype
             high_float = df['high'].astype('float64')
@@ -750,7 +775,7 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def average_true_range(df: pd.DataFrame, period: int = 14) -> Dict:
+    def average_true_range(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Average True Range (ATR) - Medida de volatilidad
         
@@ -761,6 +786,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con ATR y análisis de volatilidad
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.ATR_PERIOD
+            
         try:
             atr = ta.atr(df['high'], df['low'], df['close'], length=period)
             
@@ -815,7 +843,51 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def enhanced_rsi(df: pd.DataFrame, period: int = 14) -> Dict:
+    def calculate_rsi(df: pd.DataFrame, period: int = 14) -> Dict:
+        """
+        📊 Calcular RSI básico (método de compatibilidad)
+        
+        Args:
+            df: DataFrame con datos OHLCV o Series de precios
+            period: Período para el cálculo (default: 14)
+            
+        Returns:
+            Diccionario con RSI calculado
+        """
+        # Si se pasa una Series en lugar de DataFrame
+        if isinstance(df, pd.Series):
+            close_prices = df
+        else:
+            close_prices = df['close']
+            
+        try:
+            rsi = ta.rsi(close_prices, length=period)
+            
+            if rsi is None or rsi.empty:
+                # Calcular manualmente
+                delta = close_prices.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            current_rsi = AdvancedIndicators.safe_float(rsi.iloc[-1], 50.0)
+            
+            return {
+                "rsi": current_rsi,
+                "signal": "BUY" if current_rsi < 30 else "SELL" if current_rsi > 70 else "HOLD",
+                "interpretation": f"RSI: {current_rsi:.2f}"
+            }
+            
+        except Exception as e:
+            return {
+                "rsi": 50.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando RSI: {str(e)}"
+            }
+    
+    @staticmethod
+    def enhanced_rsi(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 RSI Mejorado con análisis de divergencias
         
@@ -826,6 +898,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con RSI mejorado y análisis
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.RSI_PERIOD
+            
         try:
             rsi = ta.rsi(df['close'], length=period)
             
@@ -904,7 +979,7 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def rate_of_change(df: pd.DataFrame, period: int = 12) -> Dict:
+    def rate_of_change(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Rate of Change (ROC) - Indicador de momentum
         
@@ -915,6 +990,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con ROC y análisis de momentum
         """
+        if period is None:
+            period = AdvancedIndicatorsConfig.ROC_PERIOD
+            
         try:
             roc = ta.roc(df['close'], length=period)
             
@@ -973,7 +1051,7 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def volume_profile(df: pd.DataFrame, bins: int = 20) -> Dict:
+    def volume_profile(df: pd.DataFrame, bins: int = None) -> Dict:
         """
         📊 Calcular Volume Profile - Análisis de distribución de volumen por precio
         
@@ -984,6 +1062,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con análisis de volume profile
         """
+        if bins is None:
+            bins = AdvancedIndicatorsConfig.VOLUME_PROFILE_BINS
+            
         try:
             # Calcular precio típico
             typical_price = (df['high'] + df['low'] + df['close']) / 3
@@ -1063,7 +1144,7 @@ class AdvancedIndicators:
             }
     
     @staticmethod
-    def support_resistance_levels(df: pd.DataFrame, window: int = 20, min_touches: int = 2) -> Dict:
+    def support_resistance_levels(df: pd.DataFrame, window: int = None, min_touches: int = 2) -> Dict:
         """
         📊 Detectar niveles de soporte y resistencia
         
@@ -1075,6 +1156,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con niveles de soporte y resistencia
         """
+        if window is None:
+            window = AdvancedIndicatorsConfig.SUPPORT_RESISTANCE_WINDOW
+            
         try:
             # Detectar máximos y mínimos locales
             highs = df['high'].rolling(window=window, center=True).max() == df['high']
@@ -1240,7 +1324,7 @@ class AdvancedIndicators:
             }
 
     @staticmethod
-    def trend_lines_analysis(df: pd.DataFrame, lookback: int = 50) -> Dict:
+    def trend_lines_analysis(df: pd.DataFrame, lookback: int = None) -> Dict:
         """
         🔍 Detecta líneas de tendencia y breakouts
         
@@ -1251,6 +1335,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con análisis de líneas de tendencia
         """
+        if lookback is None:
+            lookback = AdvancedIndicatorsConfig.TREND_ANALYSIS_LOOKBACK
+            
         try:
             if len(df) < lookback:
                 return {"trend_lines": [], "signal": "HOLD", "interpretation": "Insufficient data"}
@@ -1334,7 +1421,7 @@ class AdvancedIndicators:
             return {"trend_lines": [], "signal": "HOLD", "interpretation": f"Error: {str(e)}"}
 
     @staticmethod
-    def chart_patterns_detection(df: pd.DataFrame, window: int = 20) -> Dict:
+    def chart_patterns_detection(df: pd.DataFrame, window: int = None) -> Dict:
         """
         📈 Detecta patrones de gráficos comunes
         
@@ -1345,6 +1432,9 @@ class AdvancedIndicators:
         Returns:
             Diccionario con patrones detectados
         """
+        if window is None:
+            window = AdvancedIndicatorsConfig.CHART_PATTERNS_WINDOW
+            
         try:
             if len(df) < window * 2:
                 return {"patterns": [], "signal": "HOLD", "interpretation": "Insufficient data"}

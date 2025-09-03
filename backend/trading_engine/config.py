@@ -25,12 +25,12 @@ class TradingBotConfig:
     # Intervalo de análisis en minutos - tiempo entre análisis automáticos (óptimo: 30)
     ANALYSIS_INTERVAL: int = 30
     
-    # Umbral mínimo de confianza para ejecutar trades en % (óptimo: 75.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 75.0
+    # Umbral mínimo de confianza para ejecutar trades en % (óptimo: 70.0)
+    MIN_CONFIDENCE_THRESHOLD: float = 70.0
     # Parámetro para prueba rápida: 50.0 (permite más señales para testing)
     
-    # Número máximo de trades por día - control de sobreoperación (óptimo: 6)
-    MAX_DAILY_TRADES: int = 6
+    # Número máximo de trades por día - control de sobreoperación (óptimo: 8)
+    MAX_DAILY_TRADES: int = 8
     # Parámetro para prueba rápida: 20 (permite más actividad para testing)
     
     # Límite de posiciones concurrentes - diversificación controlada (óptimo: 4)
@@ -43,6 +43,9 @@ class TradingBotConfig:
     # Timeframe principal para análisis - marco temporal base (óptimo: "1h")
     PRIMARY_TIMEFRAME: str = "1h"
     
+    # Valor por defecto del portfolio para cálculos cuando no hay datos (óptimo: 10000)
+    DEFAULT_PORTFOLIO_VALUE: float = 10000.0
+    
     # Timeframe para confirmación - validación de señales (óptimo: "4h")
     CONFIRMATION_TIMEFRAME: str = "4h"
     
@@ -51,6 +54,16 @@ class TradingBotConfig:
     
     # Descripción del bot - identificación del perfil (óptimo: "Profesional")
     BOT_DESCRIPTION: str = "Profesional"
+    
+    # Configuración específica para Live Trading Bot
+    # Intervalo de actualización en segundos para live bot (óptimo: 30)
+    LIVE_UPDATE_INTERVAL: int = 30
+    
+    # Umbral mínimo de confianza para live trading (óptimo: 65.0)
+    LIVE_MIN_CONFIDENCE_THRESHOLD: float = 65.0
+    
+    # Delay en segundos para el primer análisis al iniciar (óptimo: 30)
+    FIRST_ANALYSIS_DELAY: int = 30
 
 
 # ============================================================================
@@ -75,6 +88,10 @@ class PaperTraderConfig:
     # Valor mínimo por trade en USDT (óptimo: 5.0)
     MIN_TRADE_VALUE: float = 5.0
     # Parámetro para prueba rápida: 1.0 (trades más pequeños para testing)
+    
+    # Umbral mínimo de confianza para ejecutar trades (óptimo: 60.0)
+    MIN_CONFIDENCE_THRESHOLD: float = 60.0
+    # Parámetro para prueba rápida: 50.0 (umbral más bajo para testing)
     
     # Slippage máximo permitido en % (óptimo: 0.08)
     MAX_SLIPPAGE: float = 0.08
@@ -126,6 +143,11 @@ class RiskManagerConfig:
     # Multiplicador ATR máximo para stop-loss dinámico (óptimo: 4.0)
     ATR_MULTIPLIER_MAX: float = 4.0
     
+    # Multiplicadores ATR por defecto para diferentes condiciones de mercado
+    ATR_DEFAULT: float = 2.0  # Multiplicador por defecto
+    ATR_VOLATILE: float = 3.0  # Para mercados volátiles
+    ATR_SIDEWAYS: float = 1.5  # Para mercados laterales
+    
     # Umbral de ganancia para activar trailing stop en % (óptimo: 2.0)
     TRAILING_STOP_ACTIVATION: float = 2.0
     
@@ -143,20 +165,41 @@ class RiskManagerConfig:
 class StrategyConfig:
     """Configuración de las estrategias de trading."""
     
+    # ---- Configuración Base de Estrategias ----
+    class Base:
+        """Parámetros base para todas las estrategias."""
+        
+        # Confianza mínima por defecto para estrategias base (óptimo: 60.0)
+        DEFAULT_MIN_CONFIDENCE: float = 60.0
+        
+        # Valores de confianza por defecto para diferentes señales
+        HOLD_CONFIDENCE: float = 45.0
+        BASE_CONFIDENCE: float = 50.0
+        ENHANCED_CONFIDENCE: float = 60.0
+        
+        # Período ATR por defecto para cálculos de stop-loss (óptimo: 14)
+        DEFAULT_ATR_PERIOD: int = 14
+    
     # ---- Estrategia RSI Profesional ----
     class ProfessionalRSI:
         """Parámetros para la estrategia RSI profesional."""
+        
+        # Confianza base para señales (óptimo: 50.0)
+        BASE_CONFIDENCE: float = 50.0
+        
+        # Confianza para señales HOLD (óptimo: 45.0)
+        HOLD_CONFIDENCE: float = 45.0
         
         # Confianza mínima requerida en % (óptimo: 72.0)
         MIN_CONFIDENCE: float = 72.0
         # Parámetro para prueba rápida: 50.0 (menor confianza para más señales)
         
-        # Nivel de sobreventa del RSI - señal de compra (óptimo: 20)
-        RSI_OVERSOLD: int = 20
+        # Nivel de sobreventa del RSI - señal de compra (óptimo: 25)
+        RSI_OVERSOLD: int = 25
         # Parámetro para prueba rápida: 30 (menos estricto para más señales)
         
-        # Nivel de sobrecompra del RSI - señal de venta (óptimo: 80)
-        RSI_OVERBOUGHT: int = 80
+        # Nivel de sobrecompra del RSI - señal de venta (óptimo: 75)
+        RSI_OVERBOUGHT: int = 75
         # Parámetro para prueba rápida: 70 (menos estricto para más señales)
         
         # Período del RSI - ventana de cálculo (óptimo: 14)
@@ -181,6 +224,12 @@ class StrategyConfig:
     class MultiTimeframe:
         """Parámetros para la estrategia multi-timeframe."""
         
+        # Confianza base para señales (óptimo: 50.0)
+        BASE_CONFIDENCE: float = 50.0
+        
+        # Confianza para señales HOLD (óptimo: 45.0)
+        HOLD_CONFIDENCE: float = 45.0
+        
         # Confianza mínima requerida en % (óptimo: 70.0)
         MIN_CONFIDENCE: float = 70.0
         # Parámetro para prueba rápida: 45.0 (menor confianza para más señales)
@@ -190,7 +239,7 @@ class StrategyConfig:
         
         # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra
         RSI_CONFIG: Dict[str, Dict[str, int]] = {
-            "1h": {"oversold": 20, "overbought": 80},   # Timeframe corto - más estricto
+            "1h": {"oversold": 25, "overbought": 75},   # Timeframe corto - menos estricto
             "4h": {"oversold": 25, "overbought": 75},   # Timeframe medio - balanceado
             "1d": {"oversold": 30, "overbought": 70}    # Timeframe largo - moderado
         }
@@ -217,6 +266,12 @@ class StrategyConfig:
     # ---- Estrategia Ensemble ----
     class Ensemble:
         """Parámetros para la estrategia ensemble (combinación de estrategias)."""
+        
+        # Confianza base para señales (óptimo: 50.0)
+        BASE_CONFIDENCE: float = 50.0
+        
+        # Confianza para señales HOLD (óptimo: 45.0)
+        HOLD_CONFIDENCE: float = 45.0
         
         # Pesos de cada estrategia en el ensemble (óptimo: RSI=0.4, MultiTF=0.6)
         STRATEGY_WEIGHTS: Dict[str, float] = {
@@ -303,7 +358,7 @@ def get_config(config_type: str) -> Any:
     """Obtiene la configuración especificada.
     
     Args:
-        config_type: Tipo de configuración ('bot', 'risk', 'paper', 'strategy', 'db', 'log', 'live')
+        config_type: Tipo de configuración ('bot', 'risk', 'paper', 'strategy', 'db', 'log', 'live', 'testing', 'indicators')
     
     Returns:
         Clase de configuración correspondiente
@@ -315,7 +370,9 @@ def get_config(config_type: str) -> Any:
         'strategy': StrategyConfig,
         'db': DatabaseConfig,
         'log': LoggingConfig,
-        'live': LiveTradingConfig
+        'live': LiveTradingConfig,
+        'testing': TestingConfig,
+        'indicators': AdvancedIndicatorsConfig
     }
     
     if config_type not in configs:
@@ -325,15 +382,84 @@ def get_config(config_type: str) -> Any:
 
 
 # ============================================================================
+# CONFIGURACIÓN DE INDICADORES AVANZADOS
+# ============================================================================
+
+class AdvancedIndicatorsConfig:
+    """Configuración de períodos y umbrales para indicadores técnicos avanzados."""
+    
+    # Períodos para Ichimoku Cloud
+    ICHIMOKU_TENKAN_PERIOD: int = 9   # Tenkan-sen (línea de conversión)
+    ICHIMOKU_KIJUN_PERIOD: int = 26   # Kijun-sen (línea base)
+    ICHIMOKU_SENKOU_PERIOD: int = 52  # Senkou Span A
+    ICHIMOKU_SENKOU_B_PERIOD: int = 52  # Senkou Span B
+    ICHIMOKU_SHIFT: int = 26          # Desplazamiento para proyección
+    
+    # Períodos para osciladores
+    STOCHASTIC_K_PERIOD: int = 14     # Período para %K del Estocástico
+    STOCHASTIC_D_PERIOD: int = 3      # Período para %D del Estocástico
+    WILLIAMS_R_PERIOD: int = 14       # Período para Williams %R
+    
+    # Umbrales para osciladores
+    STOCHASTIC_OVERSOLD: float = 20.0    # Umbral de sobreventa
+    STOCHASTIC_OVERBOUGHT: float = 80.0  # Umbral de sobrecompra
+    WILLIAMS_R_OVERSOLD: float = -80.0   # Umbral de sobreventa Williams %R
+    WILLIAMS_R_OVERBOUGHT: float = -20.0 # Umbral de sobrecompra Williams %R
+    
+    # Períodos para otros indicadores
+    RSI_PERIOD: int = 14              # Período para RSI
+    CCI_PERIOD: int = 20              # Período para CCI
+    BOLLINGER_PERIOD: int = 20        # Período para Bandas de Bollinger
+    BOLLINGER_STD_DEV: float = 2.0    # Desviación estándar para Bollinger
+    MFI_PERIOD: int = 14              # Período para Money Flow Index
+    ATR_PERIOD: int = 14              # Período para Average True Range
+    ROC_PERIOD: int = 12              # Período para Rate of Change
+    
+    # Configuración para análisis de soporte/resistencia
+    SUPPORT_RESISTANCE_WINDOW: int = 20    # Ventana para S/R
+    SUPPORT_RESISTANCE_MIN_TOUCHES: int = 2 # Mínimo de toques para validar nivel
+    
+    # Configuración para análisis de volumen
+    VOLUME_PROFILE_BINS: int = 20     # Número de bins para perfil de volumen
+    
+    # Configuración para Fibonacci
+    FIBONACCI_LOOKBACK: int = 50      # Período de lookback para Fibonacci
+    
+    # Configuración para análisis de tendencias
+    TREND_ANALYSIS_LOOKBACK: int = 50 # Período para análisis de líneas de tendencia
+    CHART_PATTERNS_WINDOW: int = 20   # Ventana para detección de patrones
+
+
+# ============================================================================
+# CONFIGURACIÓN DE TESTING
+# ============================================================================
+
+class TestingConfig:
+    """Configuración específica para testing y desarrollo."""
+    
+    # Símbolos para testing - subset reducido para pruebas rápidas
+    TEST_SYMBOLS: List[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    
+    # Configuración de trading bot para testing
+    TEST_MIN_CONFIDENCE: float = 70.0
+    TEST_MAX_DAILY_TRADES: int = 5
+    
+    # Configuración de análisis para testing
+    TEST_ANALYSIS_INTERVAL: int = 5  # minutos
+    
+    # Balance para testing
+    TEST_PAPER_BALANCE: float = 100.0
+
+# ============================================================================
 # CONFIGURACIÓN POR DEFECTO PARA DESARROLLO
 # ============================================================================
 
 # Configuración rápida para desarrollo y testing
 DEV_CONFIG = {
     'symbols': TradingBotConfig.SYMBOLS[:3],  # Solo 3 símbolos para testing
-    'analysis_interval': 5,  # Análisis cada 5 minutos para testing
+    'analysis_interval': TestingConfig.TEST_ANALYSIS_INTERVAL,  # Análisis cada 5 minutos para testing
     'min_confidence': 60.0,  # Umbral más bajo para testing
-    'paper_balance': 100.0,  # Balance menor para testing
+    'paper_balance': TestingConfig.TEST_PAPER_BALANCE,  # Balance menor para testing
 }
 
 # ============================================================================

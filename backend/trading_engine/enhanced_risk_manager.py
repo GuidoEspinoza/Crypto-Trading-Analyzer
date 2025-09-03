@@ -38,6 +38,7 @@ class PositionSizing:
     leverage_used: float
     risk_level: RiskLevel
     reasoning: str
+    max_risk_amount: float = 0.0  # Cantidad máxima de riesgo
 
 @dataclass
 class DynamicStopLoss:
@@ -265,7 +266,8 @@ class EnhancedRiskManager:
                 position_value=round(recommended_size, 2),
                 leverage_used=1.0,  # Sin leverage por defecto
                 risk_level=risk_level,
-                reasoning=reasoning
+                reasoning=reasoning,
+                max_risk_amount=round(risk_per_trade, 2)
             )
             
         except Exception as e:
@@ -277,7 +279,8 @@ class EnhancedRiskManager:
                 position_value=self.min_position_size,
                 leverage_used=1.0,
                 risk_level=RiskLevel.LOW,
-                reasoning="Error in calculation - using minimum size"
+                reasoning="Error in calculation - using minimum size",
+                max_risk_amount=round(self.portfolio_value * 0.01, 2)
             )
     
     def _configure_dynamic_stop_loss(self, signal: EnhancedSignal) -> DynamicStopLoss:
@@ -295,15 +298,19 @@ class EnhancedRiskManager:
                     initial_stop = signal.price + (2 * atr_data)
             
             # Configurar trailing stop
-            atr_multiplier = 2.0  # Multiplicador ATR por defecto
+            atr_multiplier = self.config.ATR_DEFAULT  # Multiplicador ATR por defecto
             
             # Ajustar multiplicador según volatilidad
             if signal.market_regime == "VOLATILE":
-                atr_multiplier = 3.0  # Más espacio en mercados volátiles
+                atr_multiplier = self.config.ATR_VOLATILE  # Más espacio en mercados volátiles
             elif signal.market_regime == "RANGING":
-                atr_multiplier = 1.5  # Menos espacio en mercados laterales
+                atr_multiplier = self.config.ATR_SIDEWAYS  # Menos espacio en mercados laterales
             
-            trailing_distance = abs(signal.price - initial_stop) / signal.price * 100
+            # Evitar división por cero
+            if signal.price > 0:
+                trailing_distance = abs(signal.price - initial_stop) / signal.price * 100
+            else:
+                trailing_distance = 2.0  # Valor por defecto del 2%
             return DynamicStopLoss(
                 initial_stop=round(initial_stop, 2),
                 current_stop=round(initial_stop, 2),
@@ -323,7 +330,7 @@ class EnhancedRiskManager:
                 initial_stop=stop_price,
                 current_stop=stop_price,
                 trailing_stop=stop_price,
-                atr_multiplier=2.0,
+                atr_multiplier=self.config.ATR_DEFAULT,
                 stop_type="FIXED",
                 last_update=datetime.now(),
                 stop_loss_price=stop_price,
@@ -463,7 +470,8 @@ class EnhancedRiskManager:
                 position_value=self.min_position_size,
                 leverage_used=1.0,
                 risk_level=RiskLevel.HIGH,
-                reasoning="Error in calculation - using conservative defaults"
+                reasoning="Error in calculation - using conservative defaults",
+                max_risk_amount=round(self.portfolio_value * 0.01, 2)
             ),
             dynamic_stop_loss=DynamicStopLoss(
                 initial_stop=default_stop_price,

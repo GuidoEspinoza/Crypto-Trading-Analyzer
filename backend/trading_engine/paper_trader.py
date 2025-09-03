@@ -66,6 +66,7 @@ class PaperTrader:
         self.max_total_exposure = self.config.MAX_TOTAL_EXPOSURE
         self.min_trade_value = self.config.MIN_TRADE_VALUE
         self.max_balance_usage = self.config.MAX_BALANCE_USAGE
+        self.min_confidence_threshold = self.config.MIN_CONFIDENCE_THRESHOLD
         
         # Configurar logging
         logging.basicConfig(level=logging.INFO)
@@ -183,7 +184,7 @@ class PaperTrader:
             bool: True si es válida
         """
         # Validaciones básicas
-        if signal.confidence_score < 60.0:
+        if signal.confidence_score < self.min_confidence_threshold:
             self.logger.info(f"❌ Low confidence: {signal.confidence_score}")
             return False
         
@@ -401,6 +402,12 @@ class PaperTrader:
                 quantity=0.0,
                 entry_value=0.0
             )
+    
+    def get_portfolio_summary(self) -> Dict:
+        """
+        📊 Obtener resumen del portfolio (método público)
+        """
+        return self._get_portfolio_summary()
     
     def _get_portfolio_summary(self) -> Dict:
         """

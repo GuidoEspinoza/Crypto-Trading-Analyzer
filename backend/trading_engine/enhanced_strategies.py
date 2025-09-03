@@ -36,7 +36,8 @@ class TradingStrategy(ABC):
     def __init__(self, name: str):
         self.name = name
         self.is_active = True
-        self.min_confidence = 60.0  # Mínima confianza para ejecutar trade
+        self.config = StrategyConfig.Base()  # Configuración base centralizada
+        self.min_confidence = self.config.DEFAULT_MIN_CONFIDENCE  # Mínima confianza desde config
         self.advanced_indicators = AdvancedIndicators()
     
     @abstractmethod
@@ -73,7 +74,7 @@ class TradingStrategy(ABC):
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from advanced_indicators import AdvancedIndicators
+from .advanced_indicators import AdvancedIndicators
 
 # Importación circular evitada - se importará dinámicamente cuando sea necesario
 # from .signal_filters import AdvancedSignalFilter, FilteredSignal
@@ -326,7 +327,7 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             # === LÓGICA DE SEÑALES CON CONFLUENCIA AVANZADA ===
             confluence_score = 0
             signal_type = "HOLD"
-            confidence = 50.0
+            confidence = self.config.BASE_CONFIDENCE  # Usar configuración centralizada
             notes = []
             
             # === ANÁLISIS RSI MEJORADO ===
@@ -561,9 +562,10 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                         rsi = ta.rsi(df['close'], length=14)
                         if rsi is not None:
                             rsi_value = rsi.iloc[-1]
-                            if rsi_value <= 30:
+                            rsi_thresholds = self.rsi_config.get(tf, self.rsi_config.get("1h", {"oversold": 30, "overbought": 70}))
+                            if rsi_value <= rsi_thresholds["oversold"]:
                                 signals[tf] = "BUY"
-                            elif rsi_value >= 70:
+                            elif rsi_value >= rsi_thresholds["overbought"]:
                                 signals[tf] = "SELL"
                             else:
                                 signals[tf] = "HOLD"
@@ -591,20 +593,20 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             
             if weighted_buy > weighted_sell and buy_votes >= 2:
                 signal_type = "BUY"
-                confidence = 60 + (weighted_buy * 5)
+                confidence = self.config.ENHANCED_CONFIDENCE + (weighted_buy * 5)
             elif weighted_sell > weighted_buy and sell_votes >= 2:
                 signal_type = "SELL"
-                confidence = 60 + (weighted_sell * 5)
+                confidence = self.config.ENHANCED_CONFIDENCE + (weighted_sell * 5)
             else:
                 signal_type = "HOLD"
-                confidence = 45
+                confidence = self.config.HOLD_CONFIDENCE
             
             # Análisis de volumen y otros factores
             volume_analysis = self.analyze_volume(df_main) if not df_main.empty else {"volume_confirmation": False}
             market_regime = self.detect_market_regime(df_main) if not df_main.empty else "NORMAL"
             
             # ATR para stop loss
-            atr = ta.atr(df_main['high'], df_main['low'], df_main['close'], length=14)
+            atr = ta.atr(df_main['high'], df_main['low'], df_main['close'], length=StrategyConfig.Base.DEFAULT_ATR_PERIOD)
             current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
             
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(
@@ -862,19 +864,19 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             if total_score == 0:
                 consensus = 0.5
                 signal_type = "HOLD"
-                confidence = 45
+                confidence = self.config.HOLD_CONFIDENCE
             else:
                 consensus = max(buy_score, sell_score) / total_score
                 
                 if buy_score > sell_score and consensus >= self.min_consensus_threshold:
                     signal_type = "BUY"
-                    confidence = min(95, 50 + (buy_score * 40))
+                    confidence = min(95, self.config.BASE_CONFIDENCE + (buy_score * 40))
                 elif sell_score > buy_score and consensus >= self.min_consensus_threshold:
                     signal_type = "SELL"
-                    confidence = min(95, 50 + (sell_score * 40))
+                    confidence = min(95, self.config.BASE_CONFIDENCE + (sell_score * 40))
                 else:
                     signal_type = "HOLD"
-                    confidence = 45
+                    confidence = self.config.HOLD_CONFIDENCE
                     notes.append(f"Insufficient consensus ({consensus:.1%})")
             
             # Boost de confianza por consenso alto

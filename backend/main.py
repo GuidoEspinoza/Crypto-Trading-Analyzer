@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 # Importar nuestros indicadores avanzados
-from advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
+from trading_engine.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
 
 # Importar database
 from database import get_db, db_manager

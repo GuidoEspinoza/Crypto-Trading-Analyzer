@@ -142,8 +142,8 @@ class TradingBot:
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.analysis_thread.start()
         
-        # Programar primer análisis en 30 segundos para evitar bloqueo
-        schedule.every(30).seconds.do(self._run_first_analysis).tag('first_analysis')
+        # Programar primer análisis para evitar bloqueo
+        schedule.every(self.config.FIRST_ANALYSIS_DELAY).seconds.do(self._run_first_analysis).tag('first_analysis')
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
@@ -243,7 +243,7 @@ class TradingBot:
         
         # Obtener valor actual del portfolio
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-        portfolio_value = portfolio_summary.get("total_value", 10000)
+        portfolio_value = portfolio_summary.get("total_value", self.config.DEFAULT_PORTFOLIO_VALUE)
         
         self.logger.info(f"💼 Current portfolio value: ${portfolio_value:,.2f}")
         
@@ -259,10 +259,10 @@ class TradingBot:
                 risk_assessment = self.risk_manager.assess_trade_risk(signal, portfolio_value)
                 
                 self.logger.info(f"🛡️ Risk assessment for {signal.symbol}:")
-                self.logger.info(f"   - Risk Score: {risk_assessment.risk_score:.1f}/100")
-                self.logger.info(f"   - Position Size: {risk_assessment.position_size:.1%}")
+                self.logger.info(f"   - Risk Score: {risk_assessment.overall_risk_score:.1f}/100")
+                self.logger.info(f"   - Position Size: {risk_assessment.position_sizing.recommended_size:.2f}")
                 self.logger.info(f"   - Approved: {risk_assessment.is_approved}")
-                self.logger.info(f"   - Reason: {risk_assessment.risk_reason}")
+                self.logger.info(f"   - Risk Level: {risk_assessment.risk_level.value}")
                 
                 # Ejecutar si está aprobado
                 if risk_assessment.is_approved and self.enable_trading:
@@ -281,7 +281,8 @@ class TradingBot:
                         self.logger.warning(f"❌ Trade failed: {trade_result.message}")
                 
                 elif not risk_assessment.is_approved:
-                    self.logger.info(f"🚫 Trade rejected: {risk_assessment.risk_reason}")
+                    rejection_reason = f"Risk level: {risk_assessment.risk_level.value}"
+                    self.logger.info(f"🚫 Trade rejected: {rejection_reason}")
                     
                     # Mostrar recomendaciones
                     for rec in risk_assessment.recommendations:
@@ -390,7 +391,7 @@ class TradingBot:
             "portfolio": {
                 "current_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - 10000) / 10000) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - self.config.DEFAULT_PORTFOLIO_VALUE) / self.config.DEFAULT_PORTFOLIO_VALUE) * 100,
                 "assets": portfolio_summary.get("assets", [])
             },
             "strategies": {
@@ -408,6 +409,28 @@ class TradingBot:
             },
             "timestamp": datetime.now().isoformat()
         }
+    
+    def get_configuration(self) -> Dict:
+        """
+        📋 Obtener configuración actual del bot
+        """
+        try:
+            active_strategies = [name for name, strategy in self.strategies.items()]
+            
+            return {
+                'analysis_interval_minutes': self.analysis_interval,
+                'active_strategies': active_strategies,
+                'is_running': self.is_running,
+                'total_strategies': len(self.strategies),
+                'uptime_hours': (datetime.now() - self.start_time).total_seconds() / 3600 if self.start_time else 0,
+                'max_daily_trades': self.max_daily_trades,
+                'min_confidence_threshold': self.min_confidence_threshold,
+                'enable_trading': self.enable_trading,
+                'symbols': self.symbols
+            }
+        except Exception as e:
+            self.logger.error(f"❌ Error obteniendo configuración: {e}")
+            return {}
     
     def update_configuration(self, config: Dict):
         """
