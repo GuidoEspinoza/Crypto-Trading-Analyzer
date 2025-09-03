@@ -269,6 +269,74 @@ class LiveTradingBot:
             import traceback
             traceback.print_exc()
     
+    def _show_binance_config(self, signal, trade_result):
+        """
+        📋 Mostrar configuración para replicar en Binance
+        """
+        try:
+            # Extraer datos del trade ejecutado
+            symbol = signal.symbol
+            signal_type = signal.signal_type
+            price = trade_result.entry_price if hasattr(trade_result, 'entry_price') else signal.current_price
+            
+            # Calcular valores para Binance
+            if signal_type == "BUY":
+                # Precio ligeramente por debajo para mejor ejecución
+                binance_price = price * 0.9997  # 0.03% por debajo
+                
+                # Monto en cripto (del trade ejecutado)
+                crypto_amount = trade_result.quantity if hasattr(trade_result, 'quantity') else 0
+                
+                # Total en USDT
+                total_usdt = trade_result.entry_value if hasattr(trade_result, 'entry_value') else (crypto_amount * price)
+                
+                # Take Profit (3% arriba)
+                take_profit_price = price * 1.03
+                take_profit_pct = 3.0
+                
+                # Stop Loss (3% abajo)
+                stop_loss_price = price * 0.97
+                stop_loss_pct = 3.0
+                
+                logger.info("")
+                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info("📋 CONFIGURACIÓN PARA BINANCE SPOT - ORDEN LÍMITE")
+                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info(f"💰 PRECIO:     {binance_price:,.2f} USDT")
+                logger.info(f"🪙 MONTO:      {crypto_amount:.8f} {symbol.replace('USDT', '')}")
+                logger.info(f"💵 TOTAL:      {total_usdt:.2f} USDT")
+                logger.info("")
+                logger.info("🛡️ PROTECCIÓN (TP/SL):")
+                logger.info(f"📈 TAKE PROFIT: {take_profit_price:,.2f} USDT (+{take_profit_pct:.1f}%)")
+                logger.info(f"📉 STOP LOSS:   {stop_loss_price:,.2f} USDT (-{stop_loss_pct:.1f}%)")
+                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info("")
+                
+            elif signal_type == "SELL":
+                # Para ventas
+                binance_price = price * 1.0003  # 0.03% por arriba
+                
+                # Obtener balance actual del activo
+                from database.database import db_manager
+                portfolio = db_manager.get_portfolio_summary(is_paper=True)
+                asset_name = symbol.replace('USDT', '')
+                crypto_balance = portfolio.get('assets', {}).get(asset_name, 0)
+                
+                total_usdt = crypto_balance * price
+                
+                logger.info("")
+                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info("📋 CONFIGURACIÓN PARA BINANCE SPOT - VENTA LÍMITE")
+                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info(f"💰 PRECIO:     {binance_price:,.2f} USDT")
+                logger.info(f"🪙 MONTO:      {crypto_balance:.8f} {asset_name}")
+                logger.info(f"💵 TOTAL:      {total_usdt:.2f} USDT")
+                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info("")
+                
+        except Exception as e:
+            logger.error(f"❌ Error mostrando configuración de Binance: {e}")
+    
     def _process_signals_for_symbol(self, symbol: str, signals):
         """
         🎯 Procesar y ejecutar señales de trading para un símbolo específico
@@ -336,6 +404,9 @@ class LiveTradingBot:
                             self.session_stats["successful_trades"] += 1
                         
                         logger.info(f"✅ Trade ejecutado: {trade_result.message}")
+                        
+                        # Mostrar configuración para Binance
+                        self._show_binance_config(best_signal, trade_result)
                         
                         # Actualizar last_signals con la señal ejecutada
                         self.last_signals[symbol] = {
