@@ -207,6 +207,8 @@ def show_active_positions_summary():
                 print("   No hay posiciones activas")
                 return
             
+            total_pnl_usdt = 0.0
+            
             for trade in active_trades:
                 # Obtener precio actual
                 current_price = get_current_price(trade.symbol.replace('/', ''))
@@ -249,9 +251,18 @@ def show_active_positions_summary():
                     
                     pnl_status = "💚" if pnl_pct > 0 else "❤️" if pnl_pct < 0 else "💛"
                     print(f"      {pnl_status} PnL: {pnl_pct:+.2f}% ({pnl_usdt:+.2f} USDT)")
+                    
+                    # Sumar al total
+                    total_pnl_usdt += pnl_usdt
                 
                 print(f"      Opened: {trade.entry_time.strftime('%Y-%m-%d %H:%M')}")
                 print()  # Línea en blanco entre trades
+            
+            # Mostrar total del portafolio
+            print("-" * 30)
+            total_status = "💚" if total_pnl_usdt > 0 else "❤️" if total_pnl_usdt < 0 else "💛"
+            print(f"💼 TOTAL PORTAFOLIO: {total_status} {total_pnl_usdt:+.2f} USDT")
+            print()
             
     except Exception as e:
         print(f"❌ Error mostrando posiciones activas: {e}")
@@ -414,11 +425,32 @@ def check_monitoring_system():
         cache_size = len(getattr(position_manager, 'positions_cache', {}))
         print(f"   💾 Cache de posiciones: {cache_size} entradas")
         
-        # Verificar estadísticas
-        stats = position_manager.get_statistics()
-        print(f"   📈 TP ejecutados: {stats.get('take_profits_executed', 0)}")
-        print(f"   📉 SL ejecutados: {stats.get('stop_losses_executed', 0)}")
-        print(f"   🔄 Trailing stops activos: {stats.get('trailing_stops_activated', 0)}")
+        # Verificar estadísticas desde la base de datos
+        with db_manager.get_db_session() as session:
+            # Contar TP ejecutados
+            tp_count = session.query(Trade).filter(
+                Trade.status == "CLOSED",
+                Trade.is_paper_trade == True,
+                Trade.notes.like("%TAKE_PROFIT%")
+            ).count()
+            
+            # Contar SL ejecutados
+            sl_count = session.query(Trade).filter(
+                Trade.status == "CLOSED",
+                Trade.is_paper_trade == True,
+                Trade.notes.like("%STOP_LOSS%")
+            ).count()
+            
+            # Contar trailing stops
+            trailing_count = session.query(Trade).filter(
+                Trade.status == "CLOSED",
+                Trade.is_paper_trade == True,
+                Trade.notes.like("%TRAILING STOP%")
+            ).count()
+        
+        print(f"   📈 TP ejecutados: {tp_count}")
+        print(f"   📉 SL ejecutados: {sl_count}")
+        print(f"   🔄 Trailing stops activos: {trailing_count}")
         
     except Exception as e:
         print(f"   ❌ Error verificando sistema de monitoreo: {e}")

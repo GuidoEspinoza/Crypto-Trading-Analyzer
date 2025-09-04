@@ -85,6 +85,14 @@ class PositionMonitor:
         self.monitor_interval = self.config.LIVE_UPDATE_INTERVAL  # segundos entre checks
         self.price_cache_duration = 30  # segundos de validez del cache
         
+        # Inicializar estadísticas del monitor
+        self.stats = {
+            "tp_executed": 0,
+            "sl_executed": 0,
+            "positions_monitored": 0,
+            "monitoring_cycles": 0
+        }
+        
         logger.info("📊 Position Monitor initialized with PositionManager")
     
     def start_monitoring(self):
