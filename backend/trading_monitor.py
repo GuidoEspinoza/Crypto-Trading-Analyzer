@@ -208,12 +208,48 @@ def show_active_positions_summary():
                 return
             
             for trade in active_trades:
+                # Obtener precio actual
+                current_price = get_current_price(trade.symbol.replace('/', ''))
+                
+                # Formatear TP y SL
                 tp_str = f"${trade.take_profit:.4f}" if trade.take_profit else "N/A"
                 sl_str = f"${trade.stop_loss:.4f}" if trade.stop_loss else "N/A"
                 
                 print(f"   #{trade.id} {trade.symbol} {trade.trade_type}")
-                print(f"      Entry: ${trade.entry_price:.4f} | TP: {tp_str} | SL: {sl_str}")
+                print(f"      Entry: ${trade.entry_price:.4f} | Current: ${current_price:.4f}")
+                print(f"      TP: {tp_str} | SL: {sl_str}")
+                
+                # Calcular distancias a TP/SL
+                if current_price > 0:
+                    if trade.take_profit:
+                        if trade.trade_type == "BUY":
+                            tp_distance = ((trade.take_profit - current_price) / current_price) * 100
+                            tp_status = "📈" if tp_distance > 0 else "✅"
+                        else:
+                            tp_distance = ((current_price - trade.take_profit) / current_price) * 100
+                            tp_status = "📈" if tp_distance > 0 else "✅"
+                        print(f"      {tp_status} TP Distance: {abs(tp_distance):.2f}%")
+                    
+                    if trade.stop_loss:
+                        if trade.trade_type == "BUY":
+                            sl_distance = ((current_price - trade.stop_loss) / current_price) * 100
+                            sl_status = "🛡️" if sl_distance > 0 else "⚠️"
+                        else:
+                            sl_distance = ((trade.stop_loss - current_price) / current_price) * 100
+                            sl_status = "🛡️" if sl_distance > 0 else "⚠️"
+                        print(f"      {sl_status} SL Distance: {abs(sl_distance):.2f}%")
+                    
+                    # Calcular PnL actual
+                    if trade.trade_type == "BUY":
+                        pnl_pct = ((current_price - trade.entry_price) / trade.entry_price) * 100
+                    else:
+                        pnl_pct = ((trade.entry_price - current_price) / trade.entry_price) * 100
+                    
+                    pnl_status = "💚" if pnl_pct > 0 else "❤️" if pnl_pct < 0 else "💛"
+                    print(f"      {pnl_status} PnL: {pnl_pct:+.2f}%")
+                
                 print(f"      Opened: {trade.entry_time.strftime('%Y-%m-%d %H:%M')}")
+                print()  # Línea en blanco entre trades
             
     except Exception as e:
         print(f"❌ Error mostrando posiciones activas: {e}")
