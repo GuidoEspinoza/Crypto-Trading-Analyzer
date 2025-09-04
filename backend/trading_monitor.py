@@ -242,11 +242,13 @@ def show_active_positions_summary():
                     # Calcular PnL actual
                     if trade.trade_type == "BUY":
                         pnl_pct = ((current_price - trade.entry_price) / trade.entry_price) * 100
+                        pnl_usdt = (current_price - trade.entry_price) * trade.quantity
                     else:
                         pnl_pct = ((trade.entry_price - current_price) / trade.entry_price) * 100
+                        pnl_usdt = (trade.entry_price - current_price) * trade.quantity
                     
                     pnl_status = "💚" if pnl_pct > 0 else "❤️" if pnl_pct < 0 else "💛"
-                    print(f"      {pnl_status} PnL: {pnl_pct:+.2f}%")
+                    print(f"      {pnl_status} PnL: {pnl_pct:+.2f}% ({pnl_usdt:+.2f} USDT)")
                 
                 print(f"      Opened: {trade.entry_time.strftime('%Y-%m-%d %H:%M')}")
                 print()  # Línea en blanco entre trades
