@@ -260,7 +260,10 @@ class PaperTrader:
                     is_paper_trade=True,
                     timeframe="1h",  # Default
                     confidence_score=signal.confidence_score,
-                    notes=signal.notes
+                    notes=signal.notes,
+                    # Aplicar stop_loss y take_profit de la señal si están disponibles
+                    stop_loss=getattr(signal, 'stop_loss_price', None) if getattr(signal, 'stop_loss_price', 0) > 0 else None,
+                    take_profit=getattr(signal, 'take_profit_price', None) if getattr(signal, 'take_profit_price', 0) > 0 else None
                 )
                 
                 session.add(new_trade)

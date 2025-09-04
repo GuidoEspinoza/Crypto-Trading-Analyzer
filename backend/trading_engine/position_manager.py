@@ -39,8 +39,8 @@ class PositionInfo:
     current_value: float
     unrealized_pnl: float
     unrealized_pnl_percentage: float
-    stop_loss: float
-    take_profit: float
+    stop_loss: Optional[float]  # Puede ser None
+    take_profit: Optional[float]  # Puede ser None
     trailing_stop: Optional[float]
     entry_time: datetime
     strategy_name: str
@@ -95,9 +95,9 @@ class PositionManager:
         self.last_cache_update = 0
         self.cache_duration = 30  # segundos
         
-        # Configuración de trailing stops
-        self.trailing_stop_activation = 0.015  # 1.5% de ganancia para activar
-        self.trailing_stop_distance = 0.01     # 1% de distancia del trailing
+        # Configuración de trailing stops desde RiskManagerConfig
+        self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
+        self.trailing_stop_distance = 0.01     # 1% de distancia del trailing (puede ser configurado después)
         
         # Estadísticas
         self.stats = {
@@ -302,25 +302,25 @@ class PositionManager:
             current_price = position.current_price
             
             if position.trade_type == "BUY":
-                # Verificar Take Profit
-                if current_price >= position.take_profit:
+                # Verificar Take Profit (solo si está configurado)
+                if position.take_profit is not None and current_price >= position.take_profit:
                     return "TAKE_PROFIT"
                 
-                # Verificar Stop Loss
-                if current_price <= position.stop_loss:
+                # Verificar Stop Loss (solo si está configurado)
+                if position.stop_loss is not None and current_price <= position.stop_loss:
                     return "STOP_LOSS"
                 
                 # Verificar Trailing Stop
-                if position.trailing_stop and current_price <= position.trailing_stop:
+                if position.trailing_stop is not None and current_price <= position.trailing_stop:
                     return "TRAILING_STOP"
                     
             else:  # SELL
-                # Verificar Take Profit
-                if current_price <= position.take_profit:
+                # Verificar Take Profit (solo si está configurado)
+                if position.take_profit is not None and current_price <= position.take_profit:
                     return "TAKE_PROFIT"
                 
-                # Verificar Stop Loss
-                if current_price >= position.stop_loss:
+                # Verificar Stop Loss (solo si está configurado)
+                if position.stop_loss is not None and current_price >= position.stop_loss:
                     return "STOP_LOSS"
             
             return None

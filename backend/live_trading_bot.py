@@ -468,6 +468,15 @@ class LiveTradingBot:
         logger.info("⚠️ Modo: Paper Trading (Sin dinero real)")
         logger.info("Presiona Ctrl+C para detener")
         
+        # Iniciar el TradingBot interno y su position_monitor
+        try:
+            logger.info("🔧 Iniciando TradingBot interno y position_monitor...")
+            self.trading_bot.start()  # Esto inicia el position_monitor automáticamente
+            logger.info("✅ TradingBot interno y position_monitor iniciados correctamente")
+        except Exception as e:
+            logger.error(f"❌ Error iniciando TradingBot interno: {e}")
+            return
+        
         # Contador de ciclos para debug
         cycle_count = 0
         
@@ -495,6 +504,15 @@ class LiveTradingBot:
             traceback.print_exc()
         finally:
             self.running = False
+            
+            # Detener el TradingBot interno y su position_monitor
+            try:
+                logger.info("🛑 Deteniendo TradingBot interno y position_monitor...")
+                self.trading_bot.stop()
+                logger.info("✅ TradingBot interno detenido correctamente")
+            except Exception as e:
+                logger.error(f"❌ Error deteniendo TradingBot interno: {e}")
+            
             # Mostrar resumen final
             self.show_final_summary()
     

@@ -36,8 +36,8 @@ class PositionStatus:
     entry_price: float
     current_price: float
     quantity: float
-    stop_loss: float
-    take_profit: float
+    stop_loss: Optional[float]  # Puede ser None
+    take_profit: Optional[float]  # Puede ser None
     trailing_stop: Optional[float]
     unrealized_pnl: float
     unrealized_pnl_percentage: float
@@ -81,8 +81,8 @@ class PositionMonitor:
         self.price_cache = {}
         self.last_price_update = {}
         
-        # Configuración de monitoreo
-        self.monitor_interval = 10  # segundos entre checks
+        # Configuración de monitoreo desde TradingBotConfig
+        self.monitor_interval = self.config.LIVE_UPDATE_INTERVAL  # segundos entre checks
         self.price_cache_duration = 30  # segundos de validez del cache
         
         logger.info("📊 Position Monitor initialized with PositionManager")
@@ -174,11 +174,10 @@ class PositionMonitor:
         """📊 Obtener posiciones abiertas de la base de datos"""
         try:
             with db_manager.get_db_session() as session:
+                # Obtener todas las posiciones abiertas, incluso sin SL/TP
                 open_trades = session.query(Trade).filter(
                     Trade.status == "OPEN",
-                    Trade.is_paper_trade == True,
-                    Trade.stop_loss.isnot(None),  # Solo trades con SL configurado
-                    Trade.take_profit.isnot(None)  # Solo trades con TP configurado
+                    Trade.is_paper_trade == True
                 ).all()
                 
                 return [
@@ -247,10 +246,14 @@ class PositionMonitor:
                 if position.trade_type == "SELL":
                     pnl_pct = -pnl_pct
                 
+                # Formatear SL y TP manejando valores None
+                sl_str = f"${position.stop_loss:.4f}" if position.stop_loss is not None else "N/A"
+                tp_str = f"${position.take_profit:.4f}" if position.take_profit is not None else "N/A"
+                
                 logger.debug(
                     f"📊 Position {trade_id} ({symbol}): ${current_price:.4f} "
                     f"| PnL: {pnl_pct:.2f}% "
-                    f"| SL: ${position.stop_loss:.4f} | TP: ${position.take_profit:.4f}"
+                    f"| SL: {sl_str} | TP: {tp_str}"
                 )
     
     def _get_current_price(self, symbol: str) -> Optional[float]:
@@ -278,8 +281,8 @@ class PositionMonitor:
         """📊 Crear estado actual de la posición"""
         entry_price = position["entry_price"]
         quantity = position["quantity"]
-        stop_loss = position["stop_loss"]
-        take_profit = position["take_profit"]
+        stop_loss = position.get("stop_loss")  # Puede ser None
+        take_profit = position.get("take_profit")  # Puede ser None
         trade_type = position["trade_type"]
         
         # Calcular PnL
@@ -291,10 +294,10 @@ class PositionMonitor:
             should_close = False
             close_reason = ""
             
-            if current_price <= stop_loss:
+            if stop_loss is not None and current_price <= stop_loss:
                 should_close = True
                 close_reason = "STOP_LOSS"
-            elif current_price >= take_profit:
+            elif take_profit is not None and current_price >= take_profit:
                 should_close = True
                 close_reason = "TAKE_PROFIT"
                 
@@ -306,10 +309,10 @@ class PositionMonitor:
             should_close = False
             close_reason = ""
             
-            if current_price >= stop_loss:
+            if stop_loss is not None and current_price >= stop_loss:
                 should_close = True
                 close_reason = "STOP_LOSS"
-            elif current_price <= take_profit:
+            elif take_profit is not None and current_price <= take_profit:
                 should_close = True
                 close_reason = "TAKE_PROFIT"
         
