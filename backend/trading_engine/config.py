@@ -23,52 +23,56 @@ GLOBAL_INITIAL_BALANCE = 500.0
 class TradingBotConfig:
     """Configuración principal del bot de trading."""
     
-    # Lista de símbolos a analizar - criptomonedas de alta volatilidad y liquidez para ganancias rápidas
+    # Lista de símbolos para analizar - Optimizada para trading agresivo
+    # Selección basada en alta liquidez, volatilidad y volumen de trading
     SYMBOLS: List[str] = [
+        # Pares principales (máxima liquidez)
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT",
-        "ADAUSDT", "DOTUSDT", "LINKUSDT", "MATICUSDT", "ATOMUSDT",
-        "NEARUSDT", "FTMUSDT", "SANDUSDT", "MANAUSDT", "GALAUSDT"
+        # Altcoins de alta capitalización y volumen
+        "ADAUSDT", "XRPUSDT", "LINKUSDT", "DOGEUSDT", "TRXUSDT",
+        # Tokens con alta volatilidad y buen volumen
+        "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "SUIUSDT"
     ]
 
-    # Símbolos a usar en el bot de trading en vivo (agregar [:X] para limitar cantidad)
+    # Símbolos para el bot en vivo - Misma lista optimizada
     SYMBOLS_LIVE_BOT = SYMBOLS
     
     # Intervalo de análisis en minutos - tiempo entre análisis automáticos (rápido: 5 - agresivo: 15 - óptimo: 30)
-    ANALYSIS_INTERVAL: int = 5 
+    ANALYSIS_INTERVAL: int = 15 
     
     # Umbral mínimo de confianza para ejecutar trades en % (rápido: 60.0 - agresivo: 65.0 - óptimo: 70.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 60.0
+    MIN_CONFIDENCE_THRESHOLD: float = 65.0
     
     # Número máximo de trades por día - control de sobreoperación (rápido: 20 - agresivo: 12 - óptimo: 8)
-    MAX_DAILY_TRADES: int = 20
+    MAX_DAILY_TRADES: int = 12
     
     # Límite de posiciones concurrentes - diversificación controlada (rápido: 8 - agresivo: 6 - óptimo: 4)
-    MAX_CONCURRENT_POSITIONS: int = 8
+    MAX_CONCURRENT_POSITIONS: int = 6
     
     # Timeframes para análisis profesional - marcos temporales (rápido: ["1m", "5m", "15m"] - agresivo: ["15m", "30m", "1h"] - óptimo: ["1h", "4h", "1d"])
-    PROFESSIONAL_TIMEFRAMES: List[str] = ["1m", "5m", "15m"]  
+    PROFESSIONAL_TIMEFRAMES: List[str] = ["15m", "30m", "1h"]  # Estrategia agresiva
     
     # Timeframe principal para análisis - marco temporal base (rápido: "1m" - agresivo: "15m" - óptimo: "1h")
-    PRIMARY_TIMEFRAME: str = "1m"  
+    PRIMARY_TIMEFRAME: str = "15m"  # Estrategia agresiva
     
     # Valor por defecto del portfolio para cálculos cuando no hay datos
     DEFAULT_PORTFOLIO_VALUE: float = GLOBAL_INITIAL_BALANCE
     
     # Timeframe para confirmación - validación de señales (rápido: "5m" - agresivo: "30m" - óptimo: "4h")
-    CONFIRMATION_TIMEFRAME: str = "5m"  
+    CONFIRMATION_TIMEFRAME: str = "30m"  # Estrategia agresiva
     
     # Timeframe para análisis de tendencia - dirección general (rápido: "15m" - agresivo: "1h" - óptimo: "1d")
-    TREND_TIMEFRAME: str = "15m"  
+    TREND_TIMEFRAME: str = "1h"  # Estrategia agresiva  
     
     # Descripción del bot - identificación del perfil (óptimo: "Profesional")
     BOT_DESCRIPTION: str = "Profesional"
     
     # Configuración específica para Live Trading Bot
     # Intervalo de actualización en segundos para live bot (rápido: 10 - agresivo: 20 - óptimo: 30)
-    LIVE_UPDATE_INTERVAL: int = 10  
+    LIVE_UPDATE_INTERVAL: int = 20  
     
     # Umbral mínimo de confianza para live trading (rápido: 60.0 - agresivo: 65.0 - óptimo: 70.0)
-    LIVE_MIN_CONFIDENCE_THRESHOLD: float = 60.0  
+    LIVE_MIN_CONFIDENCE_THRESHOLD: float = 65.0  
     
     # Delay en segundos para el primer análisis al iniciar (rápido: 15 - agresivo: 30 - óptimo: 60)
     FIRST_ANALYSIS_DELAY: int = 15
@@ -85,22 +89,22 @@ class PaperTraderConfig:
     INITIAL_BALANCE: float = GLOBAL_INITIAL_BALANCE
     
     # Tamaño máximo de posición como % del portfolio (rápido: 10.0 - agresivo: 8.0 - óptimo: 6.0)
-    MAX_POSITION_SIZE: float = 10.0
+    MAX_POSITION_SIZE: float = 8.0  # Estrategia agresiva
     
     # Exposición total máxima del portfolio en % (rápido: 85.0 - agresivo: 75.0 - óptimo: 60.0)
-    MAX_TOTAL_EXPOSURE: float = 85.0
+    MAX_TOTAL_EXPOSURE: float = 75.0  # Estrategia agresiva
     
     # Valor mínimo por trade en USDT (rápido: 15.0 - agresivo: 10.0 - óptimo: 5.0)
-    MIN_TRADE_VALUE: float = 15.0
+    MIN_TRADE_VALUE: float = 10.0  # Estrategia agresiva
     
     # Umbral mínimo de confianza para ejecutar trades (rápido: 58.0 - agresivo: 62.0 - óptimo: 60.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 58.0
+    MIN_CONFIDENCE_THRESHOLD: float = 62.0  # Estrategia agresiva
     
     # Slippage máximo permitido en % (rápido: 0.12 - agresivo: 0.08 - óptimo: 0.05)
-    MAX_SLIPPAGE: float = 0.12  
+    MAX_SLIPPAGE: float = 0.08  # Estrategia agresiva  
     
     # Liquidez mínima requerida en % (rápido: 3.0 - agresivo: 5.0 - óptimo: 8.0)
-    MIN_LIQUIDITY: float = 3.0  
+    MIN_LIQUIDITY: float = 5.0  # Estrategia agresiva  
     
     # Máximo % del balance disponible para trading (reserva para fees) (óptimo: 95.0)
     MAX_BALANCE_USAGE: float = 95.0
@@ -114,45 +118,45 @@ class RiskManagerConfig:
     """Configuración del gestor de riesgo avanzado."""
     
     # Riesgo máximo por trade como % del portfolio (rápido: 2.0 - agresivo: 1.5 - óptimo: 1.0)
-    MAX_RISK_PER_TRADE: float = 2.0
+    MAX_RISK_PER_TRADE: float = 1.5  # Estrategia agresiva
     
     # Riesgo máximo diario como % del portfolio (rápido: 6.0 - agresivo: 4.5 - óptimo: 3.0)
-    MAX_DAILY_RISK: float = 6.0
+    MAX_DAILY_RISK: float = 4.5  # Estrategia agresiva
     
     # Umbral de drawdown máximo antes de parar trading en % (rápido: 12.0 - agresivo: 10.0 - óptimo: 8.0)
-    MAX_DRAWDOWN_THRESHOLD: float = 12.0
+    MAX_DRAWDOWN_THRESHOLD: float = 10.0  # Estrategia agresiva
     
     # Umbral de correlación máxima entre posiciones (rápido: 0.8 - agresivo: 0.6 - óptimo: 0.4)
-    CORRELATION_THRESHOLD: float = 0.8
+    CORRELATION_THRESHOLD: float = 0.6  # Estrategia agresiva
     
     # Tamaño mínimo de posición como % del portfolio (rápido: 0.008 - agresivo: 0.005 - óptimo: 0.003)
-    MIN_POSITION_SIZE: float = 0.008
+    MIN_POSITION_SIZE: float = 0.005  # Estrategia agresiva
     
     # Tamaño máximo de posición como % del portfolio (rápido: 10.0 - agresivo: 8.0 - óptimo: 6.0)
-    MAX_POSITION_SIZE: float = 10.0
+    MAX_POSITION_SIZE: float = 8.0  # Estrategia agresiva
     
     # Fracción Kelly conservadora para sizing (rápido: 0.25 - agresivo: 0.15 - óptimo: 0.10)
-    KELLY_FRACTION: float = 0.25
+    KELLY_FRACTION: float = 0.15  # Estrategia agresiva
     
     # Factor de ajuste por volatilidad del mercado (rápido: 0.6 - agresivo: 0.4 - óptimo: 0.2)
-    VOLATILITY_ADJUSTMENT: float = 0.6
+    VOLATILITY_ADJUSTMENT: float = 0.4  # Estrategia agresiva
     
     # Multiplicador ATR mínimo para stop-loss dinámico (rápido: 1.5 - agresivo: 2.5 - óptimo: 3.0)
-    ATR_MULTIPLIER_MIN: float = 1.5
+    ATR_MULTIPLIER_MIN: float = 2.5  # Estrategia agresiva
     
     # Multiplicador ATR máximo para stop-loss dinámico (rápido: 3.0 - agresivo: 4.0 - óptimo: 5.0)
-    ATR_MULTIPLIER_MAX: float = 3.0
+    ATR_MULTIPLIER_MAX: float = 4.0  # Estrategia agresiva
     
     # Multiplicadores ATR por defecto para diferentes condiciones de mercado
-    ATR_DEFAULT: float = 2.0  # Multiplicador por defecto
-    ATR_VOLATILE: float = 3.0  # Para mercados volátiles
-    ATR_SIDEWAYS: float = 1.5  # Para mercados laterales
+    ATR_DEFAULT: float = 3.0  # Multiplicador por defecto - agresivo
+    ATR_VOLATILE: float = 4.0  # Para mercados volátiles - agresivo
+    ATR_SIDEWAYS: float = 2.5  # Para mercados laterales - agresivo
     
     # Umbral de ganancia para activar trailing stop en % (rápido: 1.0 - agresivo: 1.5 - óptimo: 2.0)
-    TRAILING_STOP_ACTIVATION: float = 1.0
+    TRAILING_STOP_ACTIVATION: float = 1.5  # Estrategia agresiva
     
     # Umbral para mover stop-loss a breakeven en % (rápido: 0.8 - agresivo: 1.0 - óptimo: 1.2)
-    BREAKEVEN_THRESHOLD: float = 0.8
+    BREAKEVEN_THRESHOLD: float = 1.0  # Estrategia agresiva
     
     # Valor inicial del portfolio para cálculos de riesgo en USDT - Se alimenta del PaperTrader para consistencia
     INITIAL_PORTFOLIO_VALUE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
@@ -170,7 +174,7 @@ class StrategyConfig:
         """Parámetros base para todas las estrategias."""
         
         # Confianza mínima por defecto para estrategias base (rápido: 55.0 - agresivo: 60.0 - óptimo: 65.0)
-        DEFAULT_MIN_CONFIDENCE: float = 55.0
+        DEFAULT_MIN_CONFIDENCE: float = 60.0  # Estrategia agresiva
         
         # Valores de confianza por defecto para diferentes señales
         HOLD_CONFIDENCE: float = 45.0
@@ -178,7 +182,7 @@ class StrategyConfig:
         ENHANCED_CONFIDENCE: float = 60.0
         
         # Período ATR por defecto para cálculos de stop-loss (rápido: 10 - agresivo: 14 - óptimo: 20)
-        DEFAULT_ATR_PERIOD: int = 10
+        DEFAULT_ATR_PERIOD: int = 14  # Estrategia agresiva
     
     # ---- Estrategia RSI Profesional ----
     class ProfessionalRSI:
@@ -191,31 +195,31 @@ class StrategyConfig:
         HOLD_CONFIDENCE: float = 45.0
         
         # Confianza mínima requerida en % (rápido: 65.0 - agresivo: 68.0 - óptimo: 72.0)
-        MIN_CONFIDENCE: float = 65.0
+        MIN_CONFIDENCE: float = 68.0  # Estrategia agresiva
         
         # Nivel de sobreventa del RSI - señal de compra (rápido: 35 - agresivo: 30 - óptimo: 25)
-        RSI_OVERSOLD: int = 35
+        RSI_OVERSOLD: int = 30  # Estrategia agresiva
         
         # Nivel de sobrecompra del RSI - señal de venta (rápido: 65 - agresivo: 70 - óptimo: 75)
-        RSI_OVERBOUGHT: int = 65
+        RSI_OVERBOUGHT: int = 70  # Estrategia agresiva
         
         # Período del RSI - ventana de cálculo (rápido: 10 - agresivo: 14 - óptimo: 21)
-        RSI_PERIOD: int = 10
+        RSI_PERIOD: int = 14  # Estrategia agresiva
         
         # Ratio mínimo de volumen vs promedio (rápido: 1.2 - agresivo: 1.5 - óptimo: 1.8)
-        MIN_VOLUME_RATIO: float = 1.2
+        MIN_VOLUME_RATIO: float = 1.5  # Estrategia agresiva
         
         # Confluencia mínima de indicadores requerida (rápido: 2 - agresivo: 3 - óptimo: 4)
-        MIN_CONFLUENCE: int = 2
+        MIN_CONFLUENCE: int = 3  # Estrategia agresiva
         
         # Umbral de fuerza de tendencia ADX (rápido: 25 - agresivo: 30 - óptimo: 35)
-        TREND_STRENGTH_THRESHOLD: float = 25
+        TREND_STRENGTH_THRESHOLD: float = 30  # Estrategia agresiva
         
         # Ratio ATR mínimo para volatilidad (rápido: 0.8 - agresivo: 1.0 - óptimo: 1.2)
-        MIN_ATR_RATIO: float = 0.8
+        MIN_ATR_RATIO: float = 1.0  # Estrategia agresiva
         
         # Spread máximo permitido en % (rápido: 0.0025 - agresivo: 0.0015 - óptimo: 0.0010)
-        MAX_SPREAD_THRESHOLD: float = 0.0025
+        MAX_SPREAD_THRESHOLD: float = 0.0015  # Estrategia agresiva
     
     # ---- Estrategia Multi-Timeframe ----
     class MultiTimeframe:
@@ -228,43 +232,43 @@ class StrategyConfig:
         HOLD_CONFIDENCE: float = 45.0
         
         # Confianza mejorada para señales (rápido: 60.0 - agresivo: 65.0 - óptimo: 70.0)
-        ENHANCED_CONFIDENCE: float = 60.0
+        ENHANCED_CONFIDENCE: float = 65.0  # Estrategia agresiva
         
         # Confianza mínima requerida en % (rápido: 62.0 - agresivo: 65.0 - óptimo: 70.0)
-        MIN_CONFIDENCE: float = 62.0
+        MIN_CONFIDENCE: float = 65.0  # Estrategia agresiva
         
         # Timeframes utilizados para análisis (rápido: ["1m", "5m", "15m"] - agresivo: ["15m", "30m", "1h"] - óptimo: ["1h", "4h", "1d"])
-        TIMEFRAMES: List[str] = ["1m", "5m", "15m"]
+        TIMEFRAMES: List[str] = ["15m", "30m", "1h"]  # Estrategia agresiva
         
-        # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra (rápido)
+        # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra (agresivo)
         RSI_CONFIG: Dict[str, Dict[str, int]] = {
-            "1m": {"oversold": 40, "overbought": 60},   # Timeframe ultra-corto - muy sensible
-            "5m": {"oversold": 35, "overbought": 65},   # Timeframe muy corto - sensible
-            "15m": {"oversold": 30, "overbought": 70}   # Timeframe corto - rápido
+            "15m": {"oversold": 30, "overbought": 70},   # Timeframe corto - agresivo
+            "30m": {"oversold": 30, "overbought": 70},   # Timeframe medio - agresivo
+            "1h": {"oversold": 30, "overbought": 70}     # Timeframe largo - agresivo
         }
         
 
         
-        # Pesos por timeframe - balance entre ultra-corto plazo (rápido: suma = 1.0)
+        # Pesos por timeframe - balance entre corto y medio plazo (agresivo: suma = 1.0)
         TIMEFRAME_WEIGHTS: Dict[str, float] = {
-            "1m": 0.4,   # Peso principal para oportunidades inmediatas
-            "5m": 0.4,   # Peso principal para decisiones ultra-rápidas
-            "15m": 0.2   # Peso menor para confirmación rápida
+            "15m": 0.5,   # Peso principal para oportunidades a corto plazo
+            "30m": 0.3,   # Peso medio para confirmación
+            "1h": 0.2     # Peso menor para tendencia general
         }
         
 
         
         # Consenso mínimo de timeframes requerido (rápido: 1 - agresivo: 2 - óptimo: 3)
-        MIN_CONSENSUS: int = 1
+        MIN_CONSENSUS: int = 2  # Estrategia agresiva
         
         # Requiere alineación de tendencias entre timeframes (rápido: False - agresivo: True - óptimo: True)
-        REQUIRE_TREND_ALIGNMENT: bool = False
+        REQUIRE_TREND_ALIGNMENT: bool = True  # Estrategia agresiva
         
         # Consenso mínimo de timeframes para señal válida (rápido: 1 - agresivo: 2 - óptimo: 3)
-        MIN_TIMEFRAME_CONSENSUS: int = 1
+        MIN_TIMEFRAME_CONSENSUS: int = 2  # Estrategia agresiva
         
         # Requiere alineación de tendencias entre timeframes (rápido: False - agresivo: True - óptimo: True)
-        TREND_ALIGNMENT_REQUIRED: bool = False
+        TREND_ALIGNMENT_REQUIRED: bool = True  # Estrategia agresiva
     
     # ---- Estrategia Ensemble ----
     class Ensemble:
@@ -283,10 +287,10 @@ class StrategyConfig:
         }
         
         # Umbral mínimo de consenso entre estrategias (rápido: 0.55 - agresivo: 0.6 - óptimo: 0.7)
-        MIN_CONSENSUS_THRESHOLD: float = 0.55
+        MIN_CONSENSUS_THRESHOLD: float = 0.6  # Estrategia agresiva
         
         # Factor de boost de confianza cuando hay consenso (rápido: 1.25 - agresivo: 1.2 - óptimo: 1.15)
-        CONFIDENCE_BOOST_FACTOR: float = 1.25
+        CONFIDENCE_BOOST_FACTOR: float = 1.2  # Estrategia agresiva
 
 
 # ============================================================================
@@ -470,32 +474,56 @@ DEV_CONFIG = {
 """
 CONFIGURACIÓN ACTUAL: SISTEMA COMPLETO DE TRES PERFILES
 
-🚀 CONFIGURACIÓN RÁPIDA (ULTRA-CORTA):
-- Timeframes: 1m, 5m, 15m (máxima velocidad)
-- Análisis cada 5 minutos, actualización cada 10 segundos
-- Riesgo por trade: 2.0%, riesgo diario: 6.0%
-- 20 trades diarios máximo, 8 posiciones concurrentes
-- RSI: 35/65 (muy sensible), confianza mínima: 60%
-- Trailing stop desde 1.0% ganancia
-- ROI objetivo: 20-35% mensual (alto riesgo/alta recompensa)
+# ===== PERFILES DE TRADING =====
+# Para cambiar entre perfiles, comentar/descomentar las líneas correspondientes:
 
-⚡ CONFIGURACIÓN AGRESIVA (BALANCEADA):
-- Timeframes: 15m, 30m, 1h (balance velocidad/confirmación)
-- Análisis cada 15 minutos, actualización cada 20 segundos
-- Riesgo por trade: 1.5%, riesgo diario: 4.5%
-- 12 trades diarios máximo, 6 posiciones concurrentes
-- RSI: 30/70 (moderado), confianza mínima: 65%
-- Trailing stop desde 1.5% ganancia
-- ROI objetivo: 15-25% mensual (riesgo moderado)
+# PERFIL RÁPIDA (Scalping/Day Trading):
+# - Timeframes: ["1m", "5m", "15m"]
+# - Análisis cada: 5 minutos
+# - Riesgo por trade: 2.0%
+# - Riesgo diario: 6.0%
+# - Trades diarios: 20
+# - Posiciones concurrentes: 8
+# - RSI: 35/65 (muy sensible)
+# - Confianza mínima: 60%
+# - Trailing stop: 1.0%
+# - Liquidez mínima: 3.0%
+# - Tamaño posición máx: 10.0%
+# - Consenso timeframes: 1
+# - Alineación tendencias: No
+# - ROI objetivo: 20-35% mensual (alto riesgo/alta recompensa)
 
-🛡️ CONFIGURACIÓN ÓPTIMA (CONSERVADORA):
-- Timeframes: 1h, 4h, 1d (máxima confirmación)
-- Análisis cada 30 minutos, actualización cada 30 segundos
-- Riesgo por trade: 1.0%, riesgo diario: 3.0%
-- 8 trades diarios máximo, 4 posiciones concurrentes
-- RSI: 25/75 (conservador), confianza mínima: 70%
-- Trailing stop desde 2.0% ganancia
-- ROI objetivo: 8-15% mensual (bajo riesgo/preservación capital)
+# PERFIL AGRESIVA (Swing Trading) - CONFIGURACIÓN ACTUAL:
+# - Timeframes: ["15m", "30m", "1h"]
+# - Análisis cada: 15 minutos
+# - Riesgo por trade: 1.5%
+# - Riesgo diario: 4.5%
+# - Trades diarios: 12
+# - Posiciones concurrentes: 6
+# - RSI: 30/70 (balanceado)
+# - Confianza mínima: 65%
+# - Trailing stop: 1.5%
+# - Liquidez mínima: 5.0%
+# - Tamaño posición máx: 8.0%
+# - Consenso timeframes: 2
+# - Alineación tendencias: Sí
+# - ROI objetivo: 15-25% mensual (riesgo moderado)
+
+# PERFIL ÓPTIMA (Position Trading):
+# - Timeframes: ["1h", "4h", "1d"]
+# - Análisis cada: 30 minutos
+# - Riesgo por trade: 1.0%
+# - Riesgo diario: 3.0%
+# - Trades diarios: 8
+# - Posiciones concurrentes: 4
+# - RSI: 25/75 (conservador)
+# - Confianza mínima: 70%
+# - Trailing stop: 2.0%
+# - Liquidez mínima: 8.0%
+# - Tamaño posición máx: 6.0%
+# - Consenso timeframes: 3
+# - Alineación tendencias: Sí
+# - ROI objetivo: 8-15% mensual (bajo riesgo/preservación capital)
 
 📋 PARA CAMBIAR CONFIGURACIÓN:
 Simplemente comenta/descomenta las líneas correspondientes en cada parámetro.
