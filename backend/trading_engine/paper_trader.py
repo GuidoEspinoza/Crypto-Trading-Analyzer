@@ -62,11 +62,11 @@ class PaperTrader:
         # Configuración del paper trader desde archivo centralizado
         self.config = PaperTraderConfig()
         self.initial_balance = initial_balance if initial_balance is not None else self.config.INITIAL_BALANCE
-        self.max_position_size = self.config.MAX_POSITION_SIZE
-        self.max_total_exposure = self.config.MAX_TOTAL_EXPOSURE
-        self.min_trade_value = self.config.MIN_TRADE_VALUE
+        self.max_position_size = self.config.get_max_position_size()
+        self.max_total_exposure = self.config.get_max_total_exposure()
+        self.min_trade_value = self.config.get_min_trade_value()
         self.max_balance_usage = self.config.MAX_BALANCE_USAGE
-        self.min_confidence_threshold = self.config.MIN_CONFIDENCE_THRESHOLD
+        self.min_confidence_threshold = self.config.get_min_confidence_threshold()
         
         # Configurar logging
         logging.basicConfig(level=logging.INFO)

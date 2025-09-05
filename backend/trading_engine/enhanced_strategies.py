@@ -37,7 +37,7 @@ class TradingStrategy(ABC):
         self.name = name
         self.is_active = True
         self.config = StrategyConfig.Base()  # Configuración base centralizada
-        self.min_confidence = self.config.DEFAULT_MIN_CONFIDENCE  # Mínima confianza desde config
+        self.min_confidence = StrategyConfig.Base.DEFAULT_MIN_CONFIDENCE  # Mínima confianza desde config
         self.advanced_indicators = AdvancedIndicators()
     
     @abstractmethod
@@ -681,7 +681,7 @@ class EnsembleStrategy(EnhancedTradingStrategy):
         # Pesos para cada estrategia (basado en performance histórica)
         self.strategy_weights = self.config.STRATEGY_WEIGHTS
         
-        # Configuración de ensemble
+        # Configuración de consenso
         self.min_consensus_threshold = self.config.MIN_CONSENSUS_THRESHOLD
         self.confidence_boost_factor = self.config.CONFIDENCE_BOOST_FACTOR
         
@@ -881,7 +881,7 @@ class EnsembleStrategy(EnhancedTradingStrategy):
                     confidence = min(95, self.config.BASE_CONFIDENCE + (sell_score * 40))
                 else:
                     signal_type = "HOLD"
-                    confidence = self.config.HOLD_CONFIDENCE
+                    confidence = StrategyConfig.Base.HOLD_CONFIDENCE
                     notes.append(f"Insufficient consensus ({consensus:.1%})")
             
             # Boost de confianza por consenso alto

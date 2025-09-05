@@ -82,7 +82,7 @@ class PositionMonitor:
         self.last_price_update = {}
         
         # Configuración de monitoreo desde TradingBotConfig
-        self.monitor_interval = self.config.LIVE_UPDATE_INTERVAL  # segundos entre checks
+        self.monitor_interval = self.config.get_live_update_interval()  # segundos entre checks
         self.price_cache_duration = 30  # segundos de validez del cache
         
         # Inicializar estadísticas del monitor

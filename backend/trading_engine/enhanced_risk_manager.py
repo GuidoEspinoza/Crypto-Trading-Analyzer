@@ -74,21 +74,21 @@ class EnhancedRiskManager:
     def __init__(self):
         # Configuración de riesgo desde archivo centralizado
         self.config = RiskManagerConfig()
-        self.max_portfolio_risk = self.config.MAX_RISK_PER_TRADE / 100  # Convertir de % a decimal
-        self.max_daily_risk = self.config.MAX_DAILY_RISK / 100  # Convertir de % a decimal
-        self.max_drawdown_threshold = self.config.MAX_DRAWDOWN_THRESHOLD / 100  # Convertir de % a decimal
-        self.correlation_threshold = self.config.CORRELATION_THRESHOLD
+        self.max_portfolio_risk = self.config.get_max_risk_per_trade() / 100  # Convertir de % a decimal
+        self.max_daily_risk = self.config.get_max_daily_risk() / 100  # Convertir de % a decimal
+        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold() / 100  # Convertir de % a decimal
+        self.correlation_threshold = self.config.get_correlation_threshold()
         
         # Position sizing profesional desde configuración centralizada
-        self.min_position_size = self.config.MIN_POSITION_SIZE
-        self.max_position_size = self.config.MAX_POSITION_SIZE / 100  # Convertir de % a decimal
-        self.kelly_fraction = self.config.KELLY_FRACTION
+        self.min_position_size = self.config.get_min_position_size()
+        self.max_position_size = self.config.get_max_position_size() / 100  # Convertir de % a decimal
+        self.kelly_fraction = self.config.get_kelly_fraction()
         self.volatility_adjustment = True  # Ajustar tamaño según volatilidad
         
         # Stop loss dinámico profesional desde configuración centralizada
-        self.atr_multiplier_range = (self.config.ATR_MULTIPLIER_MIN, self.config.ATR_MULTIPLIER_MAX)
-        self.trailing_stop_activation = self.config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
-        self.breakeven_stop_threshold = self.config.BREAKEVEN_THRESHOLD / 100  # Convertir de % a decimal
+        self.atr_multiplier_range = (self.config.get_atr_multiplier_min(), self.config.get_atr_multiplier_max())
+        self.trailing_stop_activation = self.config.get_trailing_stop_activation() / 100  # Convertir de % a decimal
+        self.breakeven_stop_threshold = self.config.get_breakeven_threshold() / 100  # Convertir de % a decimal
         
         # Métricas de portfolio desde configuración centralizada
         self.portfolio_value = self.config.INITIAL_PORTFOLIO_VALUE
@@ -298,13 +298,13 @@ class EnhancedRiskManager:
                     initial_stop = signal.price + (2 * atr_data)
             
             # Configurar trailing stop
-            atr_multiplier = self.config.ATR_DEFAULT  # Multiplicador ATR por defecto
+            atr_multiplier = self.config.get_atr_default()  # Multiplicador ATR por defecto
             
             # Ajustar multiplicador según volatilidad
             if signal.market_regime == "VOLATILE":
-                atr_multiplier = self.config.ATR_VOLATILE  # Más espacio en mercados volátiles
+                atr_multiplier = self.config.get_atr_volatile()  # Más espacio en mercados volátiles
             elif signal.market_regime == "RANGING":
-                atr_multiplier = self.config.ATR_SIDEWAYS  # Menos espacio en mercados laterales
+                atr_multiplier = self.config.get_atr_sideways()  # Menos espacio en mercados laterales
             
             # Evitar división por cero
             if signal.price > 0:
@@ -330,7 +330,7 @@ class EnhancedRiskManager:
                 initial_stop=stop_price,
                 current_stop=stop_price,
                 trailing_stop=stop_price,
-                atr_multiplier=self.config.ATR_DEFAULT,
+                atr_multiplier=self.config.get_atr_default(),
                 stop_type="FIXED",
                 last_update=datetime.now(),
                 stop_loss_price=stop_price,

@@ -7,23 +7,235 @@ con tres niveles de configuración disponibles:
 ⚡ AGRESIVA: Timeframes de 15m-1h, balance entre velocidad y control de riesgo  
 🛡️ ÓPTIMA (Conservadora): Timeframes de 1h-1d, enfoque en calidad y preservación de capital
 
-Para cambiar entre configuraciones, simplemente comenta/descomenta las líneas correspondientes.
-Cada parámetro incluye las tres opciones claramente marcadas.
+🎯 CAMBIO RÁPIDO DE PERFILES:
+Para cambiar entre configuraciones, simplemente modifica la variable TRADING_PROFILE:
+- "RAPIDO" para estrategia ultra-rápida
+- "AGRESIVO" para estrategia balanceada
+- "OPTIMO" para estrategia conservadora
 """
 
 from typing import List, Dict, Any
 
 # ============================================================================
-# CONFIGURACIÓN DEL TRADING BOT PRINCIPAL
+# 🎯 SELECTOR DE PERFIL DE TRADING - CAMBIAR AQUÍ
 # ============================================================================
+
+# 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
+TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO"
 
 # Balance inicial global para todas las posiciones en USDT
 GLOBAL_INITIAL_BALANCE = 500.0
 
+# ============================================================================
+# 📊 DEFINICIÓN DE PERFILES DE TRADING
+# ============================================================================
+
+class TradingProfiles:
+    """Definición de todos los perfiles de trading disponibles."""
+    
+    PROFILES = {
+        "RAPIDO": {
+            "name": "🚀 Ultra-Rápido",
+            "description": "Timeframes 1m-15m, máxima frecuencia, mayor riesgo",
+            "timeframes": ["1m", "5m", "15m"],
+            "analysis_interval": 5,
+            "min_confidence": 60.0,
+            "max_daily_trades": 20,
+            "max_positions": 8,
+            # Paper Trader Config
+            "max_position_size": 10.0,
+            "max_total_exposure": 85.0,
+            "min_trade_value": 10.0,
+            "paper_min_confidence": 58.0,
+            "max_slippage": 0.12,
+            "min_liquidity": 3.0,
+            # Risk Manager Config
+            "max_risk_per_trade": 2.0,
+            "max_daily_risk": 8.0,
+            "max_drawdown_threshold": 15.0,
+            "correlation_threshold": 0.8,
+            "min_position_size": 15.0,
+            "risk_max_position_size": 10.0,
+            "kelly_fraction": 0.3,
+            "volatility_adjustment": 1.3,
+            "atr_multiplier_min": 2.0,
+            "atr_multiplier_max": 3.0,
+            "atr_default": 2.0,
+            "atr_volatile": 3.0,
+            "atr_sideways": 1.5,
+            "trailing_stop_activation": 1.0,
+            "breakeven_threshold": 0.8,
+            # Strategy Config
+            "default_min_confidence": 55.0,
+            "default_atr_period": 10,
+            "rsi_min_confidence": 65.0,
+            "rsi_oversold": 35,
+            "rsi_overbought": 65,
+            "rsi_period": 10,
+            "min_volume_ratio": 1.2,
+            "min_confluence": 2,
+            "trend_strength_threshold": 25,
+            "min_atr_ratio": 0.8,
+            "max_spread_threshold": 0.0025,
+            # Multi-Timeframe Config
+            "mtf_enhanced_confidence": 60.0,
+            "mtf_min_confidence": 62.0,
+            "mtf_min_consensus": 0.6,
+            "mtf_require_trend_alignment": False,
+            "mtf_min_timeframe_consensus": 2,
+            "mtf_trend_alignment_required": False,
+            # Ensemble Config
+            "ensemble_min_consensus_threshold": 0.55,
+            "ensemble_confidence_boost_factor": 1.25,
+            # Live Trading Config
+            "trading_fees": 0.001,
+            "order_timeout": 30,
+            "max_order_retries": 2,
+            "order_check_interval": 2,
+            "live_first_analysis_delay": 15
+        },
+        "AGRESIVO": {
+            "name": "⚡ Agresivo",
+            "description": "Timeframes 15m-1h, balance velocidad/control",
+            "timeframes": ["15m", "30m", "1h"],
+            "analysis_interval": 15,
+            "min_confidence": 65.0,
+            "max_daily_trades": 12,
+            "max_positions": 6,
+            # Paper Trader Config
+            "max_position_size": 8.0,
+            "max_total_exposure": 75.0,
+            "min_trade_value": 15.0,
+            "paper_min_confidence": 62.0,
+            "max_slippage": 0.08,
+            "min_liquidity": 5.0,
+            # Risk Manager Config
+            "max_risk_per_trade": 1.5,
+            "max_daily_risk": 6.0,
+            "max_drawdown_threshold": 12.0,
+            "correlation_threshold": 0.7,
+            "min_position_size": 10.0,
+            "risk_max_position_size": 8.0,
+            "kelly_fraction": 0.25,
+            "volatility_adjustment": 1.2,
+            "atr_multiplier_min": 2.5,
+            "atr_multiplier_max": 4.0,
+            "atr_default": 2.5,
+            "atr_volatile": 4.0,
+            "atr_sideways": 2.0,
+            "trailing_stop_activation": 1.5,
+            "breakeven_threshold": 1.0,
+            # Strategy Config
+            "default_min_confidence": 60.0,
+            "default_atr_period": 14,
+            "rsi_min_confidence": 68.0,
+            "rsi_oversold": 30,
+            "rsi_overbought": 70,
+            "rsi_period": 14,
+            "min_volume_ratio": 1.5,
+            "min_confluence": 3,
+            "trend_strength_threshold": 30,
+            "min_atr_ratio": 1.0,
+            "max_spread_threshold": 0.0015,
+            # Multi-Timeframe Config
+            "mtf_enhanced_confidence": 65.0,
+            "mtf_min_confidence": 68.0,
+            "mtf_min_consensus": 0.65,
+            "mtf_require_trend_alignment": True,
+            "mtf_min_timeframe_consensus": 2,
+            "mtf_trend_alignment_required": True,
+            # Ensemble Config
+            "ensemble_min_consensus_threshold": 0.6,
+            "ensemble_confidence_boost_factor": 1.2,
+            # Live Trading Config
+            "trading_fees": 0.001,
+            "order_timeout": 45,
+            "max_order_retries": 3,
+            "order_check_interval": 3,
+            "live_first_analysis_delay": 30
+        },
+        "OPTIMO": {
+            "name": "🛡️ Óptimo",
+            "description": "Timeframes 1h-1d, calidad y preservación",
+            "timeframes": ["1h", "4h", "1d"],
+            "analysis_interval": 30,
+            "min_confidence": 70.0,
+            "max_daily_trades": 8,
+            "max_positions": 4,
+            # Paper Trader Config
+            "max_position_size": 6.0,
+            "max_total_exposure": 60.0,
+            "min_trade_value": 5.0,
+            "paper_min_confidence": 65.0,
+            "max_slippage": 0.05,
+            "min_liquidity": 8.0,
+            # Risk Manager Config
+            "max_risk_per_trade": 1.0,
+            "max_daily_risk": 4.0,
+            "max_drawdown_threshold": 8.0,
+            "correlation_threshold": 0.6,
+            "min_position_size": 5.0,
+            "risk_max_position_size": 6.0,
+            "kelly_fraction": 0.2,
+            "volatility_adjustment": 1.0,
+            "atr_multiplier_min": 3.0,
+            "atr_multiplier_max": 5.0,
+            "atr_default": 3.0,
+            "atr_volatile": 5.0,
+            "atr_sideways": 2.5,
+            "trailing_stop_activation": 2.0,
+            "breakeven_threshold": 1.5,
+            # Strategy Config
+            "default_min_confidence": 65.0,
+            "default_atr_period": 20,
+            "rsi_min_confidence": 72.0,
+            "rsi_oversold": 25,
+            "rsi_overbought": 75,
+            "rsi_period": 21,
+            "min_volume_ratio": 1.8,
+            "min_confluence": 4,
+            "trend_strength_threshold": 35,
+            "min_atr_ratio": 1.2,
+            "max_spread_threshold": 0.0010,
+            # Multi-Timeframe Config
+            "mtf_enhanced_confidence": 70.0,
+            "mtf_min_confidence": 72.0,
+            "mtf_min_consensus": 0.7,
+            "mtf_require_trend_alignment": True,
+            "mtf_min_timeframe_consensus": 3,
+            "mtf_trend_alignment_required": True,
+            # Ensemble Config
+            "ensemble_min_consensus_threshold": 0.7,
+            "ensemble_confidence_boost_factor": 1.15,
+            # Live Trading Config
+            "trading_fees": 0.001,
+            "order_timeout": 60,
+            "max_order_retries": 5,
+            "order_check_interval": 5,
+            "live_first_analysis_delay": 60
+        }
+    }
+    
+    @classmethod
+    def get_profile(cls, profile_name: str) -> Dict[str, Any]:
+        """Obtiene la configuración del perfil especificado."""
+        if profile_name not in cls.PROFILES:
+            raise ValueError(f"Perfil '{profile_name}' no válido. Opciones: {list(cls.PROFILES.keys())}")
+        return cls.PROFILES[profile_name]
+    
+    @classmethod
+    def get_current_profile(cls) -> Dict[str, Any]:
+        """Obtiene el perfil actualmente configurado."""
+        return cls.get_profile(TRADING_PROFILE)
+
+# ============================================================================
+# CONFIGURACIÓN DEL TRADING BOT PRINCIPAL
+# ============================================================================
+
 class TradingBotConfig:
     """Configuración principal del bot de trading."""
     
-    # Lista de símbolos para analizar - Optimizada para trading agresivo
+    # Lista de símbolos para analizar - Optimizada para trading
     # Selección basada en alta liquidez, volatilidad y volumen de trading
     SYMBOLS: List[str] = [
         # Pares principales (máxima liquidez)
@@ -37,45 +249,69 @@ class TradingBotConfig:
     # Símbolos para el bot en vivo - Misma lista optimizada
     SYMBOLS_LIVE_BOT = SYMBOLS
     
-    # Intervalo de análisis en minutos - tiempo entre análisis automáticos (rápido: 5 - agresivo: 15 - óptimo: 30)
-    ANALYSIS_INTERVAL: int = 5 
+    # 🎯 CONFIGURACIÓN DINÁMICA BASADA EN PERFIL SELECCIONADO
+    @classmethod
+    def get_analysis_interval(cls) -> int:
+        """Intervalo de análisis en minutos según perfil activo."""
+        return TradingProfiles.get_current_profile()["analysis_interval"]
     
-    # Umbral mínimo de confianza para ejecutar trades en % (rápido: 60.0 - agresivo: 65.0 - óptimo: 70.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 60.0
+    @classmethod
+    def get_min_confidence_threshold(cls) -> float:
+        """Umbral mínimo de confianza según perfil activo."""
+        return TradingProfiles.get_current_profile()["min_confidence"]
     
-    # Número máximo de trades por día - control de sobreoperación (rápido: 20 - agresivo: 12 - óptimo: 8)
-    MAX_DAILY_TRADES: int = 20
+    @classmethod
+    def get_max_daily_trades(cls) -> int:
+        """Máximo de trades diarios según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_daily_trades"]
     
-    # Límite de posiciones concurrentes - diversificación controlada (rápido: 8 - agresivo: 6 - óptimo: 4)
-    MAX_CONCURRENT_POSITIONS: int = 8
+    @classmethod
+    def get_max_concurrent_positions(cls) -> int:
+        """Máximo de posiciones concurrentes según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_positions"]
     
-    # Timeframes para análisis profesional - marcos temporales (rápido: ["1m", "5m", "15m"] - agresivo: ["15m", "30m", "1h"] - óptimo: ["1h", "4h", "1d"])
-    PROFESSIONAL_TIMEFRAMES: List[str] = ["1m", "5m", "15m"]  # Estrategia rápida
-    
-    # Timeframe principal para análisis - marco temporal base (rápido: "1m" - agresivo: "15m" - óptimo: "1h")
-    PRIMARY_TIMEFRAME: str = "1m"  # Estrategia rápida
+    @classmethod
+    def get_professional_timeframes(cls) -> List[str]:
+        """Timeframes profesionales según perfil activo."""
+        return TradingProfiles.get_current_profile()["timeframes"]
     
     # Valor por defecto del portfolio para cálculos cuando no hay datos
     DEFAULT_PORTFOLIO_VALUE: float = GLOBAL_INITIAL_BALANCE
     
-    # Timeframe para confirmación - validación de señales (rápido: "5m" - agresivo: "30m" - óptimo: "4h")
-    CONFIRMATION_TIMEFRAME: str = "5m"  # Estrategia rápida
+    # 🎯 CONFIGURACIÓN DINÁMICA ADICIONAL BASADA EN PERFIL
+    @classmethod
+    def get_primary_timeframe(cls) -> str:
+        """Timeframe principal según perfil activo."""
+        timeframes = cls.get_professional_timeframes()
+        return timeframes[0] if timeframes else "1m"
     
-    # Timeframe para análisis de tendencia - dirección general (rápido: "15m" - agresivo: "1h" - óptimo: "1d")
-    TREND_TIMEFRAME: str = "15m"  # Estrategia rápida  
+    @classmethod
+    def get_confirmation_timeframe(cls) -> str:
+        """Timeframe de confirmación según perfil activo."""
+        timeframes = cls.get_professional_timeframes()
+        return timeframes[1] if len(timeframes) > 1 else timeframes[0]
     
-    # Descripción del bot - identificación del perfil (rápido: "Ultra-Rápido" - agresivo: "Agresivo" - óptimo: "Profesional")
-    BOT_DESCRIPTION: str = "Ultra-Rápido"
+    @classmethod
+    def get_trend_timeframe(cls) -> str:
+        """Timeframe de tendencia según perfil activo."""
+        timeframes = cls.get_professional_timeframes()
+        return timeframes[-1] if timeframes else "15m"
     
-    # Configuración específica para Live Trading Bot
-    # Intervalo de actualización en segundos para live bot (rápido: 10 - agresivo: 20 - óptimo: 30)
-    LIVE_UPDATE_INTERVAL: int = 10  
+    @classmethod
+    def get_bot_description(cls) -> str:
+        """Descripción del bot según perfil activo."""
+        return TradingProfiles.get_current_profile()["name"]
     
-    # Umbral mínimo de confianza para live trading (rápido: 60.0 - agresivo: 65.0 - óptimo: 70.0)
-    LIVE_MIN_CONFIDENCE_THRESHOLD: float = 60.0  
+    @classmethod
+    def get_live_update_interval(cls) -> int:
+        """Intervalo de actualización para live bot según perfil."""
+        return TradingProfiles.get_current_profile()["analysis_interval"]
     
-    # Delay en segundos para el primer análisis al iniciar (rápido: 15 - agresivo: 30 - óptimo: 60)
-    FIRST_ANALYSIS_DELAY: int = 15  # Estrategia rápida
+    @classmethod
+    def get_first_analysis_delay(cls) -> int:
+        """Delay para primer análisis según perfil."""
+        # Usar el doble del intervalo de análisis como delay inicial
+        return TradingProfiles.get_current_profile()["analysis_interval"] * 2
 
 
 # ============================================================================
@@ -88,25 +324,45 @@ class PaperTraderConfig:
     # Balance inicial en USDT para simulación
     INITIAL_BALANCE: float = GLOBAL_INITIAL_BALANCE
     
-    # Tamaño máximo de posición como % del portfolio (rápido: 10.0 - agresivo: 8.0 - óptimo: 6.0)
-    MAX_POSITION_SIZE: float = 10.0  # Estrategia rápida
+    @classmethod
+    def get_max_position_size(cls) -> float:
+        """Obtiene el tamaño máximo de posición según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_position_size"]
     
-    # Exposición total máxima del portfolio en % (rápido: 85.0 - agresivo: 75.0 - óptimo: 60.0)
-    MAX_TOTAL_EXPOSURE: float = 85.0  # Estrategia rápida
+    @classmethod
+    def get_max_total_exposure(cls) -> float:
+        """Obtiene la exposición total máxima según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_total_exposure"]
     
-    # Valor mínimo por trade en USDT (rápido: 15.0 - agresivo: 10.0 - óptimo: 5.0)
-    MIN_TRADE_VALUE: float = 15.0  # Estrategia rápida
+    @classmethod
+    def get_min_trade_value(cls) -> float:
+        """Obtiene el valor mínimo por trade según perfil activo."""
+        return TradingProfiles.get_current_profile()["min_trade_value"]
     
-    # Umbral mínimo de confianza para ejecutar trades (rápido: 58.0 - agresivo: 62.0 - óptimo: 60.0)
-    MIN_CONFIDENCE_THRESHOLD: float = 58.0  # Estrategia rápida
+    @classmethod
+    def get_min_confidence_threshold(cls) -> float:
+        """Obtiene el umbral mínimo de confianza según perfil activo."""
+        return TradingProfiles.get_current_profile()["paper_min_confidence"]
     
-    # Slippage máximo permitido en % (rápido: 0.12 - agresivo: 0.08 - óptimo: 0.05)
-    MAX_SLIPPAGE: float = 0.12  # Estrategia rápida  
+    @classmethod
+    def get_max_slippage(cls) -> float:
+        """Obtiene el slippage máximo permitido según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_slippage"]
     
-    # Liquidez mínima requerida en % (rápido: 3.0 - agresivo: 5.0 - óptimo: 8.0)
-    MIN_LIQUIDITY: float = 3.0  # Estrategia rápida  
+    @classmethod
+    def get_min_liquidity(cls) -> float:
+        """Obtiene la liquidez mínima requerida según perfil activo."""
+        return TradingProfiles.get_current_profile()["min_liquidity"]
     
-    # Máximo % del balance disponible para trading (reserva para fees) (óptimo: 95.0)
+    # Propiedades dinámicas para compatibilidad con código existente
+    MAX_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["max_position_size"])
+    MAX_TOTAL_EXPOSURE: float = property(lambda self: TradingProfiles.get_current_profile()["max_total_exposure"])
+    MIN_TRADE_VALUE: float = property(lambda self: TradingProfiles.get_current_profile()["min_trade_value"])
+    MIN_CONFIDENCE_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["paper_min_confidence"])
+    MAX_SLIPPAGE: float = property(lambda self: TradingProfiles.get_current_profile()["max_slippage"])
+    MIN_LIQUIDITY: float = property(lambda self: TradingProfiles.get_current_profile()["min_liquidity"])
+    
+    # Máximo % del balance disponible para trading (reserva para fees)
     MAX_BALANCE_USAGE: float = 95.0
 
 
@@ -117,46 +373,97 @@ class PaperTraderConfig:
 class RiskManagerConfig:
     """Configuración del gestor de riesgo avanzado."""
     
-    # Riesgo máximo por trade como % del portfolio (rápido: 2.0 - agresivo: 1.5 - óptimo: 1.0)
-    MAX_RISK_PER_TRADE: float = 2.0  # Estrategia rápida
+    @classmethod
+    def get_max_risk_per_trade(cls) -> float:
+        """Obtiene el riesgo máximo por trade según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_risk_per_trade"]
     
-    # Riesgo máximo diario como % del portfolio (rápido: 6.0 - agresivo: 4.5 - óptimo: 3.0)
-    MAX_DAILY_RISK: float = 6.0  # Estrategia rápida
+    @classmethod
+    def get_max_daily_risk(cls) -> float:
+        """Obtiene el riesgo máximo diario según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_daily_risk"]
     
-    # Umbral de drawdown máximo antes de parar trading en % (rápido: 12.0 - agresivo: 10.0 - óptimo: 8.0)
-    MAX_DRAWDOWN_THRESHOLD: float = 12.0  # Estrategia rápida
+    @classmethod
+    def get_max_drawdown_threshold(cls) -> float:
+        """Obtiene el umbral de drawdown máximo según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
     
-    # Umbral de correlación máxima entre posiciones (rápido: 0.8 - agresivo: 0.6 - óptimo: 0.4)
-    CORRELATION_THRESHOLD: float = 0.8  # Estrategia rápida
+    @classmethod
+    def get_correlation_threshold(cls) -> float:
+        """Obtiene el umbral de correlación según perfil activo."""
+        return TradingProfiles.get_current_profile()["correlation_threshold"]
     
-    # Tamaño mínimo de posición como % del portfolio (rápido: 0.008 - agresivo: 0.005 - óptimo: 0.003)
-    MIN_POSITION_SIZE: float = 0.008  # Estrategia rápida
+    @classmethod
+    def get_min_position_size(cls) -> float:
+        """Obtiene el tamaño mínimo de posición según perfil activo."""
+        return TradingProfiles.get_current_profile()["min_position_size"]
     
-    # Tamaño máximo de posición como % del portfolio (rápido: 10.0 - agresivo: 8.0 - óptimo: 6.0)
-    MAX_POSITION_SIZE: float = 10.0  # Estrategia rápida
+    @classmethod
+    def get_max_position_size(cls) -> float:
+        """Obtiene el tamaño máximo de posición según perfil activo."""
+        return TradingProfiles.get_current_profile()["risk_max_position_size"]
     
-    # Fracción Kelly conservadora para sizing (rápido: 0.25 - agresivo: 0.15 - óptimo: 0.10)
-    KELLY_FRACTION: float = 0.25  # Estrategia rápida
+    @classmethod
+    def get_kelly_fraction(cls) -> float:
+        """Obtiene la fracción Kelly según perfil activo."""
+        return TradingProfiles.get_current_profile()["kelly_fraction"]
     
-    # Factor de ajuste por volatilidad del mercado (rápido: 0.6 - agresivo: 0.4 - óptimo: 0.2)
-    VOLATILITY_ADJUSTMENT: float = 0.6  # Estrategia rápida
+    @classmethod
+    def get_volatility_adjustment(cls) -> float:
+        """Obtiene el factor de ajuste por volatilidad según perfil activo."""
+        return TradingProfiles.get_current_profile()["volatility_adjustment"]
     
-    # Multiplicador ATR mínimo para stop-loss dinámico (rápido: 1.5 - agresivo: 2.5 - óptimo: 3.0)
-    ATR_MULTIPLIER_MIN: float = 1.5  # Estrategia rápida
+    @classmethod
+    def get_atr_multiplier_min(cls) -> float:
+        """Obtiene el multiplicador ATR mínimo según perfil activo."""
+        return TradingProfiles.get_current_profile()["atr_multiplier_min"]
     
-    # Multiplicador ATR máximo para stop-loss dinámico (rápido: 3.0 - agresivo: 4.0 - óptimo: 5.0)
-    ATR_MULTIPLIER_MAX: float = 3.0  # Estrategia rápida
+    @classmethod
+    def get_atr_multiplier_max(cls) -> float:
+        """Obtiene el multiplicador ATR máximo según perfil activo."""
+        return TradingProfiles.get_current_profile()["atr_multiplier_max"]
     
-    # Multiplicadores ATR por defecto para diferentes condiciones de mercado
-    ATR_DEFAULT: float = 2.0  # Multiplicador por defecto - rápido
-    ATR_VOLATILE: float = 3.0  # Para mercados volátiles - rápido
-    ATR_SIDEWAYS: float = 1.5  # Para mercados laterales - rápido
+    @classmethod
+    def get_atr_default(cls) -> float:
+        """Obtiene el multiplicador ATR por defecto según perfil activo."""
+        return TradingProfiles.get_current_profile()["atr_default"]
     
-    # Umbral de ganancia para activar trailing stop en % (rápido: 1.0 - agresivo: 1.5 - óptimo: 2.0)
-    TRAILING_STOP_ACTIVATION: float = 1.0  # Estrategia rápida
+    @classmethod
+    def get_atr_volatile(cls) -> float:
+        """Obtiene el multiplicador ATR para mercados volátiles según perfil activo."""
+        return TradingProfiles.get_current_profile()["atr_volatile"]
     
-    # Umbral para mover stop-loss a breakeven en % (rápido: 0.8 - agresivo: 1.0 - óptimo: 1.2)
-    BREAKEVEN_THRESHOLD: float = 0.8  # Estrategia rápida
+    @classmethod
+    def get_atr_sideways(cls) -> float:
+        """Obtiene el multiplicador ATR para mercados laterales según perfil activo."""
+        return TradingProfiles.get_current_profile()["atr_sideways"]
+    
+    @classmethod
+    def get_trailing_stop_activation(cls) -> float:
+        """Obtiene el umbral de activación del trailing stop según perfil activo."""
+        return TradingProfiles.get_current_profile()["trailing_stop_activation"]
+    
+    @classmethod
+    def get_breakeven_threshold(cls) -> float:
+        """Obtiene el umbral de breakeven según perfil activo."""
+        return TradingProfiles.get_current_profile()["breakeven_threshold"]
+    
+    # Propiedades dinámicas para compatibilidad con código existente
+    MAX_RISK_PER_TRADE: float = property(lambda self: TradingProfiles.get_current_profile()["max_risk_per_trade"])
+    MAX_DAILY_RISK: float = property(lambda self: TradingProfiles.get_current_profile()["max_daily_risk"])
+    MAX_DRAWDOWN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["max_drawdown_threshold"])
+    CORRELATION_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["correlation_threshold"])
+    MIN_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["min_position_size"])
+    MAX_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["risk_max_position_size"])
+    KELLY_FRACTION: float = property(lambda self: TradingProfiles.get_current_profile()["kelly_fraction"])
+    VOLATILITY_ADJUSTMENT: float = property(lambda self: TradingProfiles.get_current_profile()["volatility_adjustment"])
+    ATR_MULTIPLIER_MIN: float = property(lambda self: TradingProfiles.get_current_profile()["atr_multiplier_min"])
+    ATR_MULTIPLIER_MAX: float = property(lambda self: TradingProfiles.get_current_profile()["atr_multiplier_max"])
+    ATR_DEFAULT: float = property(lambda self: TradingProfiles.get_current_profile()["atr_default"])
+    ATR_VOLATILE: float = property(lambda self: TradingProfiles.get_current_profile()["atr_volatile"])
+    ATR_SIDEWAYS: float = property(lambda self: TradingProfiles.get_current_profile()["atr_sideways"])
+    TRAILING_STOP_ACTIVATION: float = property(lambda self: TradingProfiles.get_current_profile()["trailing_stop_activation"])
+    BREAKEVEN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["breakeven_threshold"])
     
     # Valor inicial del portfolio para cálculos de riesgo en USDT - Se alimenta del PaperTrader para consistencia
     INITIAL_PORTFOLIO_VALUE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática

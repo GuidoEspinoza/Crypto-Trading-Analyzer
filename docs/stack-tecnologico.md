@@ -221,3 +221,11 @@ uptime-robot         # Uptime monitoring
 
 ---
 *Actualizado: Agosto 2025*
+
+Raspberry Pi:
+
+- Raspberry Pi 4 (4GB RAM mínimo) - Recomendado 8GB para mejor rendimiento
+- MicroSD Card 64GB Clase 10 - Para el sistema operativo y datos
+- Fuente de alimentación USB-C 3A - Estable y confiable
+- Case con ventilación - Para mantener temperaturas óptimas
+- Cable Ethernet - Conexión de red estable (opcional: WiFi)

@@ -107,7 +107,7 @@ class LiveTradingBot:
         
         # Configuración del bot
         self.symbols = TradingBotConfig.SYMBOLS_LIVE_BOT
-        self.update_interval = self.config.LIVE_UPDATE_INTERVAL
+        self.update_interval = self.config.get_live_update_interval()
         self.running = False
         
         # Inicializar estrategias del trading bot
@@ -144,7 +144,7 @@ class LiveTradingBot:
             logger.info("⚙️ CONFIGURACIÓN DEL BOT:")
             logger.info(f"   • Símbolos: {', '.join(self.symbols)}")
             logger.info(f"   • Intervalo de análisis: {self.update_interval} segundos")
-            logger.info(f"   • Confianza mínima para trades: {self.config.MIN_CONFIDENCE_THRESHOLD}%")
+            logger.info(f"   • Confianza mínima para trades: {self.config.get_min_confidence_threshold()}%")
             
         except Exception as e:
             logger.error(f"❌ Error inicializando estrategias: {e}")

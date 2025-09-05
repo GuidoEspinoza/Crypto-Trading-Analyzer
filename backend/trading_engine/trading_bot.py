@@ -65,7 +65,7 @@ class TradingBot:
         # Configuración centralizada del bot
         self.config = TradingBotConfig()
         
-        self.analysis_interval = analysis_interval_minutes or self.config.ANALYSIS_INTERVAL
+        self.analysis_interval = analysis_interval_minutes or self.config.get_analysis_interval()
         self.is_running = False
         self.start_time = None
         
@@ -90,15 +90,15 @@ class TradingBot:
         self.symbols = self.config.SYMBOLS
         
         # Configuración de trading profesional desde configuración centralizada
-        self.min_confidence_threshold = self.config.MIN_CONFIDENCE_THRESHOLD
-        self.max_daily_trades = self.config.MAX_DAILY_TRADES
-        self.max_concurrent_positions = self.config.MAX_CONCURRENT_POSITIONS
+        self.min_confidence_threshold = self.config.get_min_confidence_threshold()
+        self.max_daily_trades = self.config.get_max_daily_trades()
+        self.max_concurrent_positions = self.config.get_max_concurrent_positions()
         self.enable_trading = True  # Activar/desactivar ejecución de trades
         
         # Configuración de timeframes profesional desde configuración centralizada
-        self.primary_timeframe = self.config.PRIMARY_TIMEFRAME
-        self.confirmation_timeframe = self.config.CONFIRMATION_TIMEFRAME
-        self.trend_timeframe = self.config.TREND_TIMEFRAME
+        self.primary_timeframe = self.config.get_primary_timeframe()
+        self.confirmation_timeframe = self.config.get_confirmation_timeframe()
+        self.trend_timeframe = self.config.get_trend_timeframe()
         
         # Estadísticas
         self.stats = {
@@ -153,7 +153,7 @@ class TradingBot:
         self.position_monitor.start_monitoring()
         
         # Programar primer análisis para evitar bloqueo
-        schedule.every(self.config.FIRST_ANALYSIS_DELAY).seconds.do(self._run_first_analysis).tag('first_analysis')
+        schedule.every(self.config.get_first_analysis_delay()).seconds.do(self._run_first_analysis).tag('first_analysis')
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
