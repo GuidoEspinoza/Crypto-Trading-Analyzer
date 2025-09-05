@@ -316,13 +316,10 @@ class LiveTradingBot:
                 # Para ventas
                 binance_price = price * 1.0003  # 0.03% por arriba
                 
-                # Obtener balance actual del activo
-                from database.database import db_manager
-                portfolio = db_manager.get_portfolio_summary(is_paper=True)
+                # Usar datos del trade ejecutado (no el balance actual que ya es 0)
                 asset_name = symbol.replace('USDT', '')
-                crypto_balance = portfolio.get('assets', {}).get(asset_name, 0)
-                
-                total_usdt = crypto_balance * price
+                crypto_balance = trade_result.quantity if hasattr(trade_result, 'quantity') else 0
+                total_usdt = trade_result.entry_value if hasattr(trade_result, 'entry_value') else (crypto_balance * price)
                 
                 logger.info("")
                 logger.info("🎯 ═══════════════════════════════════════════════════════════")
