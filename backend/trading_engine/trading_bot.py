@@ -110,6 +110,23 @@ class TradingBot:
             "last_reset_date": datetime.now().date()
         }
         
+        # Circuit breaker avanzado
+        self.consecutive_losses = 0
+        self.circuit_breaker_active = False
+        self.circuit_breaker_activated_at = None
+        self.max_consecutive_losses = self.config.get_max_consecutive_losses()
+        self.circuit_breaker_cooldown_hours = self.config.get_circuit_breaker_cooldown_hours()
+        
+        # Nuevas funcionalidades del circuit breaker
+        self.max_drawdown_threshold = 0.15  # 15% drawdown máximo
+        self.current_drawdown = 0.0
+        self.peak_portfolio_value = 0.0
+        self.gradual_reactivation_enabled = True
+        self.reactivation_phase = 0  # 0: inactivo, 1-3: fases de reactivación
+        self.reactivation_trades_allowed = 0
+        self.reactivation_success_count = 0
+        self.circuit_breaker_trigger_reason = ""
+        
         # Thread para ejecución
         self.analysis_thread = None
         self.stop_event = threading.Event()
@@ -262,6 +279,16 @@ class TradingBot:
         Args:
             signals: Lista de señales generadas
         """
+        # Verificar circuit breaker avanzado
+        if not self._check_circuit_breaker():
+            self.logger.warning("🚨 Circuit breaker active - skipping signal processing")
+            return
+        
+        # Verificar límites de reactivación gradual
+        if not self._can_trade_during_reactivation():
+            self.logger.info("🟡 Reactivation limits reached - skipping signal processing")
+            return
+        
         # Filtrar señales por confianza mínima
         high_confidence_signals = [
             signal for signal in signals 
@@ -306,12 +333,17 @@ class TradingBot:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
                         
-                        # Determinar si fue exitoso (simplificado)
-                        if "profit" in trade_result.message.lower() or trade_result.entry_value > 0:
+                        # Determinar si fue exitoso y actualizar circuit breaker
+                        trade_was_profitable = "profit" in trade_result.message.lower() or trade_result.entry_value > 0
+                        if trade_was_profitable:
                             self.stats["successful_trades"] += 1
+                        
+                        # Actualizar tracking de pérdidas consecutivas
+                        self._update_consecutive_losses(trade_was_profitable)
                         
                         self.logger.info(f"✅ Trade executed: {trade_result.message}")
                     else:
+                        # Trade falló en ejecución - no contar como pérdida consecutiva
                         self.logger.warning(f"❌ Trade failed: {trade_result.message}")
                 
                 elif not risk_assessment.is_approved:
@@ -336,7 +368,209 @@ class TradingBot:
         if today != self.stats["last_reset_date"]:
             self.stats["daily_trades"] = 0
             self.stats["last_reset_date"] = today
-            self.logger.info("📅 Daily stats reset for new day")
+            # Resetear circuit breaker al inicio de un nuevo día
+            self.consecutive_losses = 0
+            self.circuit_breaker_active = False
+            self.circuit_breaker_activated_at = None
+            self.logger.info(f"📅 Daily stats reset for {today} - Circuit breaker reset")
+    
+    def _check_circuit_breaker(self) -> bool:
+        """
+        🚨 Verificar estado del circuit breaker avanzado
+        
+        Returns:
+            bool: True si el trading está permitido, False si está bloqueado
+        """
+        # Verificar drawdown antes que pérdidas consecutivas
+        self._check_drawdown_circuit_breaker()
+        
+        # Si no está activo, permitir trading
+        if not self.circuit_breaker_active:
+            return True
+        
+        # Verificar si ha pasado el tiempo de cooldown
+        if self.circuit_breaker_activated_at:
+            time_since_activation = datetime.now() - self.circuit_breaker_activated_at
+            cooldown_duration = timedelta(hours=self.circuit_breaker_cooldown_hours)
+            
+            if time_since_activation >= cooldown_duration:
+                # Reactivación gradual
+                if self.gradual_reactivation_enabled:
+                    self._initiate_gradual_reactivation()
+                else:
+                    # Desactivar circuit breaker después del cooldown
+                    self.circuit_breaker_active = False
+                    self.circuit_breaker_activated_at = None
+                    self.consecutive_losses = 0
+                    self.logger.info(f"🟢 Circuit breaker deactivated after {self.circuit_breaker_cooldown_hours}h cooldown")
+                return True
+            else:
+                remaining_time = cooldown_duration - time_since_activation
+                remaining_hours = remaining_time.total_seconds() / 3600
+                self.logger.info(f"🔴 Circuit breaker active - {remaining_hours:.1f}h remaining")
+                return False
+        
+        return False
+    
+    def _update_consecutive_losses(self, trade_was_profitable: bool):
+        """
+        📊 Actualizar contador de pérdidas consecutivas y reactivación gradual
+        
+        Args:
+            trade_was_profitable: True si el trade fue rentable, False si fue pérdida
+        """
+        if trade_was_profitable:
+            # Resetear contador si el trade fue rentable
+            self.consecutive_losses = 0
+            self.logger.info(f"✅ Profitable trade - consecutive losses reset to 0")
+            
+            # Actualizar progreso de reactivación gradual
+            self._update_reactivation_success(True)
+            
+        else:
+            # Incrementar contador de pérdidas
+            self.consecutive_losses += 1
+            self.logger.warning(f"❌ Loss #{self.consecutive_losses}/{self.max_consecutive_losses}")
+            
+            # Actualizar progreso de reactivación gradual (pérdida)
+            self._update_reactivation_success(False)
+            
+            # Activar circuit breaker si se alcanza el límite
+            if self.consecutive_losses >= self.max_consecutive_losses and not self.circuit_breaker_active:
+                self.circuit_breaker_active = True
+                self.circuit_breaker_activated_at = datetime.now()
+                self.circuit_breaker_trigger_reason = f"CONSECUTIVE_LOSSES_{self.consecutive_losses}"
+                self.logger.error(f"🚨 CIRCUIT BREAKER ACTIVATED! {self.consecutive_losses} consecutive losses")
+                self.logger.error(f"🛑 Trading suspended for {self.circuit_breaker_cooldown_hours} hours")
+    
+    def _get_remaining_cooldown_hours(self) -> float:
+        """
+        ⏰ Calcular horas restantes de cooldown del circuit breaker
+        
+        Returns:
+            float: Horas restantes de cooldown (0 si no está activo)
+        """
+        if not self.circuit_breaker_active or not self.circuit_breaker_activated_at:
+            return 0.0
+        
+        time_since_activation = datetime.now() - self.circuit_breaker_activated_at
+        cooldown_duration = timedelta(hours=self.circuit_breaker_cooldown_hours)
+        remaining_time = cooldown_duration - time_since_activation
+        
+        if remaining_time.total_seconds() <= 0:
+            return 0.0
+        
+        return remaining_time.total_seconds() / 3600
+    
+    def _check_drawdown_circuit_breaker(self):
+        """
+        📉 Verificar circuit breaker por drawdown del portafolio
+        """
+        try:
+            portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
+            current_value = portfolio_summary.get("total_value", 0)
+            
+            # Actualizar pico del portafolio
+            if current_value > self.peak_portfolio_value:
+                self.peak_portfolio_value = current_value
+                self.current_drawdown = 0.0
+            elif self.peak_portfolio_value > 0:
+                # Calcular drawdown actual
+                self.current_drawdown = (self.peak_portfolio_value - current_value) / self.peak_portfolio_value
+                
+                # Activar circuit breaker si el drawdown excede el umbral
+                if (self.current_drawdown >= self.max_drawdown_threshold and 
+                    not self.circuit_breaker_active):
+                    
+                    self.circuit_breaker_active = True
+                    self.circuit_breaker_activated_at = datetime.now()
+                    self.circuit_breaker_trigger_reason = f"DRAWDOWN_{self.current_drawdown:.1%}"
+                    
+                    self.logger.error(f"🚨 CIRCUIT BREAKER ACTIVATED BY DRAWDOWN!")
+                    self.logger.error(f"📉 Current drawdown: {self.current_drawdown:.1%} (threshold: {self.max_drawdown_threshold:.1%})")
+                    self.logger.error(f"💰 Peak value: ${self.peak_portfolio_value:,.2f}, Current: ${current_value:,.2f}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error checking drawdown circuit breaker: {e}")
+    
+    def _initiate_gradual_reactivation(self):
+        """
+        🔄 Iniciar reactivación gradual del trading
+        """
+        try:
+            if self.reactivation_phase == 0:
+                # Fase 1: Solo 1 trade de prueba
+                self.reactivation_phase = 1
+                self.reactivation_trades_allowed = 1
+                self.reactivation_success_count = 0
+                self.logger.info(f"🟡 Iniciando reactivación gradual - Fase 1: {self.reactivation_trades_allowed} trade permitido")
+                
+            elif self.reactivation_phase == 1 and self.reactivation_success_count >= 1:
+                # Fase 2: Hasta 3 trades
+                self.reactivation_phase = 2
+                self.reactivation_trades_allowed = 3
+                self.reactivation_success_count = 0
+                self.logger.info(f"🟡 Reactivación gradual - Fase 2: {self.reactivation_trades_allowed} trades permitidos")
+                
+            elif self.reactivation_phase == 2 and self.reactivation_success_count >= 2:
+                # Fase 3: Trading normal pero con límites reducidos
+                self.reactivation_phase = 3
+                self.reactivation_trades_allowed = 5
+                self.reactivation_success_count = 0
+                self.logger.info(f"🟡 Reactivación gradual - Fase 3: {self.reactivation_trades_allowed} trades permitidos")
+                
+            elif self.reactivation_phase == 3 and self.reactivation_success_count >= 3:
+                # Reactivación completa
+                self._complete_reactivation()
+                
+        except Exception as e:
+            self.logger.error(f"Error in gradual reactivation: {e}")
+    
+    def _complete_reactivation(self):
+        """
+        ✅ Completar reactivación del circuit breaker
+        """
+        self.circuit_breaker_active = False
+        self.circuit_breaker_activated_at = None
+        self.consecutive_losses = 0
+        self.reactivation_phase = 0
+        self.reactivation_trades_allowed = 0
+        self.reactivation_success_count = 0
+        self.circuit_breaker_trigger_reason = ""
+        
+        self.logger.info(f"🟢 Circuit breaker completamente reactivado - Trading normal restaurado")
+    
+    def _can_trade_during_reactivation(self) -> bool:
+        """
+        🔍 Verificar si se puede hacer trading durante la reactivación gradual
+        """
+        if self.reactivation_phase == 0:
+            return True  # No hay reactivación en curso
+            
+        # Contar trades ejecutados en la fase actual
+        today = datetime.now().date()
+        trades_today = self.stats.get("daily_trades", 0)
+        
+        if trades_today < self.reactivation_trades_allowed:
+            return True
+        else:
+            self.logger.info(f"🟡 Límite de trades de reactivación alcanzado: {trades_today}/{self.reactivation_trades_allowed}")
+            return False
+    
+    def _update_reactivation_success(self, trade_was_profitable: bool):
+        """
+        📊 Actualizar contador de éxito durante reactivación
+        """
+        if self.reactivation_phase > 0 and trade_was_profitable:
+            self.reactivation_success_count += 1
+            self.logger.info(f"✅ Trade exitoso durante reactivación: {self.reactivation_success_count} en fase {self.reactivation_phase}")
+            
+            # Verificar si se puede avanzar a la siguiente fase
+            if ((self.reactivation_phase == 1 and self.reactivation_success_count >= 1) or
+                (self.reactivation_phase == 2 and self.reactivation_success_count >= 2) or
+                (self.reactivation_phase == 3 and self.reactivation_success_count >= 3)):
+                
+                self._initiate_gradual_reactivation()
     
     def _update_strategy_stats(self):
         """
@@ -384,7 +618,16 @@ class TradingBot:
         
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
         
-        return BotStatus(
+        # Información adicional del circuit breaker
+        circuit_breaker_info = {
+            "circuit_breaker_active": self.circuit_breaker_active,
+            "consecutive_losses": self.consecutive_losses,
+            "max_consecutive_losses": self.max_consecutive_losses,
+            "circuit_breaker_activated_at": self.circuit_breaker_activated_at,
+            "circuit_breaker_cooldown_hours": self.circuit_breaker_cooldown_hours
+        }
+        
+        status = BotStatus(
             is_running=self.is_running,
             uptime=uptime,
             total_signals_generated=self.stats["signals_generated"],
@@ -396,6 +639,11 @@ class TradingBot:
             last_analysis_time=datetime.now() - timedelta(minutes=self.analysis_interval) if self.is_running else datetime.now(),
             next_analysis_time=next_analysis
         )
+        
+        # Agregar información del circuit breaker como atributo adicional
+        status.circuit_breaker_info = circuit_breaker_info
+        
+        return status
     
     def get_detailed_report(self) -> Dict:
         """
@@ -433,7 +681,17 @@ class TradingBot:
                 "symbols_monitored": self.symbols,
                 "min_confidence_threshold": self.min_confidence_threshold
             },
-            "risk_management": risk_report,
+            "risk_management": {
+                **risk_report,
+                "circuit_breaker": {
+                    "active": self.circuit_breaker_active,
+                    "consecutive_losses": self.consecutive_losses,
+                    "max_consecutive_losses": self.max_consecutive_losses,
+                    "activated_at": self.circuit_breaker_activated_at.isoformat() if self.circuit_breaker_activated_at else None,
+                    "cooldown_hours": self.circuit_breaker_cooldown_hours,
+                    "remaining_cooldown_hours": self._get_remaining_cooldown_hours() if hasattr(self, '_get_remaining_cooldown_hours') else 0
+                }
+            },
             "open_positions": open_positions,
             "position_monitor": {
                 "status": self.position_monitor.get_monitoring_status(),

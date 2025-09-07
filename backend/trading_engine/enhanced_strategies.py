@@ -107,30 +107,216 @@ class EnhancedTradingStrategy(TradingStrategy):
         # Signal filters deshabilitados (módulo eliminado)
         self.signal_filter = None
         
+        # Configuración avanzada de confluencia
+        self.confluence_weights = {
+            "technical": 0.4,    # Indicadores técnicos
+            "volume": 0.25,      # Análisis de volumen
+            "structure": 0.2,    # Estructura de mercado (S/R, tendencias)
+            "momentum": 0.15     # Momentum e impulso
+        }
+        self.min_confluence_score = 0.65  # Puntuación mínima de confluencia
+        
     def analyze_volume(self, df: pd.DataFrame) -> Dict:
-        """Analizar volumen para confirmación de señales"""
+        """Analizar volumen avanzado para confirmación de señales"""
         try:
             if 'volume' not in df.columns:
-                return {"volume_confirmation": False, "volume_ratio": 0.0}
+                return {"volume_confirmation": False, "volume_ratio": 0.0, "volume_strength": "WEAK"}
             
             current_volume = df['volume'].iloc[-1]
             avg_volume_20 = df['volume'].rolling(20).mean().iloc[-1]
+            avg_volume_50 = df['volume'].rolling(50).mean().iloc[-1]
             
             if pd.isna(avg_volume_20) or avg_volume_20 == 0:
-                return {"volume_confirmation": False, "volume_ratio": 0.0}
+                return {"volume_confirmation": False, "volume_ratio": 0.0, "volume_strength": "WEAK"}
             
-            volume_ratio = current_volume / avg_volume_20
-            volume_confirmation = bool(volume_ratio >= self.min_volume_ratio)
+            # Ratios de volumen múltiples
+            volume_ratio_20 = current_volume / avg_volume_20
+            volume_ratio_50 = current_volume / avg_volume_50 if not pd.isna(avg_volume_50) and avg_volume_50 > 0 else 0
+            
+            # Análisis de tendencia de volumen
+            volume_trend = df['volume'].rolling(10).mean().pct_change(5).iloc[-1]
+            
+            # Análisis de volumen por precio (VWAP deviation)
+            vwap = (df['volume'] * (df['high'] + df['low'] + df['close']) / 3).cumsum() / df['volume'].cumsum()
+            vwap_deviation = abs(df['close'].iloc[-1] - vwap.iloc[-1]) / vwap.iloc[-1]
+            
+            # Clasificación de fuerza de volumen
+            volume_strength = "WEAK"
+            if volume_ratio_20 >= 2.5:
+                volume_strength = "VERY_STRONG"
+            elif volume_ratio_20 >= 1.8:
+                volume_strength = "STRONG"
+            elif volume_ratio_20 >= 1.3:
+                volume_strength = "MODERATE"
+            
+            # Confirmación mejorada
+            volume_confirmation = (
+                volume_ratio_20 >= self.min_volume_ratio and
+                volume_strength in ["STRONG", "VERY_STRONG"] and
+                vwap_deviation < 0.02  # Precio cerca del VWAP
+            )
             
             return {
-                "volume_confirmation": volume_confirmation,
-                "volume_ratio": round(float(volume_ratio), 2),
+                "volume_confirmation": bool(volume_confirmation),
+                "volume_ratio": round(float(volume_ratio_20), 2),
+                "volume_ratio_50": round(float(volume_ratio_50), 2),
+                "volume_strength": volume_strength,
+                "volume_trend": round(float(volume_trend), 4) if not pd.isna(volume_trend) else 0.0,
+                "vwap_deviation": round(float(vwap_deviation), 4),
                 "current_volume": float(current_volume),
-                "avg_volume": float(avg_volume_20)
+                "avg_volume_20": float(avg_volume_20),
+                "avg_volume_50": float(avg_volume_50) if not pd.isna(avg_volume_50) else 0.0
             }
         except Exception as e:
             logger.error(f"Error analyzing volume: {e}")
-            return {"volume_confirmation": False, "volume_ratio": 0.0}
+            return {"volume_confirmation": False, "volume_ratio": 0.0, "volume_strength": "WEAK"}
+    
+    def calculate_advanced_confluence(self, signal_data: Dict, signal_type: str) -> Dict:
+        """Calcular puntuación de confluencia avanzada con pesos específicos"""
+        try:
+            confluence_score = 0.0
+            confluence_details = {}
+            
+            # === ANÁLISIS TÉCNICO (40%) ===
+            technical_score = 0.0
+            technical_factors = 0
+            
+            # RSI mejorado
+            if "rsi" in signal_data and signal_data["rsi"].get("signal") == signal_type:
+                rsi_strength = signal_data["rsi"].get("strength", 0) / 100
+                technical_score += rsi_strength * 0.4
+                technical_factors += 1
+                confluence_details["rsi_contribution"] = rsi_strength * 0.4
+            
+            # Bollinger Bands
+            if "bollinger_bands" in signal_data and signal_data["bollinger_bands"].get("signal") == signal_type:
+                bb_confidence = signal_data["bollinger_bands"].get("confidence", 50) / 100
+                technical_score += bb_confidence * 0.3
+                technical_factors += 1
+                confluence_details["bollinger_contribution"] = bb_confidence * 0.3
+            
+            # VWAP
+            if "vwap" in signal_data and signal_data["vwap"].get("signal") == signal_type:
+                vwap_strength = signal_data["vwap"].get("strength", 50) / 100
+                technical_score += vwap_strength * 0.3
+                technical_factors += 1
+                confluence_details["vwap_contribution"] = vwap_strength * 0.3
+            
+            # Normalizar puntuación técnica
+            if technical_factors > 0:
+                technical_score = technical_score / technical_factors
+            
+            # === ANÁLISIS DE VOLUMEN (25%) ===
+            volume_score = 0.0
+            if "volume_analysis" in signal_data:
+                vol_data = signal_data["volume_analysis"]
+                
+                # Fuerza del volumen
+                strength_map = {"VERY_STRONG": 1.0, "STRONG": 0.8, "MODERATE": 0.5, "WEAK": 0.2}
+                vol_strength = strength_map.get(vol_data.get("volume_strength", "WEAK"), 0.2)
+                
+                # Confirmación de volumen
+                vol_confirmation = 1.0 if vol_data.get("volume_confirmation", False) else 0.3
+                
+                # Tendencia de volumen
+                vol_trend = vol_data.get("volume_trend", 0)
+                trend_bonus = 0.2 if (
+                    (signal_type == "BUY" and vol_trend > 0) or 
+                    (signal_type == "SELL" and vol_trend < 0)
+                ) else 0
+                
+                volume_score = (vol_strength * 0.5 + vol_confirmation * 0.3 + trend_bonus * 0.2)
+                confluence_details["volume_contribution"] = volume_score
+            
+            # === ESTRUCTURA DE MERCADO (20%) ===
+            structure_score = 0.0
+            structure_factors = 0
+            
+            # Soporte y Resistencia
+            if "support_resistance" in signal_data and signal_data["support_resistance"].get("signal") == signal_type:
+                sr_confidence = signal_data["support_resistance"].get("confidence", 50) / 100
+                structure_score += sr_confidence * 0.6
+                structure_factors += 1
+                confluence_details["sr_contribution"] = sr_confidence * 0.6
+            
+            # Líneas de tendencia
+            if "trend_lines" in signal_data and signal_data["trend_lines"].get("signal") == signal_type:
+                tl_confidence = signal_data["trend_lines"].get("confidence", 50) / 100
+                structure_score += tl_confidence * 0.4
+                structure_factors += 1
+                confluence_details["trendline_contribution"] = tl_confidence * 0.4
+            
+            # Normalizar puntuación de estructura
+            if structure_factors > 0:
+                structure_score = structure_score / structure_factors
+            
+            # === MOMENTUM (15%) ===
+            momentum_score = 0.0
+            momentum_factors = 0
+            
+            # ROC (Rate of Change)
+            if "roc" in signal_data and signal_data["roc"].get("signal") == signal_type:
+                roc_strength = signal_data["roc"].get("strength", 50) / 100
+                momentum_score += roc_strength * 0.5
+                momentum_factors += 1
+                confluence_details["roc_contribution"] = roc_strength * 0.5
+            
+            # MFI (Money Flow Index)
+            if "mfi" in signal_data and signal_data["mfi"].get("signal") == signal_type:
+                mfi_strength = signal_data["mfi"].get("strength", 50) / 100
+                momentum_score += mfi_strength * 0.5
+                momentum_factors += 1
+                confluence_details["mfi_contribution"] = mfi_strength * 0.5
+            
+            # Normalizar puntuación de momentum
+            if momentum_factors > 0:
+                momentum_score = momentum_score / momentum_factors
+            
+            # === CÁLCULO FINAL DE CONFLUENCIA ===
+            confluence_score = (
+                technical_score * self.confluence_weights["technical"] +
+                volume_score * self.confluence_weights["volume"] +
+                structure_score * self.confluence_weights["structure"] +
+                momentum_score * self.confluence_weights["momentum"]
+            )
+            
+            # Clasificación de confluencia
+            confluence_level = "WEAK"
+            if confluence_score >= 0.8:
+                confluence_level = "VERY_STRONG"
+            elif confluence_score >= 0.65:
+                confluence_level = "STRONG"
+            elif confluence_score >= 0.45:
+                confluence_level = "MODERATE"
+            
+            return {
+                "confluence_score": round(confluence_score, 3),
+                "confluence_level": confluence_level,
+                "meets_threshold": confluence_score >= self.min_confluence_score,
+                "component_scores": {
+                    "technical": round(technical_score, 3),
+                    "volume": round(volume_score, 3),
+                    "structure": round(structure_score, 3),
+                    "momentum": round(momentum_score, 3)
+                },
+                "confluence_details": confluence_details,
+                "factors_count": {
+                    "technical": technical_factors,
+                    "structure": structure_factors,
+                    "momentum": momentum_factors
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating advanced confluence: {e}")
+            return {
+                "confluence_score": 0.0,
+                "confluence_level": "WEAK",
+                "meets_threshold": False,
+                "component_scores": {"technical": 0, "volume": 0, "structure": 0, "momentum": 0},
+                "confluence_details": {},
+                "factors_count": {"technical": 0, "structure": 0, "momentum": 0}
+            }
     
     def analyze_trend(self, df: pd.DataFrame) -> str:
         """Analizar tendencia usando múltiples indicadores"""

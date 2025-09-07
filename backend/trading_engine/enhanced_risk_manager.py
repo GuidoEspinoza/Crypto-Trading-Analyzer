@@ -177,7 +177,9 @@ class EnhancedRiskManager:
                 risk_factors["volatility_risk"] = 0.5
             
             # Riesgo de liquidez (basado en volumen)
-            volume_data = signal.indicators_data.get("volume_analysis", {})
+            # Verificar que indicators_data no sea None
+            indicators_data = signal.indicators_data if signal.indicators_data is not None else {}
+            volume_data = indicators_data.get("volume_analysis", {})
             if volume_data.get("volume_confirmation", False):
                 risk_factors["liquidity_risk"] = 0.2
             else:
@@ -291,7 +293,9 @@ class EnhancedRiskManager:
             
             # Si no hay stop loss en el signal, calcularlo
             if initial_stop == 0:
-                atr_data = signal.indicators_data.get("atr", signal.price * 0.02)
+                # Verificar que indicators_data no sea None
+                indicators_data = signal.indicators_data if signal.indicators_data is not None else {}
+                atr_data = indicators_data.get("atr", signal.price * 0.02)
                 if signal.signal_type == "BUY":
                     initial_stop = signal.price - (2 * atr_data)
                 else:
@@ -494,39 +498,147 @@ class EnhancedRiskManager:
         )
     
     def update_position(self, symbol: str, current_price: float, position_data: Dict):
-        """Actualizar posición existente y ajustar stop loss dinámico"""
+        """Actualizar posición existente y ajustar stop loss dinámico inteligente"""
         try:
             if symbol in self.open_positions:
                 position = self.open_positions[symbol]
                 
-                # Actualizar stop loss trailing
-                if position.get("signal_type") == "BUY":
-                    # Para posiciones long
-                    if current_price > position["entry_price"] * (1 + self.trailing_stop_activation):
-                        # Activar trailing stop
-                        new_stop = current_price * (1 - position["atr_multiplier"] * 0.01)
-                        if new_stop > position["current_stop"]:
-                            position["current_stop"] = new_stop
-                            position["stop_type"] = "TRAILING"
-                            logger.info(f"Updated trailing stop for {symbol}: {new_stop}")
+                # Obtener datos de mercado actuales para análisis avanzado
+                market_data = self._get_current_market_data(symbol, current_price)
                 
-                elif position.get("signal_type") == "SELL":
-                    # Para posiciones short
-                    if current_price < position["entry_price"] * (1 - self.trailing_stop_activation):
-                        # Activar trailing stop
-                        new_stop = current_price * (1 + position["atr_multiplier"] * 0.01)
-                        if new_stop < position["current_stop"]:
-                            position["current_stop"] = new_stop
-                            position["stop_type"] = "TRAILING"
-                            logger.info(f"Updated trailing stop for {symbol}: {new_stop}")
+                # Actualizar stop loss trailing inteligente
+                updated_stop = self._update_intelligent_trailing_stop(
+                    position, current_price, market_data
+                )
+                
+                if updated_stop:
+                    position["current_stop"] = updated_stop["new_stop"]
+                    position["stop_type"] = updated_stop["stop_type"]
+                    position["trailing_reason"] = updated_stop["reason"]
+                    logger.info(f"Updated intelligent trailing stop for {symbol}: {updated_stop['new_stop']} - {updated_stop['reason']}")
                 
                 # Actualizar métricas de la posición
                 position["current_price"] = current_price
                 position["unrealized_pnl"] = self._calculate_unrealized_pnl(position, current_price)
                 position["last_update"] = datetime.now()
                 
+                # Evaluar si necesita ajuste de position sizing dinámico
+                self._evaluate_dynamic_position_sizing(position, market_data)
+                
         except Exception as e:
             logger.error(f"Error updating position for {symbol}: {e}")
+    
+    def _get_current_market_data(self, symbol: str, current_price: float) -> Dict:
+        """Obtener datos de mercado actuales para análisis avanzado"""
+        try:
+            # Simular datos de mercado (en implementación real, obtener de exchange)
+            return {
+                "volatility": 0.02,  # 2% volatilidad diaria estimada
+                "volume_ratio": 1.5,  # Ratio de volumen vs promedio
+                "trend_strength": 0.7,  # Fuerza de tendencia (0-1)
+                "support_distance": abs(current_price - (current_price * 0.98)) / current_price,
+                "resistance_distance": abs((current_price * 1.02) - current_price) / current_price,
+                "momentum": 0.6  # Momentum actual (0-1)
+            }
+        except Exception as e:
+            logger.error(f"Error getting market data for {symbol}: {e}")
+            return {"volatility": 0.02, "volume_ratio": 1.0, "trend_strength": 0.5, 
+                   "support_distance": 0.02, "resistance_distance": 0.02, "momentum": 0.5}
+    
+    def _update_intelligent_trailing_stop(self, position: Dict, current_price: float, market_data: Dict) -> Dict:
+        """Actualizar trailing stop usando lógica inteligente"""
+        try:
+            signal_type = position.get("signal_type")
+            entry_price = position.get("entry_price", 0)
+            current_stop = position.get("current_stop", 0)
+            atr_multiplier = position.get("atr_multiplier", 2.0)
+            
+            if signal_type == "BUY":
+                # Calcular ganancia actual
+                profit_pct = (current_price - entry_price) / entry_price
+                
+                # Activar trailing solo si hay ganancia suficiente
+                if profit_pct >= self.trailing_stop_activation:
+                    
+                    # Calcular distancia de trailing basada en volatilidad y momentum
+                    base_distance = atr_multiplier * 0.01
+                    
+                    # Ajustar distancia según condiciones de mercado
+                    volatility_adj = 1 + (market_data["volatility"] - 0.02) * 10  # Más espacio si más volátil
+                    momentum_adj = 1 - (market_data["momentum"] - 0.5) * 0.2  # Menos espacio si momentum fuerte
+                    
+                    adjusted_distance = base_distance * volatility_adj * momentum_adj
+                    adjusted_distance = max(0.005, min(0.05, adjusted_distance))  # Límites 0.5% - 5%
+                    
+                    # Calcular nuevo stop
+                    new_stop = current_price * (1 - adjusted_distance)
+                    
+                    # Solo actualizar si es mejor que el stop actual
+                    if new_stop > current_stop:
+                        return {
+                            "new_stop": round(new_stop, 4),
+                            "stop_type": "INTELLIGENT_TRAILING",
+                            "reason": f"Vol:{volatility_adj:.2f}, Mom:{momentum_adj:.2f}, Dist:{adjusted_distance:.3f}"
+                        }
+            
+            elif signal_type == "SELL":
+                # Lógica similar para posiciones short
+                profit_pct = (entry_price - current_price) / entry_price
+                
+                if profit_pct >= self.trailing_stop_activation:
+                    base_distance = atr_multiplier * 0.01
+                    volatility_adj = 1 + (market_data["volatility"] - 0.02) * 10
+                    momentum_adj = 1 - (market_data["momentum"] - 0.5) * 0.2
+                    
+                    adjusted_distance = base_distance * volatility_adj * momentum_adj
+                    adjusted_distance = max(0.005, min(0.05, adjusted_distance))
+                    
+                    new_stop = current_price * (1 + adjusted_distance)
+                    
+                    if new_stop < current_stop:
+                        return {
+                            "new_stop": round(new_stop, 4),
+                            "stop_type": "INTELLIGENT_TRAILING",
+                            "reason": f"Vol:{volatility_adj:.2f}, Mom:{momentum_adj:.2f}, Dist:{adjusted_distance:.3f}"
+                        }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error updating intelligent trailing stop: {e}")
+            return None
+    
+    def _evaluate_dynamic_position_sizing(self, position: Dict, market_data: Dict):
+        """Evaluar si se necesita ajuste dinámico del tamaño de posición"""
+        try:
+            # Calcular performance actual de la posición
+            entry_price = position.get("entry_price", 0)
+            current_price = position.get("current_price", 0)
+            position_size = position.get("size", 0)
+            
+            if entry_price > 0 and current_price > 0:
+                profit_pct = abs(current_price - entry_price) / entry_price
+                
+                # Si la posición está muy en ganancia y el momentum es fuerte
+                if (profit_pct > 0.05 and  # Más del 5% de ganancia
+                    market_data["momentum"] > 0.7 and  # Momentum fuerte
+                    market_data["trend_strength"] > 0.6):  # Tendencia fuerte
+                    
+                    # Considerar incrementar posición (pyramiding)
+                    max_additional = self.portfolio_value * 0.02  # Máximo 2% adicional
+                    if position_size < max_additional:
+                        position["pyramid_opportunity"] = True
+                        position["pyramid_reason"] = f"Strong momentum ({market_data['momentum']:.2f}) and trend ({market_data['trend_strength']:.2f})"
+                        logger.info(f"Pyramid opportunity identified for {position.get('symbol', 'Unknown')}")
+                
+                # Si hay alta volatilidad, considerar reducir exposición
+                elif market_data["volatility"] > 0.04:  # Volatilidad > 4%
+                    position["reduce_exposure_warning"] = True
+                    position["reduce_reason"] = f"High volatility ({market_data['volatility']:.3f})"
+                    logger.warning(f"High volatility warning for {position.get('symbol', 'Unknown')}")
+                    
+        except Exception as e:
+            logger.error(f"Error evaluating dynamic position sizing: {e}")
     
     def _calculate_unrealized_pnl(self, position: Dict, current_price: float) -> float:
         """Calcular PnL no realizado de una posición"""

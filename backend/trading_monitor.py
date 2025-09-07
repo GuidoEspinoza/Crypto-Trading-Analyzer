@@ -213,16 +213,51 @@ def show_active_positions_summary():
                 # Obtener precio actual
                 current_price = get_current_price(trade.symbol.replace('/', ''))
                 
+                # Calcular porcentajes de TP y SL configurados
+                tp_pct_str = "N/A"
+                sl_pct_str = "N/A"
+                
+                if trade.take_profit and trade.entry_price > 0:
+                    if trade.trade_type == "BUY":
+                        tp_pct = ((trade.take_profit - trade.entry_price) / trade.entry_price) * 100
+                    else:
+                        tp_pct = ((trade.entry_price - trade.take_profit) / trade.entry_price) * 100
+                    tp_pct_str = f"{tp_pct:.2f}%"
+                
+                if trade.stop_loss and trade.entry_price > 0:
+                    if trade.trade_type == "BUY":
+                        sl_pct = ((trade.stop_loss - trade.entry_price) / trade.entry_price) * 100
+                    else:
+                        sl_pct = ((trade.entry_price - trade.stop_loss) / trade.entry_price) * 100
+                    sl_pct_str = f"{abs(sl_pct):.2f}%"
+                
                 # Formatear TP y SL
                 tp_str = f"${trade.take_profit:.4f}" if trade.take_profit else "N/A"
                 sl_str = f"${trade.stop_loss:.4f}" if trade.stop_loss else "N/A"
                 
                 print(f"   #{trade.id} {trade.symbol} {trade.trade_type}")
                 print(f"      Entry: ${trade.entry_price:.4f} | Current: ${current_price:.4f}")
-                print(f"      TP: {tp_str} | SL: {sl_str}")
+                print(f"      TP: {tp_str} ({tp_pct_str}) | SL: {sl_str} ({sl_pct_str})")
                 
-                # Calcular distancias a TP/SL
+                # Calcular ganancias y pérdidas potenciales
                 if current_price > 0:
+                    # Calcular ganancia potencial en TP
+                    if trade.take_profit:
+                        if trade.trade_type == "BUY":
+                            tp_gain_usdt = (trade.take_profit - trade.entry_price) * trade.quantity
+                        else:
+                            tp_gain_usdt = (trade.entry_price - trade.take_profit) * trade.quantity
+                        print(f"      Ganancia potencial: ${tp_gain_usdt:.2f} USDT")
+                    
+                    # Calcular pérdida potencial en SL
+                    if trade.stop_loss:
+                        if trade.trade_type == "BUY":
+                            sl_loss_usdt = (trade.stop_loss - trade.entry_price) * trade.quantity
+                        else:
+                            sl_loss_usdt = (trade.entry_price - trade.stop_loss) * trade.quantity
+                        print(f"      Pérdida potencial: ${sl_loss_usdt:.2f} USDT")
+                    
+                    # Calcular distancias a TP/SL
                     if trade.take_profit:
                         if trade.trade_type == "BUY":
                             tp_distance = ((trade.take_profit - current_price) / current_price) * 100
@@ -361,14 +396,17 @@ def check_tp_sl_configuration():
     print("-" * 40)
     
     try:
-        print(f"   ATR Multiplier Min: {RiskManagerConfig.ATR_MULTIPLIER_MIN}x")
-        print(f"   ATR Multiplier Max: {RiskManagerConfig.ATR_MULTIPLIER_MAX}x")
-        print(f"   ATR Default: {RiskManagerConfig.ATR_DEFAULT}x")
-        print(f"   Trailing Stop Activation: {RiskManagerConfig.TRAILING_STOP_ACTIVATION}%")
-        print(f"   Breakeven Threshold: {RiskManagerConfig.BREAKEVEN_THRESHOLD}%")
-        print(f"   Max riesgo por trade: {RiskManagerConfig.MAX_RISK_PER_TRADE}%")
-        print(f"   Max riesgo diario: {RiskManagerConfig.MAX_DAILY_RISK}%")
-        print(f"   Max drawdown: {RiskManagerConfig.MAX_DRAWDOWN_THRESHOLD}%")
+        # Crear instancia para acceder a las propiedades
+        risk_config = RiskManagerConfig()
+        
+        print(f"   ATR Multiplier Min: {risk_config.ATR_MULTIPLIER_MIN}x")
+        print(f"   ATR Multiplier Max: {risk_config.ATR_MULTIPLIER_MAX}x")
+        print(f"   ATR Default: {risk_config.ATR_DEFAULT}x")
+        print(f"   Trailing Stop Activation: {risk_config.TRAILING_STOP_ACTIVATION}%")
+        print(f"   Breakeven Threshold: {risk_config.BREAKEVEN_THRESHOLD}%")
+        print(f"   Max riesgo por trade: {risk_config.MAX_RISK_PER_TRADE}%")
+        print(f"   Max riesgo diario: {risk_config.MAX_DAILY_RISK}%")
+        print(f"   Max drawdown: {risk_config.MAX_DRAWDOWN_THRESHOLD}%")
         
         print(f"\n   ✅ Configuración de Risk Manager encontrada")
         

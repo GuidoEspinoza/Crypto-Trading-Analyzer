@@ -21,10 +21,10 @@ from typing import List, Dict, Any
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO"
+TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
-GLOBAL_INITIAL_BALANCE = 500.0
+GLOBAL_INITIAL_BALANCE = 1000.0
 
 # ============================================================================
 # 📊 DEFINICIÓN DE PERFILES DE TRADING
@@ -36,183 +36,283 @@ class TradingProfiles:
     PROFILES = {
         "RAPIDO": {
             "name": "🚀 Ultra-Rápido",
-            "description": "Timeframes 1m-15m, máxima frecuencia, mayor riesgo",
+            "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
             "timeframes": ["1m", "5m", "15m"],
             "analysis_interval": 5,
-            "min_confidence": 60.0,
-            "max_daily_trades": 20,
-            "max_positions": 8,
-            # Paper Trader Config
-            "max_position_size": 10.0,
-            "max_total_exposure": 85.0,
-            "min_trade_value": 10.0,
-            "paper_min_confidence": 58.0,
-            "max_slippage": 0.12,
-            "min_liquidity": 3.0,
-            # Risk Manager Config
-            "max_risk_per_trade": 2.0,
-            "max_daily_risk": 8.0,
-            "max_drawdown_threshold": 15.0,
-            "correlation_threshold": 0.8,
-            "min_position_size": 15.0,
-            "risk_max_position_size": 10.0,
-            "kelly_fraction": 0.3,
-            "volatility_adjustment": 1.3,
-            "atr_multiplier_min": 2.0,
-            "atr_multiplier_max": 3.0,
-            "atr_default": 2.0,
-            "atr_volatile": 3.0,
-            "atr_sideways": 1.5,
-            "trailing_stop_activation": 1.0,
-            "breakeven_threshold": 0.8,
-            # Strategy Config
-            "default_min_confidence": 55.0,
+            "min_confidence": 62.0,  # Ligeramente aumentado para calidad
+            "max_daily_trades": 25,  # Aumentado para aprovechar oportunidades
+            "max_positions": 10,  # Aumentado para diversificación
+            # Circuit Breaker Config - Optimizado
+            "max_consecutive_losses": 7,  # Aumentado para tolerancia
+            "circuit_breaker_cooldown_hours": 1.5,  # Reducido para eficiencia
+            "max_drawdown_threshold": 12.0,  # Reducido para protección
+            "gradual_reactivation": True,  # Nueva funcionalidad
+            # Paper Trader Config - Optimizado
+            "max_position_size": 8.0,  # Reducido para control
+            "max_total_exposure": 75.0,  # Reducido para seguridad
+            "min_trade_value": 15.0,  # Aumentado para calidad
+            "paper_min_confidence": 60.0,  # Aumentado
+            "max_slippage": 0.10,  # Reducido para mejor ejecución
+            "min_liquidity": 4.0,  # Aumentado para liquidez
+            # Risk Manager Config - Optimizado
+            "max_risk_per_trade": 1.8,  # Reducido para control
+            "max_daily_risk": 7.0,  # Reducido para protección
+            "max_drawdown_threshold": 12.0,  # Consistente
+            "correlation_threshold": 0.75,  # Optimizado
+            "min_position_size": 12.0,  # Reducido para flexibilidad
+            "risk_max_position_size": 8.0,  # Consistente
+            "kelly_fraction": 0.28,  # Optimizado
+            "volatility_adjustment": 1.25,  # Optimizado
+            "atr_multiplier_min": 1.8,  # Optimizado más ajustado
+            "atr_multiplier_max": 2.8,  # Optimizado
+            "atr_default": 1.8,
+            "atr_volatile": 2.8,  # Optimizado
+            "atr_sideways": 1.4,  # Optimizado
+            "trailing_stop_activation": 0.8,  # Optimizado más agresivo
+            "breakeven_threshold": 0.6,  # Optimizado
+            "intelligent_trailing": True,  # Nueva funcionalidad
+            "dynamic_position_sizing": True,  # Nueva funcionalidad
+            # Strategy Config - Optimizado
+            "default_min_confidence": 58.0,  # Aumentado
             "default_atr_period": 10,
-            "rsi_min_confidence": 65.0,
-            "rsi_oversold": 35,
-            "rsi_overbought": 65,
+            "rsi_min_confidence": 68.0,  # Aumentado
+            "rsi_oversold": 32,  # Optimizado más estricto
+            "rsi_overbought": 68,  # Optimizado más estricto
             "rsi_period": 10,
-            "min_volume_ratio": 1.2,
-            "min_confluence": 2,
-            "trend_strength_threshold": 25,
-            "min_atr_ratio": 0.8,
-            "max_spread_threshold": 0.0025,
-            # Multi-Timeframe Config
-            "mtf_enhanced_confidence": 60.0,
-            "mtf_min_confidence": 62.0,
-            "mtf_min_consensus": 0.6,
+            "min_volume_ratio": 1.4,  # Aumentado para calidad
+            "min_confluence": 3,  # Aumentado para calidad
+            "trend_strength_threshold": 28,  # Optimizado
+            "min_atr_ratio": 0.9,  # Optimizado
+            "max_spread_threshold": 0.002,  # Optimizado más estricto
+            "volume_weight": 0.22,  # Nuevo peso para volumen
+            "confluence_threshold": 0.65,  # Nuevo umbral
+            # Multi-Timeframe Config - Optimizado
+            "mtf_enhanced_confidence": 62.0,  # Optimizado
+            "mtf_min_confidence": 65.0,  # Aumentado para calidad
+            "mtf_min_consensus": 0.65,  # Optimizado
             "mtf_require_trend_alignment": False,
             "mtf_min_timeframe_consensus": 2,
             "mtf_trend_alignment_required": False,
-            # Ensemble Config
-            "ensemble_min_consensus_threshold": 0.55,
-            "ensemble_confidence_boost_factor": 1.25,
-            # Live Trading Config
+            "volume_timeframe": "5m",  # Nuevo timeframe para volumen
+            # Ensemble Config - Optimizado
+            "ensemble_min_consensus_threshold": 0.58,  # Optimizado
+            "ensemble_confidence_boost_factor": 1.3,  # Optimizado
+            # Live Trading Config - Optimizado
             "trading_fees": 0.001,
-            "order_timeout": 30,
-            "max_order_retries": 2,
-            "order_check_interval": 2,
-            "live_first_analysis_delay": 15
+            "order_timeout": 25,  # Optimizado más rápido
+            "max_order_retries": 3,  # Aumentado para robustez
+            "order_check_interval": 1.5,  # Optimizado más frecuente
+            "live_first_analysis_delay": 10  # Optimizado más rápido
         },
         "AGRESIVO": {
             "name": "⚡ Agresivo",
-            "description": "Timeframes 15m-1h, balance velocidad/control",
+            "description": "Timeframes 15m-1h, balance velocidad/control optimizado",
             "timeframes": ["15m", "30m", "1h"],
             "analysis_interval": 15,
-            "min_confidence": 65.0,
+            "min_confidence": 70.0,  # Aumentado para mejor calidad
             "max_daily_trades": 12,
             "max_positions": 6,
-            # Paper Trader Config
-            "max_position_size": 8.0,
-            "max_total_exposure": 75.0,
+            # Circuit Breaker Config - Optimizado
+            "max_consecutive_losses": 4,  # Mantenido para tolerancia
+            "circuit_breaker_cooldown_hours": 3,  # Optimizado para recuperación
+            "max_drawdown_threshold": 10.0,  # Reducido para mejor control
+            "gradual_reactivation": True,  # Nueva funcionalidad
+            # Paper Trader Config - Optimizado
+            "max_position_size": 6.0,  # Reducido para mejor control
+            "max_total_exposure": 65.0,  # Reducido para menor riesgo
             "min_trade_value": 15.0,
-            "paper_min_confidence": 62.0,
-            "max_slippage": 0.08,
-            "min_liquidity": 5.0,
-            # Risk Manager Config
-            "max_risk_per_trade": 1.5,
-            "max_daily_risk": 6.0,
-            "max_drawdown_threshold": 12.0,
-            "correlation_threshold": 0.7,
-            "min_position_size": 10.0,
-            "risk_max_position_size": 8.0,
-            "kelly_fraction": 0.25,
-            "volatility_adjustment": 1.2,
-            "atr_multiplier_min": 2.5,
-            "atr_multiplier_max": 4.0,
+            "paper_min_confidence": 68.0,  # Aumentado para calidad
+            "max_slippage": 0.06,  # Reducido para mejor ejecución
+            "min_liquidity": 6.0,  # Aumentado para mejor liquidez
+            # Risk Manager Config - Optimizado
+            "max_risk_per_trade": 1.2,  # Reducido para mejor control
+            "max_daily_risk": 5.0,  # Reducido para menor exposición
+            "max_drawdown_threshold": 10.0,  # Reducido para protección
+            "correlation_threshold": 0.65,  # Optimizado
+            "min_position_size": 8.0,  # Reducido
+            "risk_max_position_size": 6.0,  # Reducido para consistencia
+            "kelly_fraction": 0.22,  # Optimizado
+            "volatility_adjustment": 1.15,  # Optimizado
+            "atr_multiplier_min": 2.2,  # Optimizado
+            "atr_multiplier_max": 3.8,  # Optimizado
             "atr_default": 2.5,
-            "atr_volatile": 4.0,
-            "atr_sideways": 2.0,
-            "trailing_stop_activation": 1.5,
-            "breakeven_threshold": 1.0,
-            # Strategy Config
-            "default_min_confidence": 60.0,
+            "atr_volatile": 3.8,  # Optimizado
+            "atr_sideways": 2.2,  # Optimizado
+            "trailing_stop_activation": 1.2,  # Optimizado
+            "breakeven_threshold": 0.8,  # Optimizado
+            "intelligent_trailing": True,  # Nueva funcionalidad
+            "dynamic_position_sizing": True,  # Nueva funcionalidad
+            # Strategy Config - Optimizado
+            "default_min_confidence": 65.0,  # Aumentado
             "default_atr_period": 14,
-            "rsi_min_confidence": 68.0,
-            "rsi_oversold": 30,
-            "rsi_overbought": 70,
+            "rsi_min_confidence": 72.0,  # Aumentado para calidad
+            "rsi_oversold": 28,  # Optimizado
+            "rsi_overbought": 72,  # Optimizado
             "rsi_period": 14,
-            "min_volume_ratio": 1.5,
+            "min_volume_ratio": 1.8,  # Aumentado para calidad
             "min_confluence": 3,
-            "trend_strength_threshold": 30,
-            "min_atr_ratio": 1.0,
-            "max_spread_threshold": 0.0015,
-            # Multi-Timeframe Config
-            "mtf_enhanced_confidence": 65.0,
-            "mtf_min_confidence": 68.0,
-            "mtf_min_consensus": 0.65,
+            "trend_strength_threshold": 32,  # Optimizado
+            "min_atr_ratio": 1.1,  # Optimizado
+            "max_spread_threshold": 0.0012,  # Optimizado
+            "volume_weight": 0.15,  # Nuevo peso para volumen
+            "confluence_threshold": 0.68,  # Nuevo umbral de confluencia
+            # Multi-Timeframe Config - Optimizado
+            "mtf_enhanced_confidence": 68.0,  # Optimizado
+            "mtf_min_confidence": 72.0,  # Aumentado
+            "mtf_min_consensus": 0.68,  # Optimizado
             "mtf_require_trend_alignment": True,
             "mtf_min_timeframe_consensus": 2,
             "mtf_trend_alignment_required": True,
-            # Ensemble Config
-            "ensemble_min_consensus_threshold": 0.6,
-            "ensemble_confidence_boost_factor": 1.2,
-            # Live Trading Config
+            "volume_timeframe": "1h",  # Nuevo timeframe para volumen
+            # Ensemble Config - Optimizado
+            "ensemble_min_consensus_threshold": 0.65,  # Optimizado
+            "ensemble_confidence_boost_factor": 1.18,  # Optimizado
+            # Live Trading Config - Optimizado
             "trading_fees": 0.001,
-            "order_timeout": 45,
+            "order_timeout": 40,  # Optimizado
             "max_order_retries": 3,
-            "order_check_interval": 3,
-            "live_first_analysis_delay": 30
+            "order_check_interval": 2,  # Optimizado
+            "live_first_analysis_delay": 25  # Optimizado
         },
         "OPTIMO": {
-            "name": "🛡️ Óptimo",
-            "description": "Timeframes 1h-1d, calidad y preservación",
-            "timeframes": ["1h", "4h", "1d"],
+            "name": "🎯 Óptimo",
+            "description": "Timeframes 1h-4h, máxima precisión optimizada",
+            "timeframes": ["1h", "2h", "4h"],
             "analysis_interval": 30,
-            "min_confidence": 70.0,
-            "max_daily_trades": 8,
-            "max_positions": 4,
-            # Paper Trader Config
-            "max_position_size": 6.0,
-            "max_total_exposure": 60.0,
-            "min_trade_value": 5.0,
-            "paper_min_confidence": 65.0,
-            "max_slippage": 0.05,
-            "min_liquidity": 8.0,
-            # Risk Manager Config
-            "max_risk_per_trade": 1.0,
-            "max_daily_risk": 4.0,
-            "max_drawdown_threshold": 8.0,
-            "correlation_threshold": 0.6,
-            "min_position_size": 5.0,
-            "risk_max_position_size": 6.0,
-            "kelly_fraction": 0.2,
-            "volatility_adjustment": 1.0,
-            "atr_multiplier_min": 3.0,
-            "atr_multiplier_max": 5.0,
-            "atr_default": 3.0,
-            "atr_volatile": 5.0,
-            "atr_sideways": 2.5,
-            "trailing_stop_activation": 2.0,
-            "breakeven_threshold": 1.5,
-            # Strategy Config
-            "default_min_confidence": 65.0,
-            "default_atr_period": 20,
-            "rsi_min_confidence": 72.0,
-            "rsi_oversold": 25,
-            "rsi_overbought": 75,
-            "rsi_period": 21,
-            "min_volume_ratio": 1.8,
+            "min_confidence": 78.0,  # Aumentado para máxima calidad
+            "max_daily_trades": 8,  # Aumentado ligeramente
+            "max_positions": 4,  # Aumentado para diversificación
+            # Circuit Breaker Config - Optimizado
+            "max_consecutive_losses": 3,  # Aumentado para tolerancia
+            "circuit_breaker_cooldown_hours": 4,  # Reducido para eficiencia
+            "max_drawdown_threshold": 8.0,  # Mantenido estricto
+            "gradual_reactivation": True,  # Nueva funcionalidad
+            # Paper Trader Config - Optimizado
+            "max_position_size": 10.0,  # Reducido para control
+            "max_total_exposure": 55.0,  # Reducido para seguridad
+            "min_trade_value": 30.0,  # Aumentado para calidad
+            "paper_min_confidence": 75.0,  # Aumentado
+            "max_slippage": 0.04,  # Reducido para mejor ejecución
+            "min_liquidity": 10.0,  # Aumentado para liquidez
+            # Risk Manager Config - Optimizado
+            "max_risk_per_trade": 0.8,  # Reducido para conservadurismo
+            "max_daily_risk": 3.5,  # Reducido para protección
+            "max_drawdown_threshold": 8.0,  # Mantenido estricto
+            "correlation_threshold": 0.55,  # Optimizado
+            "min_position_size": 20.0,  # Aumentado para calidad
+            "risk_max_position_size": 10.0,  # Consistente
+            "kelly_fraction": 0.18,  # Optimizado conservador
+            "volatility_adjustment": 0.95,  # Optimizado
+            "atr_multiplier_min": 2.2,  # Optimizado
+            "atr_multiplier_max": 3.2,  # Optimizado
+            "atr_default": 2.2,
+            "atr_volatile": 3.2,  # Optimizado
+            "atr_sideways": 2.0,  # Optimizado
+            "trailing_stop_activation": 0.8,  # Optimizado
+            "breakeven_threshold": 0.6,  # Optimizado
+            "intelligent_trailing": True,  # Nueva funcionalidad
+            "dynamic_position_sizing": True,  # Nueva funcionalidad
+            # Strategy Config - Optimizado
+            "default_min_confidence": 72.0,  # Aumentado
+            "default_atr_period": 14,
+            "rsi_min_confidence": 78.0,  # Aumentado
+            "rsi_oversold": 22,  # Optimizado más estricto
+            "rsi_overbought": 78,  # Optimizado más estricto
+            "rsi_period": 14,
+            "min_volume_ratio": 2.2,  # Aumentado para calidad
             "min_confluence": 4,
-            "trend_strength_threshold": 35,
-            "min_atr_ratio": 1.2,
-            "max_spread_threshold": 0.0010,
-            # Multi-Timeframe Config
-            "mtf_enhanced_confidence": 70.0,
-            "mtf_min_confidence": 72.0,
-            "mtf_min_consensus": 0.7,
+            "trend_strength_threshold": 42,  # Optimizado
+            "min_atr_ratio": 1.3,  # Optimizado
+            "max_spread_threshold": 0.0008,  # Optimizado más estricto
+            "volume_weight": 0.18,  # Nuevo peso para volumen
+            "confluence_threshold": 0.72,  # Nuevo umbral alto
+            # Multi-Timeframe Config - Optimizado
+            "mtf_enhanced_confidence": 78.0,  # Optimizado
+            "mtf_min_confidence": 82.0,  # Aumentado para calidad
+            "mtf_min_consensus": 0.78,  # Optimizado
             "mtf_require_trend_alignment": True,
             "mtf_min_timeframe_consensus": 3,
             "mtf_trend_alignment_required": True,
-            # Ensemble Config
-            "ensemble_min_consensus_threshold": 0.7,
-            "ensemble_confidence_boost_factor": 1.15,
-            # Live Trading Config
+            "volume_timeframe": "2h",  # Nuevo timeframe para volumen
+            # Ensemble Config - Optimizado
+            "ensemble_min_consensus_threshold": 0.72,  # Optimizado
+            "ensemble_confidence_boost_factor": 1.25,  # Optimizado
+            # Live Trading Config - Optimizado
             "trading_fees": 0.001,
-            "order_timeout": 60,
-            "max_order_retries": 5,
-            "order_check_interval": 5,
-            "live_first_analysis_delay": 60
+            "order_timeout": 50,  # Optimizado
+            "max_order_retries": 3,
+            "order_check_interval": 4,  # Optimizado
+            "live_first_analysis_delay": 45  # Optimizado
+        },
+        "CONSERVADOR": {
+            "name": "🛡️ Conservador",
+            "description": "Timeframes 4h-1d, máxima preservación de capital",
+            "timeframes": ["4h", "8h", "1d"],  # Timeframes más largos
+            "analysis_interval": 45,  # Análisis menos frecuente
+            "min_confidence": 82.0,  # Muy alto para seguridad
+            "max_daily_trades": 4,  # Reducido para conservadurismo
+            "max_positions": 2,  # Muy limitado
+            # Circuit Breaker Config - Ultra conservador
+            "max_consecutive_losses": 2,  # Muy estricto
+            "circuit_breaker_cooldown_hours": 8,  # Cooldown largo
+            "max_drawdown_threshold": 5.0,  # Muy estricto
+            "gradual_reactivation": True,  # Nueva funcionalidad
+            # Paper Trader Config - Conservador
+            "max_position_size": 4.0,  # Muy reducido
+            "max_total_exposure": 35.0,  # Muy limitado
+            "min_trade_value": 50.0,  # Alto para calidad
+            "paper_min_confidence": 80.0,  # Muy alto
+            "max_slippage": 0.03,  # Muy estricto
+            "min_liquidity": 15.0,  # Muy alto
+            # Risk Manager Config - Ultra conservador
+            "max_risk_per_trade": 0.5,  # Muy bajo
+            "max_daily_risk": 2.0,  # Muy limitado
+            "max_drawdown_threshold": 5.0,  # Muy estricto
+            "correlation_threshold": 0.4,  # Muy estricto
+            "min_position_size": 30.0,  # Alto para calidad
+            "risk_max_position_size": 4.0,  # Consistente
+            "kelly_fraction": 0.1,  # Muy conservador
+            "volatility_adjustment": 0.8,  # Reducido
+            "atr_multiplier_min": 3.5,  # Stops más amplios
+            "atr_multiplier_max": 5.5,  # Stops muy amplios
+            "atr_default": 3.5,
+            "atr_volatile": 5.5,  # Muy amplio
+            "atr_sideways": 3.0,  # Amplio
+            "trailing_stop_activation": 1.5,  # Más conservador
+            "breakeven_threshold": 1.0,  # Más conservador
+            "intelligent_trailing": True,  # Nueva funcionalidad
+            "dynamic_position_sizing": True,  # Nueva funcionalidad
+            # Strategy Config - Ultra conservador
+            "default_min_confidence": 78.0,  # Muy alto
+            "default_atr_period": 21,  # Período más largo
+            "rsi_min_confidence": 85.0,  # Muy alto
+            "rsi_oversold": 20,  # Muy estricto
+            "rsi_overbought": 80,  # Muy estricto
+            "rsi_period": 21,  # Período más largo
+            "min_volume_ratio": 2.5,  # Alto para calidad
+            "min_confluence": 5,  # Muy alto
+            "trend_strength_threshold": 50,  # Alto
+            "min_atr_ratio": 1.5,  # Alto
+            "max_spread_threshold": 0.0005,  # Muy estricto
+            "volume_weight": 0.25,  # Peso alto para volumen
+            "confluence_threshold": 0.8,  # Muy alto
+            # Multi-Timeframe Config - Ultra conservador
+            "mtf_enhanced_confidence": 82.0,  # Muy alto
+            "mtf_min_confidence": 88.0,  # Extremadamente alto
+            "mtf_min_consensus": 0.85,  # Muy alto
+            "mtf_require_trend_alignment": True,
+            "mtf_min_timeframe_consensus": 3,
+            "mtf_trend_alignment_required": True,
+            "volume_timeframe": "4h",  # Timeframe más largo
+            # Ensemble Config - Ultra conservador
+            "ensemble_min_consensus_threshold": 0.8,  # Muy alto
+            "ensemble_confidence_boost_factor": 1.1,  # Conservador
+            # Live Trading Config - Conservador
+            "trading_fees": 0.001,
+            "order_timeout": 90,  # Más tiempo
+            "max_order_retries": 5,  # Más intentos
+            "order_check_interval": 3,  # Más frecuente
+            "live_first_analysis_delay": 90  # Más tiempo inicial
         }
     }
     
@@ -312,6 +412,16 @@ class TradingBotConfig:
         """Delay para primer análisis según perfil."""
         # Usar el doble del intervalo de análisis como delay inicial
         return TradingProfiles.get_current_profile()["analysis_interval"] * 2
+    
+    @classmethod
+    def get_max_consecutive_losses(cls) -> int:
+        """Máximo de pérdidas consecutivas antes de activar circuit breaker según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_consecutive_losses"]
+    
+    @classmethod
+    def get_circuit_breaker_cooldown_hours(cls) -> int:
+        """Horas de cooldown después de activar circuit breaker según perfil activo."""
+        return TradingProfiles.get_current_profile()["circuit_breaker_cooldown_hours"]
 
 
 # ============================================================================

@@ -183,41 +183,52 @@ class PaperTrader:
         Returns:
             bool: True si es válida
         """
-        # Validaciones básicas
-        if signal.confidence_score < self.min_confidence_threshold:
-            self.logger.info(f"❌ Low confidence: {signal.confidence_score}")
-            return False
-        
-        if signal.price <= 0:
-            self.logger.error(f"❌ Invalid price: {signal.price}")
-            return False
-        
-        if signal.signal_type not in ["BUY", "SELL", "HOLD"]:
-            self.logger.error(f"❌ Invalid signal type: {signal.signal_type}")
-            return False
-        
-        # Validaciones de portfolio
-        portfolio_summary = self._get_portfolio_summary()
-        
-        if signal.signal_type == "BUY":
-            # Verificar si tenemos USDT suficiente
-            usdt_balance = self._get_usdt_balance()
-            max_trade_value = usdt_balance * self.max_position_size
-            
-            if max_trade_value < self.min_trade_value:
-                self.logger.info(f"❌ Insufficient USDT balance: ${usdt_balance:.2f}")
+        try:
+            # Validaciones básicas
+            if signal.confidence_score < self.min_confidence_threshold:
+                self.logger.info(f"❌ Low confidence: {signal.confidence_score:.1f}% < {self.min_confidence_threshold:.1f}%")
                 return False
-        
-        elif signal.signal_type == "SELL":
-            # Verificar si tenemos el asset para vender
-            asset_symbol = signal.symbol.split('/')[0]  # BTC de BTC/USDT
-            asset_balance = self._get_asset_balance(asset_symbol)
             
-            if asset_balance <= 0:
-                self.logger.info(f"❌ No {asset_symbol} balance to sell")
+            if signal.price <= 0:
+                self.logger.error(f"❌ Invalid price: {signal.price}")
                 return False
-        
-        return True
+            
+            if signal.signal_type not in ["BUY", "SELL", "HOLD"]:
+                self.logger.error(f"❌ Invalid signal type: {signal.signal_type}")
+                return False
+            
+            # Asegurar que el portfolio está inicializado
+            self._ensure_portfolio_initialized()
+            
+            # Validaciones de portfolio
+            if signal.signal_type == "BUY":
+                # Verificar si tenemos USDT suficiente
+                usdt_balance = self._get_usdt_balance()
+                max_trade_value = usdt_balance * (self.max_position_size / 100.0)  # Convertir porcentaje
+                
+                if usdt_balance < self.min_trade_value:
+                    self.logger.info(f"❌ Insufficient USDT balance: ${usdt_balance:.2f} < ${self.min_trade_value:.2f}")
+                    return False
+                    
+                if max_trade_value < self.min_trade_value:
+                    self.logger.info(f"❌ Max trade value too low: ${max_trade_value:.2f} < ${self.min_trade_value:.2f}")
+                    return False
+            
+            elif signal.signal_type == "SELL":
+                # Verificar si tenemos el asset para vender
+                asset_symbol = signal.symbol.split('/')[0]  # BTC de BTC/USDT
+                asset_balance = self._get_asset_balance(asset_symbol)
+                
+                if asset_balance <= 0:
+                    self.logger.info(f"❌ No {asset_symbol} balance to sell: {asset_balance}")
+                    return False
+            
+            self.logger.info(f"✅ Signal validation passed: {signal.signal_type} {signal.symbol} @ ${signal.price:.2f} ({signal.confidence_score:.1f}%)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error validating signal: {e}")
+            return False
     
     def _execute_buy(self, signal: TradingSignal) -> TradeResult:
         """
@@ -426,6 +437,37 @@ class PaperTrader:
         """
         return db_manager.get_portfolio_summary(is_paper=True)
     
+    def _ensure_portfolio_initialized(self):
+        """
+        🔧 Asegurar que el portfolio está inicializado correctamente
+        """
+        try:
+            with db_manager.get_db_session() as session:
+                usdt_portfolio = session.query(Portfolio).filter(
+                    Portfolio.symbol == "USDT",
+                    Portfolio.is_paper == True
+                ).first()
+                
+                if not usdt_portfolio:
+                    # Crear portfolio inicial con balance configurado
+                    initial_portfolio = Portfolio(
+                        symbol="USDT",
+                        quantity=self.initial_balance,
+                        avg_price=1.0,
+                        current_price=1.0,
+                        current_value=self.initial_balance,
+                        unrealized_pnl=0.0,
+                        unrealized_pnl_percentage=0.0,
+                        is_paper=True
+                    )
+                    
+                    session.add(initial_portfolio)
+                    session.commit()
+                    self.logger.info(f"💰 Initialized paper trading portfolio with ${self.initial_balance:,.2f} USDT")
+                    
+        except Exception as e:
+            self.logger.error(f"❌ Error initializing portfolio: {e}")
+    
     def _get_usdt_balance(self) -> float:
         """
         💰 Obtener balance de USDT
@@ -437,7 +479,9 @@ class PaperTrader:
                     Portfolio.is_paper == True
                 ).first()
                 
-                return usdt_portfolio.quantity if usdt_portfolio else 0.0
+                balance = usdt_portfolio.quantity if usdt_portfolio else 0.0
+                self.logger.debug(f"💰 Current USDT balance: ${balance:.2f}")
+                return balance
         except Exception as e:
             self.logger.error(f"❌ Error getting USDT balance: {e}")
             return 0.0
