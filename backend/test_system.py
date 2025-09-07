@@ -544,12 +544,18 @@ class SystemTester:
                     updated_count = position_manager.update_trailing_stops(market_data)
                     self.log_success(f"Trailing stops actualizados con nuevo precio ${new_price:.2f}: {updated_count} posiciones")
                     
+                    # Actualizar take profits dinámicos
+                    updated_tp_count = position_manager.update_dynamic_take_profits(market_data)
+                    self.log_success(f"Take profits dinámicos actualizados: {updated_tp_count} posiciones")
+                    
                     # Verificar que el trailing stop se actualizó
                     updated_positions = position_manager.get_active_positions()
                     if len(updated_positions) > 0:
                         position = updated_positions[0]
                         if hasattr(position, 'trailing_stop') and position.trailing_stop:
                             self.log_success(f"✓ Trailing stop actualizado: ${position.trailing_stop:.2f}")
+                        if hasattr(position, 'take_profit') and position.take_profit:
+                            self.log_success(f"✓ Take profit dinámico actualizado: ${position.take_profit:.2f}")
                         else:
                             self.log_warning("⚠️ Trailing stop no se actualizó correctamente")
                     

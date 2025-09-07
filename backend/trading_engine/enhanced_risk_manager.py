@@ -53,12 +53,27 @@ class DynamicStopLoss:
     trailing_distance: float = 0.0  # Distancia del trailing stop
 
 @dataclass
+class DynamicTakeProfit:
+    """Take profit dinámico y ajustable"""
+    initial_tp: float
+    current_tp: float
+    trailing_tp: float
+    tp_increment_pct: float  # Porcentaje de incremento del TP
+    tp_type: str  # FIXED, TRAILING, DYNAMIC
+    last_update: datetime
+    take_profit_price: float = 0.0  # Precio actual del take profit
+    confidence_threshold: float = 0.0  # Umbral de confianza para ajustar TP
+    max_tp_adjustments: int = 5  # Máximo número de ajustes permitidos
+    adjustments_made: int = 0  # Número de ajustes realizados
+
+@dataclass
 class EnhancedRiskAssessment:
     """Evaluación de riesgo mejorada"""
     overall_risk_score: float
     risk_level: RiskLevel
     position_sizing: PositionSizing
     dynamic_stop_loss: DynamicStopLoss
+    dynamic_take_profit: DynamicTakeProfit
     market_risk_factors: Dict
     portfolio_risk_metrics: Dict
     recommendations: List[str]
@@ -112,6 +127,9 @@ class EnhancedRiskManager:
             # Configurar stop loss dinámico
             dynamic_stop = self._configure_dynamic_stop_loss(signal)
             
+            # Configurar take profit dinámico
+            dynamic_tp = self._configure_dynamic_take_profit(signal)
+            
             # Métricas de riesgo del portfolio
             portfolio_metrics = self._calculate_portfolio_risk_metrics()
             
@@ -143,6 +161,7 @@ class EnhancedRiskManager:
                 risk_level=risk_level,
                 position_sizing=position_sizing,
                 dynamic_stop_loss=dynamic_stop,
+                dynamic_take_profit=dynamic_tp,
                 market_risk_factors=market_risk,
                 portfolio_risk_metrics=portfolio_metrics,
                 recommendations=recommendations,
@@ -341,6 +360,63 @@ class EnhancedRiskManager:
                 trailing_distance=round(trailing_distance, 2)
             )
     
+    def _configure_dynamic_take_profit(self, signal: EnhancedSignal) -> DynamicTakeProfit:
+        """Configurar take profit dinámico y ajustable"""
+        try:
+            # Take profit inicial (del signal)
+            initial_tp = signal.take_profit_price
+            
+            # Si no hay take profit en el signal, calcularlo
+            if initial_tp == 0:
+                # Verificar que indicators_data no sea None
+                indicators_data = signal.indicators_data if signal.indicators_data is not None else {}
+                atr_data = indicators_data.get("atr", signal.price * 0.02)
+                if signal.signal_type == "BUY":
+                    initial_tp = signal.price + (3 * atr_data)  # 3 ATR por encima para BUY
+                else:
+                    initial_tp = signal.price - (3 * atr_data)  # 3 ATR por debajo para SELL
+            
+            # Configurar parámetros del trailing TP
+            tp_increment_pct = 1.0  # Incrementar TP en 1% cuando se alcance cierto nivel
+            confidence_threshold = 0.7  # Umbral de confianza para ajustar TP
+            
+            # Ajustar según régimen de mercado
+            if signal.market_regime == "TRENDING":
+                tp_increment_pct = 1.5  # Más agresivo en tendencias
+                confidence_threshold = 0.6
+            elif signal.market_regime == "VOLATILE":
+                tp_increment_pct = 0.8  # Más conservador en volatilidad
+                confidence_threshold = 0.8
+            
+            return DynamicTakeProfit(
+                initial_tp=round(initial_tp, 2),
+                current_tp=round(initial_tp, 2),
+                trailing_tp=round(initial_tp, 2),
+                tp_increment_pct=tp_increment_pct,
+                tp_type="DYNAMIC",
+                last_update=datetime.now(),
+                take_profit_price=round(initial_tp, 2),
+                confidence_threshold=confidence_threshold,
+                max_tp_adjustments=5,
+                adjustments_made=0
+            )
+            
+        except Exception as e:
+            logger.error(f"Error configuring dynamic take profit: {e}")
+            tp_price = signal.price * 1.06 if signal.signal_type == "BUY" else signal.price * 0.94
+            return DynamicTakeProfit(
+                initial_tp=tp_price,
+                current_tp=tp_price,
+                trailing_tp=tp_price,
+                tp_increment_pct=1.0,
+                tp_type="FIXED",
+                last_update=datetime.now(),
+                take_profit_price=tp_price,
+                confidence_threshold=0.7,
+                max_tp_adjustments=5,
+                adjustments_made=0
+            )
+    
     def _calculate_portfolio_risk_metrics(self) -> Dict:
         """Calcular métricas de riesgo del portfolio"""
         try:
@@ -463,6 +539,7 @@ class EnhancedRiskManager:
     def _create_default_risk_assessment(self, signal: EnhancedSignal) -> EnhancedRiskAssessment:
         """Crear evaluación de riesgo por defecto en caso de error"""
         default_stop_price = signal.price * 0.95 if signal.signal_type == "BUY" else signal.price * 1.05
+        default_tp_price = signal.price * 1.06 if signal.signal_type == "BUY" else signal.price * 0.94
         default_trailing_distance = abs(signal.price - default_stop_price) / signal.price * 100
         return EnhancedRiskAssessment(
             overall_risk_score=75.0,
@@ -486,6 +563,18 @@ class EnhancedRiskManager:
                 last_update=datetime.now(),
                 stop_loss_price=default_stop_price,
                 trailing_distance=round(default_trailing_distance, 2)
+            ),
+            dynamic_take_profit=DynamicTakeProfit(
+                initial_tp=default_tp_price,
+                current_tp=default_tp_price,
+                trailing_tp=default_tp_price,
+                tp_increment_pct=1.0,
+                tp_type="FIXED",
+                last_update=datetime.now(),
+                take_profit_price=default_tp_price,
+                confidence_threshold=0.7,
+                max_tp_adjustments=5,
+                adjustments_made=0
             ),
             market_risk_factors={"error": "Could not calculate risk factors"},
             portfolio_risk_metrics={"error": "Could not calculate portfolio metrics"},
@@ -653,6 +742,74 @@ class EnhancedRiskManager:
         except Exception as e:
             logger.error(f"Error calculating unrealized PnL: {e}")
             return 0.0
+    
+    def _update_intelligent_trailing_take_profit(self, dynamic_tp: DynamicTakeProfit, 
+                                                current_price: float, signal_type: str,
+                                                entry_price: float, current_profit_pct: float) -> DynamicTakeProfit:
+        """Actualizar take profit dinámico basado en ganancias y confianza del mercado"""
+        try:
+            # Crear copia para actualizar
+            updated_tp = DynamicTakeProfit(
+                initial_tp=dynamic_tp.initial_tp,
+                current_tp=dynamic_tp.current_tp,
+                trailing_tp=dynamic_tp.trailing_tp,
+                tp_increment_pct=dynamic_tp.tp_increment_pct,
+                tp_type=dynamic_tp.tp_type,
+                last_update=datetime.now(),
+                take_profit_price=dynamic_tp.take_profit_price,
+                confidence_threshold=dynamic_tp.confidence_threshold,
+                max_tp_adjustments=dynamic_tp.max_tp_adjustments,
+                adjustments_made=dynamic_tp.adjustments_made
+            )
+            
+            # Solo actualizar si hay ganancias significativas
+            if current_profit_pct < 3.0:  # Menos del 3% de ganancia
+                return updated_tp
+            
+            # Verificar si ya se alcanzó el máximo de ajustes
+            if updated_tp.adjustments_made >= updated_tp.max_tp_adjustments:
+                return updated_tp
+            
+            # Calcular nuevo take profit basado en ganancias
+            profit_multiplier = 1.0
+            
+            if signal_type == "BUY":
+                # Para BUY: incrementar TP hacia arriba
+                if current_profit_pct >= 5.0:  # 5% o más de ganancia
+                    profit_multiplier = 1 + (updated_tp.tp_increment_pct / 100)
+                    new_tp = updated_tp.current_tp * profit_multiplier
+                    
+                    # Asegurar que el nuevo TP sea mayor al actual
+                    if new_tp > updated_tp.current_tp:
+                        updated_tp.current_tp = round(new_tp, 2)
+                        updated_tp.trailing_tp = round(new_tp, 2)
+                        updated_tp.take_profit_price = round(new_tp, 2)
+                        updated_tp.adjustments_made += 1
+                        
+                        logger.info(f"TP dinámico actualizado (BUY): {updated_tp.current_tp} "
+                                  f"(ganancia: {current_profit_pct:.2f}%)")
+            
+            else:  # SELL
+                # Para SELL: decrementar TP hacia abajo
+                if current_profit_pct >= 5.0:  # 5% o más de ganancia
+                    profit_multiplier = 1 - (updated_tp.tp_increment_pct / 100)
+                    new_tp = updated_tp.current_tp * profit_multiplier
+                    
+                    # Asegurar que el nuevo TP sea menor al actual
+                    if new_tp < updated_tp.current_tp:
+                        updated_tp.current_tp = round(new_tp, 2)
+                        updated_tp.trailing_tp = round(new_tp, 2)
+                        updated_tp.take_profit_price = round(new_tp, 2)
+                        updated_tp.adjustments_made += 1
+                        
+                        logger.info(f"TP dinámico actualizado (SELL): {updated_tp.current_tp} "
+                                  f"(ganancia: {current_profit_pct:.2f}%)")
+            
+            return updated_tp
+        
+        except Exception as e:
+            logger.error(f"Error updating intelligent trailing take profit: {e}")
+            return dynamic_tp
     
     def generate_risk_report(self) -> Dict:
         """Generar reporte completo de riesgo del portfolio"""

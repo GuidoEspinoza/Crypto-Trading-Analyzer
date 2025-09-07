@@ -158,6 +158,14 @@ class PositionMonitor:
                             logger.debug(f"🎯 Updated {updated_count} trailing stops")
                     except Exception as e:
                         logger.error(f"❌ Error updating trailing stops: {e}")
+                    
+                    # Actualizar take profits dinámicos
+                    try:
+                        updated_tp_count = self.position_manager.update_dynamic_take_profits(market_data)
+                        if updated_tp_count > 0:
+                            logger.debug(f"🎯 Updated {updated_tp_count} dynamic take profits")
+                    except Exception as e:
+                        logger.error(f"❌ Error updating dynamic take profits: {e}")
                 
                 # Procesar cada posición
                 for position in active_positions:

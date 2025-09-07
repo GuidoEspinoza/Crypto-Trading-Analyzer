@@ -653,3 +653,130 @@ class PositionManager:
             logger.error(f"❌ Error updating trailing stops: {e}")
         
         return updated_count
+    
+    def update_dynamic_take_profits(self, market_data: Dict[str, float], risk_manager=None) -> int:
+        """🎯 Actualizar take profits dinámicos para todas las posiciones activas
+        
+        Args:
+            market_data: Diccionario con precios actuales {symbol: price}
+            risk_manager: Instancia del risk manager para lógica de TP dinámico
+            
+        Returns:
+            Número de take profits actualizados
+        """
+        updated_count = 0
+        
+        try:
+            positions = self.get_active_positions()
+            
+            with db_manager.get_db_session() as session:
+                for position in positions:
+                    if position.symbol not in market_data:
+                        continue
+                    
+                    current_price = market_data[position.symbol]
+                    
+                    # Obtener trade de la base de datos
+                    trade = session.query(Trade).filter(
+                        Trade.id == position.trade_id,
+                        Trade.status == "OPEN"
+                    ).first()
+                    
+                    if not trade:
+                        continue
+                    
+                    # Calcular ganancia actual
+                    if position.trade_type == "BUY":
+                        current_profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                    else:  # SELL
+                        current_profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                    
+                    # Solo actualizar si hay ganancias significativas (3% o más)
+                    if current_profit_pct < 3.0:
+                        continue
+                    
+                    # Calcular nuevo take profit dinámico
+                    new_take_profit = self._calculate_dynamic_take_profit(
+                        position, current_price, current_profit_pct
+                    )
+                    
+                    if new_take_profit is None:
+                        continue
+                    
+                    # Verificar si necesita actualizar take profit
+                    should_update = False
+                    current_tp = getattr(trade, 'take_profit_price', None)
+                    
+                    if position.trade_type == "BUY":
+                        # Para posiciones largas, solo subir el take profit
+                        if current_tp is None or new_take_profit > current_tp:
+                            should_update = True
+                    else:  # SELL
+                        # Para posiciones cortas, solo bajar el take profit
+                        if current_tp is None or new_take_profit < current_tp:
+                            should_update = True
+                    
+                    if should_update:
+                        # Actualizar take profit en la base de datos
+                        trade.take_profit_price = new_take_profit
+                        
+                        # Actualizar cache
+                        if position.trade_id in self.positions_cache:
+                            self.positions_cache[position.trade_id].take_profit = new_take_profit
+                        
+                        updated_count += 1
+                        
+                        logger.info(
+                            f"🎯 Updated dynamic take profit for {position.symbol}: "
+                            f"${new_take_profit:.4f} (Price: ${current_price:.4f}, Profit: {current_profit_pct:.2f}%)"
+                        )
+                
+                session.commit()
+                
+                if updated_count > 0:
+                    self.stats["tp_executed"] += updated_count
+                    logger.info(f"🎯 Updated {updated_count} dynamic take profits")
+                
+        except Exception as e:
+            logger.error(f"❌ Error updating dynamic take profits: {e}")
+        
+        return updated_count
+    
+    def _calculate_dynamic_take_profit(self, position: 'PositionInfo', current_price: float, current_profit_pct: float) -> Optional[float]:
+        """📊 Calcular take profit dinámico basado en ganancias actuales
+        
+        Args:
+            position: Información de la posición
+            current_price: Precio actual
+            current_profit_pct: Porcentaje de ganancia actual
+            
+        Returns:
+            Nuevo precio de take profit o None si hay error
+        """
+        try:
+            # Incremento base del TP (1% por defecto)
+            tp_increment_pct = 1.0
+            
+            # Ajustar incremento según ganancia actual
+            if current_profit_pct >= 10.0:  # 10% o más de ganancia
+                tp_increment_pct = 2.0  # Incrementar TP en 2%
+            elif current_profit_pct >= 7.0:  # 7% o más de ganancia
+                tp_increment_pct = 1.5  # Incrementar TP en 1.5%
+            elif current_profit_pct >= 5.0:  # 5% o más de ganancia
+                tp_increment_pct = 1.0  # Incrementar TP en 1%
+            else:
+                return None  # No actualizar si ganancia es menor a 5%
+            
+            # Calcular nuevo take profit
+            if position.trade_type == "BUY":
+                # Para BUY: incrementar TP hacia arriba
+                new_tp = current_price * (1 + (tp_increment_pct / 100))
+            else:  # SELL
+                # Para SELL: decrementar TP hacia abajo
+                new_tp = current_price * (1 - (tp_increment_pct / 100))
+            
+            return round(new_tp, 4)
+            
+        except Exception as e:
+            logger.error(f"❌ Error calculating dynamic take profit for {position.symbol}: {e}")
+            return None
