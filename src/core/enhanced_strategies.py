@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 from abc import ABC, abstractmethod
+from functools import lru_cache
+import hashlib
+import time
 
 from src.config.config import StrategyConfig
 
@@ -98,7 +101,12 @@ class EnhancedSignal(TradingSignal):
     confluence_score: int = 0  # Número de indicadores que confirman la señal
 
 class EnhancedTradingStrategy(TradingStrategy):
-    """Clase base para estrategias mejoradas"""
+    """Clase base para estrategias mejoradas con optimizaciones de cache"""
+    
+    # Cache compartido entre instancias
+    _cache = {}
+    _cache_timestamps = {}
+    _cache_ttl = 300  # 5 minutos TTL
     
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)
@@ -115,16 +123,74 @@ class EnhancedTradingStrategy(TradingStrategy):
             "momentum": 0.15     # Momentum e impulso
         }
         self.min_confluence_score = 0.65  # Puntuación mínima de confluencia
+    
+    @classmethod
+    def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
+        """Generar clave de cache única para método y parámetros"""
+        try:
+            # Crear hash de los argumentos
+            key_data = f"{method_name}_{str(args)}_{str(sorted(kwargs.items()))}"
+            return hashlib.md5(key_data.encode()).hexdigest()
+        except Exception:
+            return f"{method_name}_{time.time()}"
+    
+    @classmethod
+    def _get_from_cache(cls, cache_key: str):
+        """Obtener valor del cache si es válido"""
+        current_time = time.time()
+        if (cache_key in cls._cache and 
+            cache_key in cls._cache_timestamps and
+            current_time - cls._cache_timestamps[cache_key] < cls._cache_ttl):
+            return cls._cache[cache_key]
+        return None
+    
+    @classmethod
+    def _store_in_cache(cls, cache_key: str, value):
+        """Almacenar valor en cache con timestamp"""
+        cls._cache[cache_key] = value
+        cls._cache_timestamps[cache_key] = time.time()
+        
+        # Limpiar cache viejo si es necesario
+        if len(cls._cache) > 1000:  # Límite de entradas
+            cls._cleanup_cache()
+    
+    @classmethod
+    def _cleanup_cache(cls):
+        """Limpiar entradas viejas del cache"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, timestamp in cls._cache_timestamps.items()
+            if current_time - timestamp >= cls._cache_ttl
+        ]
+        for key in expired_keys:
+            cls._cache.pop(key, None)
+            cls._cache_timestamps.pop(key, None)
         
     def analyze_volume(self, df: pd.DataFrame) -> Dict:
-        """Analizar volumen avanzado para confirmación de señales"""
+        """Analizar volumen avanzado para confirmación de señales con cache"""
         try:
             if 'volume' not in df.columns:
                 return {"volume_confirmation": False, "volume_ratio": 0.0, "volume_strength": "WEAK"}
             
-            current_volume = df['volume'].iloc[-1]
-            avg_volume_20 = df['volume'].rolling(20).mean().iloc[-1]
-            avg_volume_50 = df['volume'].rolling(50).mean().iloc[-1]
+            # Generar clave de cache basada en los últimos datos de volumen
+            volume_data = df['volume'].tail(50).values
+            cache_key = self._get_cache_key("analyze_volume", str(volume_data.tobytes()))
+            
+            # Verificar cache
+            cached_result = self._get_from_cache(cache_key)
+            if cached_result is not None:
+                return cached_result
+            
+            # Cálculos optimizados
+            volume_series = df['volume']
+            current_volume = volume_series.iloc[-1]
+            
+            # Usar vectorización para mejor rendimiento
+            rolling_20 = volume_series.rolling(20, min_periods=10)
+            rolling_50 = volume_series.rolling(50, min_periods=25)
+            
+            avg_volume_20 = rolling_20.mean().iloc[-1]
+            avg_volume_50 = rolling_50.mean().iloc[-1]
             
             if pd.isna(avg_volume_20) or avg_volume_20 == 0:
                 return {"volume_confirmation": False, "volume_ratio": 0.0, "volume_strength": "WEAK"}
@@ -136,18 +202,22 @@ class EnhancedTradingStrategy(TradingStrategy):
             # Análisis de tendencia de volumen
             volume_trend = df['volume'].rolling(10).mean().pct_change(5).iloc[-1]
             
-            # Análisis de volumen por precio (VWAP deviation)
-            vwap = (df['volume'] * (df['high'] + df['low'] + df['close']) / 3).cumsum() / df['volume'].cumsum()
+            # Análisis de volumen por precio (VWAP deviation) - optimizado
+            hlc3 = (df['high'] + df['low'] + df['close']) / 3
+            volume_price = (volume_series * hlc3).cumsum()
+            volume_cumsum = volume_series.cumsum()
+            vwap = volume_price / volume_cumsum
             vwap_deviation = abs(df['close'].iloc[-1] - vwap.iloc[-1]) / vwap.iloc[-1]
             
             # Clasificación de fuerza de volumen
-            volume_strength = "WEAK"
             if volume_ratio_20 >= 2.5:
                 volume_strength = "VERY_STRONG"
             elif volume_ratio_20 >= 1.8:
                 volume_strength = "STRONG"
             elif volume_ratio_20 >= 1.3:
                 volume_strength = "MODERATE"
+            else:
+                volume_strength = "WEAK"
             
             # Confirmación mejorada
             volume_confirmation = (
@@ -156,7 +226,7 @@ class EnhancedTradingStrategy(TradingStrategy):
                 vwap_deviation < 0.02  # Precio cerca del VWAP
             )
             
-            return {
+            result = {
                 "volume_confirmation": bool(volume_confirmation),
                 "volume_ratio": round(float(volume_ratio_20), 2),
                 "volume_ratio_50": round(float(volume_ratio_50), 2),
@@ -167,15 +237,30 @@ class EnhancedTradingStrategy(TradingStrategy):
                 "avg_volume_20": float(avg_volume_20),
                 "avg_volume_50": float(avg_volume_50) if not pd.isna(avg_volume_50) else 0.0
             }
+            
+            # Almacenar en cache
+            self._store_in_cache(cache_key, result)
+            return result
         except Exception as e:
             logger.error(f"Error analyzing volume: {e}")
             return {"volume_confirmation": False, "volume_ratio": 0.0, "volume_strength": "WEAK"}
     
     def calculate_advanced_confluence(self, signal_data: Dict, signal_type: str) -> Dict:
-        """Calcular puntuación de confluencia avanzada con pesos específicos"""
+        """Calcular puntuación de confluencia avanzada con pesos específicos y cache"""
         try:
+            # Generar clave de cache
+            cache_key = self._get_cache_key("calculate_confluence", str(signal_data), signal_type)
+            
+            # Verificar cache
+            cached_result = self._get_from_cache(cache_key)
+            if cached_result is not None:
+                return cached_result
+            
             confluence_score = 0.0
             confluence_details = {}
+            
+            # Mapas de valores precalculados para mejor rendimiento
+            strength_map = {"VERY_STRONG": 1.0, "STRONG": 0.8, "MODERATE": 0.5, "WEAK": 0.2}
             
             # === ANÁLISIS TÉCNICO (40%) ===
             technical_score = 0.0
@@ -211,8 +296,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             if "volume_analysis" in signal_data:
                 vol_data = signal_data["volume_analysis"]
                 
-                # Fuerza del volumen
-                strength_map = {"VERY_STRONG": 1.0, "STRONG": 0.8, "MODERATE": 0.5, "WEAK": 0.2}
+                # Fuerza del volumen usando mapa precalculado
                 vol_strength = strength_map.get(vol_data.get("volume_strength", "WEAK"), 0.2)
                 
                 # Confirmación de volumen
@@ -289,7 +373,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             elif confluence_score >= 0.45:
                 confluence_level = "MODERATE"
             
-            return {
+            result = {
                 "confluence_score": round(confluence_score, 3),
                 "confluence_level": confluence_level,
                 "meets_threshold": confluence_score >= self.min_confluence_score,
@@ -307,6 +391,10 @@ class EnhancedTradingStrategy(TradingStrategy):
                 }
             }
             
+            # Almacenar en cache
+            self._store_in_cache(cache_key, result)
+            return result
+            
         except Exception as e:
             logger.error(f"Error calculating advanced confluence: {e}")
             return {
@@ -319,11 +407,21 @@ class EnhancedTradingStrategy(TradingStrategy):
             }
     
     def analyze_trend(self, df: pd.DataFrame) -> str:
-        """Analizar tendencia usando múltiples indicadores"""
+        """Analizar tendencia usando múltiples indicadores con cache"""
         try:
-            # EMA 20 vs EMA 50
-            ema_20 = ta.ema(df['close'], length=20)
-            ema_50 = ta.ema(df['close'], length=50)
+            # Generar clave de cache basada en los últimos precios
+            price_data = df['close'].tail(50).values
+            cache_key = self._get_cache_key("analyze_trend", str(price_data.tobytes()))
+            
+            # Verificar cache
+            cached_result = self._get_from_cache(cache_key)
+            if cached_result is not None:
+                return cached_result
+            
+            # Cálculos optimizados de EMA
+            close_series = df['close']
+            ema_20 = ta.ema(close_series, length=20)
+            ema_50 = ta.ema(close_series, length=50)
             
             if ema_20 is None or ema_50 is None:
                 return "NEUTRAL"
@@ -340,20 +438,33 @@ class EnhancedTradingStrategy(TradingStrategy):
             
             # Determinar tendencia
             if current_ema_20 > current_ema_50 and adx_value > 25:
-                return "BULLISH"
+                result = "BULLISH"
             elif current_ema_20 < current_ema_50 and adx_value > 25:
-                return "BEARISH"
+                result = "BEARISH"
             else:
-                return "NEUTRAL"
+                result = "NEUTRAL"
+            
+            # Almacenar en cache
+            self._store_in_cache(cache_key, result)
+            return result
                 
         except Exception as e:
             logger.error(f"Error analyzing trend: {e}")
             return "NEUTRAL"
     
     def detect_market_regime(self, df: pd.DataFrame) -> str:
-        """Detectar régimen de mercado"""
+        """Detectar régimen de mercado con cache"""
         try:
-            # Calcular volatilidad (ATR)
+            # Generar clave de cache basada en datos OHLC recientes
+            ohlc_data = df[['high', 'low', 'close']].tail(50).values
+            cache_key = self._get_cache_key("detect_market_regime", str(ohlc_data.tobytes()))
+            
+            # Verificar cache
+            cached_result = self._get_from_cache(cache_key)
+            if cached_result is not None:
+                return cached_result
+            
+            # Calcular volatilidad (ATR) optimizado
             atr = ta.atr(df['high'], df['low'], df['close'], length=14)
             if atr is None or atr.empty:
                 return "NORMAL"
@@ -371,11 +482,15 @@ class EnhancedTradingStrategy(TradingStrategy):
             current_price = df['close'].iloc[-1]
             
             if volatility_ratio > 1.5:
-                return "VOLATILE"
+                result = "VOLATILE"
             elif abs(current_price - (df['high'].rolling(20).max().iloc[-1] + df['low'].rolling(20).min().iloc[-1]) / 2) < price_range * 0.2:
-                return "RANGING"
+                result = "RANGING"
             else:
-                return "TRENDING"
+                result = "TRENDING"
+            
+            # Almacenar en cache
+            self._store_in_cache(cache_key, result)
+            return result
                 
         except Exception as e:
             logger.error(f"Error detecting market regime: {e}")

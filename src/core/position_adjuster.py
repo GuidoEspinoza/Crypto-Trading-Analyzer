@@ -307,8 +307,10 @@ class PositionAdjuster:
                             'type': 'adjustment',
                             'symbol': symbol,
                             'adjustment_type': reason.value,
-                            'old_price': position.current_tp,
-                            'new_price': new_tp,
+                            'old_tp': position.current_tp,
+                            'old_sl': position.current_sl,
+                            'new_tp': new_tp,
+                            'new_sl': new_sl,
                             'reason': f"TP: {position.current_tp:.2f}→{new_tp:.2f}, SL: {position.current_sl:.2f}→{new_sl:.2f}",
                             'timestamp': datetime.now().isoformat()
                         })

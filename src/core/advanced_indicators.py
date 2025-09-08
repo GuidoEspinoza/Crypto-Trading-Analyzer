@@ -10,6 +10,8 @@ import warnings
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
+import hashlib
 
 # Importar configuración centralizada
 from src.config.config import AdvancedIndicatorsConfig
@@ -41,7 +43,37 @@ class IchimokuCloud:
     price_position: str      # Arriba/Dentro/Debajo de la nube
 
 class AdvancedIndicators:
-    """Clase para calcular indicadores técnicos avanzados"""
+    """Clase para calcular indicadores técnicos avanzados con optimizaciones"""
+    
+    # Cache para resultados de indicadores
+    _indicator_cache = {}
+    _cache_max_size = 1000
+    
+    @classmethod
+    def _get_cache_key(cls, df: pd.DataFrame, indicator_name: str, **kwargs) -> str:
+        """🔑 Generar clave de cache basada en datos y parámetros"""
+        try:
+            # Usar hash de los últimos valores para identificar el dataset
+            last_values = f"{df['close'].iloc[-1]}_{df['volume'].iloc[-1]}_{len(df)}"
+            params_str = "_".join([f"{k}_{v}" for k, v in sorted(kwargs.items())])
+            cache_key = f"{indicator_name}_{last_values}_{params_str}"
+            return hashlib.md5(cache_key.encode()).hexdigest()[:16]
+        except:
+            return f"{indicator_name}_{id(df)}"
+    
+    @classmethod
+    def _get_from_cache(cls, cache_key: str):
+        """📦 Obtener resultado del cache"""
+        return cls._indicator_cache.get(cache_key)
+    
+    @classmethod
+    def _store_in_cache(cls, cache_key: str, result):
+        """💾 Almacenar resultado en cache"""
+        if len(cls._indicator_cache) >= cls._cache_max_size:
+            # Limpiar cache más antiguo (FIFO simple)
+            oldest_key = next(iter(cls._indicator_cache))
+            del cls._indicator_cache[oldest_key]
+        cls._indicator_cache[cache_key] = result
     
     @staticmethod
     def safe_float(value, default: float = 0.0) -> float:
@@ -487,10 +519,10 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando PSAR: {str(e)}"
             }
     
-    @staticmethod
-    def bollinger_bands(df: pd.DataFrame, period: int = None, std_dev: float = None) -> Dict:
+    @classmethod
+    def bollinger_bands(cls, df: pd.DataFrame, period: int = None, std_dev: float = None) -> Dict:
         """
-        📊 Calcular Bandas de Bollinger
+        📊 Calcular Bandas de Bollinger (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
@@ -505,27 +537,41 @@ class AdvancedIndicators:
         if std_dev is None:
             std_dev = AdvancedIndicatorsConfig.BOLLINGER_STD_DEV
             
-        try:
-            bb = ta.bbands(df['close'], length=period, std=std_dev)
+        # Verificar cache
+        cache_key = cls._get_cache_key(df, 'bollinger_bands', period=period, std_dev=std_dev)
+        cached_result = cls._get_from_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
             
-            if bb is None or bb.empty:
-                # Calcular manualmente
+        try:
+            # Optimización: usar cálculo manual para datasets pequeños
+            if len(df) < 100:
                 sma = df['close'].rolling(window=period).mean()
                 std = df['close'].rolling(window=period).std()
                 upper_band = sma + (std * std_dev)
                 lower_band = sma - (std * std_dev)
                 middle_band = sma
             else:
-                # Usar pandas-ta
-                columns = bb.columns.tolist()
-                upper_band = bb[columns[0]]  # BBU
-                middle_band = bb[columns[1]]  # BBM
-                lower_band = bb[columns[2]]  # BBL
+                bb = ta.bbands(df['close'], length=period, std=std_dev)
+                
+                if bb is None or bb.empty:
+                    # Fallback a cálculo manual
+                    sma = df['close'].rolling(window=period).mean()
+                    std = df['close'].rolling(window=period).std()
+                    upper_band = sma + (std * std_dev)
+                    lower_band = sma - (std * std_dev)
+                    middle_band = sma
+                else:
+                    # Usar pandas-ta
+                    columns = bb.columns.tolist()
+                    upper_band = bb[columns[0]]  # BBU
+                    middle_band = bb[columns[1]]  # BBM
+                    lower_band = bb[columns[2]]  # BBL
             
             current_price = df['close'].iloc[-1]
-            current_upper = AdvancedIndicators.safe_float(upper_band.iloc[-1])
-            current_middle = AdvancedIndicators.safe_float(middle_band.iloc[-1])
-            current_lower = AdvancedIndicators.safe_float(lower_band.iloc[-1])
+            current_upper = cls.safe_float(upper_band.iloc[-1])
+            current_middle = cls.safe_float(middle_band.iloc[-1])
+            current_lower = cls.safe_float(lower_band.iloc[-1])
             
             # Calcular posición del precio en las bandas (0-100%)
             if current_upper != current_lower:
@@ -553,7 +599,7 @@ class AdvancedIndicators:
             # Calcular ancho de las bandas (volatilidad)
             band_width = ((current_upper - current_lower) / current_middle) * 100
             
-            return {
+            result = {
                 "upper_band": round(current_upper, 2),
                 "middle_band": round(current_middle, 2),
                 "lower_band": round(current_lower, 2),
@@ -563,8 +609,12 @@ class AdvancedIndicators:
                 "interpretation": interpretation
             }
             
+            # Almacenar en cache
+            cls._store_in_cache(cache_key, result)
+            return result
+            
         except Exception as e:
-            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            current_price = cls.safe_float(df['close'].iloc[-1])
             return {
                 "upper_band": current_price * 1.02,
                 "middle_band": current_price,
@@ -575,10 +625,10 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando Bollinger Bands: {str(e)}"
             }
     
-    @staticmethod
-    def vwap(df: pd.DataFrame) -> Dict:
+    @classmethod
+    def vwap(cls, df: pd.DataFrame) -> Dict:
         """
-        📊 Calcular Volume Weighted Average Price (VWAP)
+        📊 Calcular Volume Weighted Average Price (VWAP) (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
@@ -586,16 +636,27 @@ class AdvancedIndicators:
         Returns:
             Diccionario con VWAP y señales
         """
-        try:
-            vwap_data = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
+        # Verificar cache
+        cache_key = cls._get_cache_key(df, 'vwap')
+        cached_result = cls._get_from_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
             
-            if vwap_data is None or vwap_data.empty:
-                # Calcular manualmente
+        try:
+            # Optimización: usar cálculo manual para datasets pequeños
+            if len(df) < 100:
                 typical_price = (df['high'] + df['low'] + df['close']) / 3
                 vwap_data = (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
+            else:
+                vwap_data = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
+                
+                if vwap_data is None or vwap_data.empty:
+                    # Fallback a cálculo manual
+                    typical_price = (df['high'] + df['low'] + df['close']) / 3
+                    vwap_data = (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
             
-            current_vwap = AdvancedIndicators.safe_float(vwap_data.iloc[-1])
-            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            current_vwap = cls.safe_float(vwap_data.iloc[-1])
+            current_price = cls.safe_float(df['close'].iloc[-1])
             
             # Calcular desviación del VWAP
             vwap_deviation = ((current_price - current_vwap) / current_vwap) * 100
@@ -611,7 +672,7 @@ class AdvancedIndicators:
                 signal = "HOLD"
                 interpretation = "⚪ Precio en línea con VWAP"
             
-            return {
+            result = {
                 "vwap": round(current_vwap, 2),
                 "current_price": round(current_price, 2),
                 "deviation_percent": round(vwap_deviation, 2),
@@ -619,8 +680,12 @@ class AdvancedIndicators:
                 "interpretation": interpretation
             }
             
+            # Almacenar en cache
+            cls._store_in_cache(cache_key, result)
+            return result
+            
         except Exception as e:
-            current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
+            current_price = cls.safe_float(df['close'].iloc[-1])
             return {
                 "vwap": current_price,
                 "current_price": current_price,
@@ -886,10 +951,10 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando RSI: {str(e)}"
             }
     
-    @staticmethod
-    def enhanced_rsi(df: pd.DataFrame, period: int = None) -> Dict:
+    @classmethod
+    def enhanced_rsi(cls, df: pd.DataFrame, period: int = None) -> Dict:
         """
-        📊 RSI Mejorado con análisis de divergencias
+        📊 RSI Mejorado con análisis de divergencias (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
@@ -901,25 +966,39 @@ class AdvancedIndicators:
         if period is None:
             period = AdvancedIndicatorsConfig.RSI_PERIOD
             
-        try:
-            rsi = ta.rsi(df['close'], length=period)
+        # Verificar cache
+        cache_key = cls._get_cache_key(df, 'enhanced_rsi', period=period)
+        cached_result = cls._get_from_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
             
-            if rsi is None or rsi.empty:
-                # Calcular manualmente
+        try:
+            # Optimización: usar cálculo manual para datasets pequeños
+            if len(df) < 100:
                 delta = df['close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
                 rs = gain / loss
                 rsi = 100 - (100 / (1 + rs))
+            else:
+                rsi = ta.rsi(df['close'], length=period)
+                
+                if rsi is None or rsi.empty:
+                    # Fallback a cálculo manual
+                    delta = df['close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                    rs = gain / loss
+                    rsi = 100 - (100 / (1 + rs))
             
-            current_rsi = AdvancedIndicators.safe_float(rsi.iloc[-1], 50.0)
+            current_rsi = cls.safe_float(rsi.iloc[-1], 50.0)
             
             # Calcular RSI de diferentes períodos para confirmación
             rsi_fast = ta.rsi(df['close'], length=7)
             rsi_slow = ta.rsi(df['close'], length=21)
             
-            current_rsi_fast = AdvancedIndicators.safe_float(rsi_fast.iloc[-1] if rsi_fast is not None else current_rsi, current_rsi)
-            current_rsi_slow = AdvancedIndicators.safe_float(rsi_slow.iloc[-1] if rsi_slow is not None else current_rsi, current_rsi)
+            current_rsi_fast = cls.safe_float(rsi_fast.iloc[-1] if rsi_fast is not None else current_rsi, current_rsi)
+            current_rsi_slow = cls.safe_float(rsi_slow.iloc[-1] if rsi_slow is not None else current_rsi, current_rsi)
             
             # Detectar divergencias (simplificado)
             price_trend = "UP" if df['close'].iloc[-1] > df['close'].iloc[-5] else "DOWN"
@@ -959,7 +1038,7 @@ class AdvancedIndicators:
                 signal = "HOLD"
                 interpretation += " (Divergencia bajista detectada)"
             
-            return {
+            result = {
                 "rsi": round(current_rsi, 2),
                 "rsi_fast": round(current_rsi_fast, 2),
                 "rsi_slow": round(current_rsi_slow, 2),
@@ -967,6 +1046,10 @@ class AdvancedIndicators:
                 "signal": signal,
                 "interpretation": interpretation
             }
+            
+            # Almacenar en cache
+            cls._store_in_cache(cache_key, result)
+            return result
             
         except Exception as e:
             return {

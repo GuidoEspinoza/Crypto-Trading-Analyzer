@@ -14,6 +14,10 @@ from dataclasses import dataclass
 import threading
 import json
 import queue
+from functools import lru_cache
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
+import weakref
 
 # Importar todos nuestros componentes
 from src.config.config import TradingBotConfig
@@ -47,7 +51,7 @@ class BotStatus:
 
 class TradingBot:
     """
-    🤖 Trading Bot Principal
+    🤖 Trading Bot Principal con optimizaciones de rendimiento
     
     Características:
     - Ejecuta múltiples estrategias automáticamente
@@ -56,7 +60,14 @@ class TradingBot:
     - Paper trading seguro
     - Logging completo
     - Dashboard en tiempo real
+    - Cache inteligente para mejor rendimiento
+    - Procesamiento paralelo de estrategias
     """
+    
+    # Cache compartido entre instancias
+    _cache = {}
+    _cache_timestamps = {}
+    _cache_ttl = 180  # 3 minutos TTL para datos de mercado
     
     def __init__(self, analysis_interval_minutes: int = None):
         """
@@ -95,6 +106,9 @@ class TradingBot:
         self.event_queue = queue.Queue(maxsize=1000)
         self.adjustment_thread = None
         self.trade_event_callback = None  # Callback para eventos de trades
+        
+        # ThreadPool para procesamiento paralelo
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="TradingBot")
         
         # Estrategias disponibles (Enhanced)
         self.strategies = {}
@@ -209,6 +223,47 @@ class TradingBot:
             self.logger.error(f"❌ Error initializing strategies: {e}")
             self.strategies = {}
     
+    @classmethod
+    def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
+        """Generar clave de cache única para método y parámetros"""
+        try:
+            key_data = f"{method_name}_{str(args)}_{str(sorted(kwargs.items()))}"
+            return hashlib.md5(key_data.encode()).hexdigest()
+        except Exception:
+            return f"{method_name}_{time.time()}"
+    
+    @classmethod
+    def _get_from_cache(cls, cache_key: str):
+        """Obtener valor del cache si es válido"""
+        current_time = time.time()
+        if (cache_key in cls._cache and 
+            cache_key in cls._cache_timestamps and
+            current_time - cls._cache_timestamps[cache_key] < cls._cache_ttl):
+            return cls._cache[cache_key]
+        return None
+    
+    @classmethod
+    def _store_in_cache(cls, cache_key: str, value):
+        """Almacenar valor en cache con timestamp"""
+        cls._cache[cache_key] = value
+        cls._cache_timestamps[cache_key] = time.time()
+        
+        # Limpiar cache viejo si es necesario
+        if len(cls._cache) > 500:  # Límite de entradas
+            cls._cleanup_cache()
+    
+    @classmethod
+    def _cleanup_cache(cls):
+        """Limpiar entradas viejas del cache"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, timestamp in cls._cache_timestamps.items()
+            if current_time - timestamp >= cls._cache_ttl
+        ]
+        for key in expired_keys:
+            cls._cache.pop(key, None)
+            cls._cache_timestamps.pop(key, None)
+        
     def start(self):
         """
         🚀 Iniciar el trading bot
@@ -246,7 +301,7 @@ class TradingBot:
     
     def stop(self):
         """
-        🛑 Detener el trading bot
+        🛑 Detener el trading bot y limpiar recursos
         """
         if not self.is_running:
             self.logger.warning("⚠️ Bot is not running")
@@ -262,23 +317,46 @@ class TradingBot:
         # Detener sistema de ajuste de posiciones
         self.position_adjuster.stop_monitoring()
         
+        # Limpiar ThreadPoolExecutor
+        if hasattr(self, 'executor') and self.executor:
+            self.executor.shutdown(wait=True, timeout=30)
+            self.logger.info("🧹 ThreadPoolExecutor cleaned up")
+        
         if self.analysis_thread and self.analysis_thread.is_alive():
             self.analysis_thread.join(timeout=10)
             
         if self.adjustment_thread and self.adjustment_thread.is_alive():
             self.adjustment_thread.join(timeout=10)
         
+        # Limpiar cache si es necesario
+        self._cleanup_cache()
+        
         self.logger.info("🛑 Trading Bot stopped")
         self.logger.info("🔍 Position monitoring stopped")
         self.logger.info("🎯 TP/SL adjustment monitoring stopped")
+        self.logger.info("💾 Cache cleaned up")
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual del símbolo para el position monitor"""
+        """💰 Obtener precio actual del símbolo con cache para el position monitor"""
         try:
+            # Generar clave de cache para precio
+            cache_key = self._get_cache_key("current_price", symbol)
+            
+            # Verificar cache (TTL más corto para precios)
+            cached_price = self._get_from_cache(cache_key)
+            if cached_price is not None:
+                return cached_price
+            
             import ccxt
             exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
             ticker = exchange.fetch_ticker(symbol)
-            return float(ticker['last']) if ticker['last'] else 0.0
+            current_price = float(ticker['last']) if ticker['last'] else 0.0
+            
+            # Almacenar en cache
+            if current_price > 0:
+                self._store_in_cache(cache_key, current_price)
+            
+            return current_price
         except Exception as e:
             self.logger.error(f"❌ Error getting current price for {symbol}: {e}")
             # Fallback: intentar obtener desde estrategias
@@ -286,7 +364,14 @@ class TradingBot:
                 if self.strategies:
                     strategy = next(iter(self.strategies.values()))
                     df = strategy.get_market_data(symbol, "1m", limit=1)
-                    return float(df['close'].iloc[-1]) if not df.empty else 0.0
+                    fallback_price = float(df['close'].iloc[-1]) if not df.empty else 0.0
+                    
+                    # Cache del fallback también
+                    if fallback_price > 0:
+                        cache_key = self._get_cache_key("current_price", symbol)
+                        self._store_in_cache(cache_key, fallback_price)
+                    
+                    return fallback_price
             except:
                 pass
             return 0.0
@@ -305,10 +390,10 @@ class TradingBot:
     
     def _run_analysis_cycle(self):
         """
-        🔄 Ejecutar un ciclo completo de análisis
+        🔄 Ejecutar un ciclo completo de análisis con cache y procesamiento paralelo
         """
         try:
-            self.logger.info("🔄 Starting analysis cycle...")
+            self.logger.info("🔄 Starting optimized analysis cycle...")
             
             # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
@@ -318,19 +403,20 @@ class TradingBot:
                 self.logger.info(f"⏸️ Daily trade limit reached ({self.max_daily_trades})")
                 return
             
-            # Analizar cada símbolo con cada estrategia
-            all_signals = []
+            # Generar clave de cache para este ciclo
+            cache_key = self._get_cache_key("analysis_cycle", tuple(self.symbols), tuple(self.strategies.keys()))
             
-            for symbol in self.symbols:
-                for strategy_name, strategy in self.strategies.items():
-                    try:
-                        signal = strategy.analyze(symbol)
-                        if signal.signal_type != "HOLD":
-                            all_signals.append(signal)
-                            self.stats["signals_generated"] += 1
-                            self.logger.info(f"📊 Signal: {signal.signal_type} {symbol} ({strategy_name}) - Confidence: {signal.confidence_score}%")
-                    except Exception as e:
-                        self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
+            # Verificar cache
+            cached_signals = self._get_from_cache(cache_key)
+            if cached_signals is not None:
+                self.logger.info("⚡ Using cached analysis results")
+                all_signals = cached_signals
+            else:
+                # Analizar en paralelo usando ThreadPoolExecutor
+                all_signals = self._analyze_symbols_parallel()
+                
+                # Almacenar en cache
+                self._store_in_cache(cache_key, all_signals)
             
             # Procesar señales con trading
             if all_signals:
@@ -341,10 +427,77 @@ class TradingBot:
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
             
-            self.logger.info("✅ Analysis cycle completed")
+            self.logger.info("✅ Optimized analysis cycle completed")
             
         except Exception as e:
             self.logger.error(f"❌ Error in analysis cycle: {e}")
+    
+    def _analyze_symbols_parallel(self) -> List[TradingSignal]:
+        """
+        🚀 Analizar símbolos en paralelo para mejor rendimiento
+        """
+        all_signals = []
+        
+        # Crear tareas para el pool de hilos
+        tasks = []
+        for symbol in self.symbols:
+            for strategy_name, strategy in self.strategies.items():
+                tasks.append((symbol, strategy_name, strategy))
+        
+        # Ejecutar análisis en paralelo
+        try:
+            futures = []
+            for symbol, strategy_name, strategy in tasks:
+                future = self.executor.submit(self._analyze_single_symbol, symbol, strategy_name, strategy)
+                futures.append(future)
+            
+            # Recopilar resultados
+            for future in futures:
+                try:
+                    signal = future.result(timeout=30)  # Timeout de 30 segundos
+                    if signal and signal.signal_type != "HOLD":
+                        all_signals.append(signal)
+                        self.stats["signals_generated"] += 1
+                        self.logger.info(f"📊 Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%")
+                except Exception as e:
+                    self.logger.error(f"❌ Error in parallel analysis: {e}")
+        
+        except Exception as e:
+            self.logger.error(f"❌ Error in parallel execution: {e}")
+            # Fallback a análisis secuencial
+            all_signals = self._analyze_symbols_sequential()
+        
+        return all_signals
+    
+    def _analyze_single_symbol(self, symbol: str, strategy_name: str, strategy) -> Optional[TradingSignal]:
+        """
+        📈 Analizar un símbolo con una estrategia específica
+        """
+        try:
+            signal = strategy.analyze(symbol)
+            if hasattr(signal, 'strategy_name'):
+                signal.strategy_name = strategy_name
+            return signal
+        except Exception as e:
+            self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
+            return None
+    
+    def _analyze_symbols_sequential(self) -> List[TradingSignal]:
+        """
+        🐌 Análisis secuencial como fallback
+        """
+        all_signals = []
+        for symbol in self.symbols:
+            for strategy_name, strategy in self.strategies.items():
+                try:
+                    signal = strategy.analyze(symbol)
+                    if signal.signal_type != "HOLD":
+                        all_signals.append(signal)
+                        self.stats["signals_generated"] += 1
+                        self.logger.info(f"📊 Signal: {signal.signal_type} {symbol} ({strategy_name}) - Confidence: {signal.confidence_score}%")
+                except Exception as e:
+                    self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
+        return all_signals
     
     def _process_signals(self, signals: List[TradingSignal]):
         """
