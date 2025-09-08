@@ -8,6 +8,7 @@ Desarrollado por: Experto en Trading & Programación
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
+import warnings
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -430,7 +431,15 @@ class EnhancedTradingStrategy(TradingStrategy):
             current_ema_50 = ema_50.iloc[-1]
             
             # ADX para fuerza de tendencia
-            adx_data = ta.adx(df['high'], df['low'], df['close'])
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                adx_data = ta.adx(high_float, low_float, close_float)
             if adx_data is not None and not adx_data.empty:
                 adx_value = adx_data['ADX_14'].iloc[-1] if 'ADX_14' in adx_data.columns else 25
             else:
@@ -465,7 +474,15 @@ class EnhancedTradingStrategy(TradingStrategy):
                 return cached_result
             
             # Calcular volatilidad (ATR) optimizado
-            atr = ta.atr(df['high'], df['low'], df['close'], length=14)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                atr = ta.atr(high_float, low_float, close_float, length=14)
             if atr is None or atr.empty:
                 return "NORMAL"
             
@@ -916,7 +933,13 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                         trends[tf] = self.analyze_trend(df)
                         
                         # RSI para cada timeframe
-                        rsi = ta.rsi(df['close'], length=14)
+                        # Convertir a float64 para evitar warnings de dtype
+                        close_float = df['close'].astype('float64')
+                        
+                        with warnings.catch_warnings():
+                            warnings.simplefilter('ignore', FutureWarning)
+                            warnings.simplefilter('ignore', UserWarning)
+                            rsi = ta.rsi(close_float, length=14)
                         if rsi is not None:
                             rsi_value = rsi.iloc[-1]
                             rsi_thresholds = self.rsi_config.get(tf, self.rsi_config.get("1h", {"oversold": 30, "overbought": 70}))
@@ -963,7 +986,15 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             market_regime = self.detect_market_regime(df_main) if not df_main.empty else "NORMAL"
             
             # ATR para stop loss
-            atr = ta.atr(df_main['high'], df_main['low'], df_main['close'], length=StrategyConfig.Base.DEFAULT_ATR_PERIOD)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df_main['high'].astype('float64')
+            low_float = df_main['low'].astype('float64')
+            close_float = df_main['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.DEFAULT_ATR_PERIOD)
             current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
             
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(
@@ -1091,7 +1122,15 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             })
             
             # ATR para stop loss
-            atr = ta.atr(df['high'], df['low'], df['close'], length=14)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                atr = ta.atr(high_float, low_float, close_float, length=14)
             current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
             
             # Calcular stop loss y take profit

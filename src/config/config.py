@@ -39,9 +39,9 @@ class TradingProfiles:
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
             "timeframes": ["1m", "5m", "15m"],
             "analysis_interval": 5,
-            "min_confidence": 62.0,  # Ligeramente aumentado para calidad
-            "max_daily_trades": 25,  # Aumentado para aprovechar oportunidades
-            "max_positions": 10,  # Aumentado para diversificación
+            "min_confidence": 65.0,  # Aumentado para mejor calidad de señales
+            "max_daily_trades": 20,  # Reducido para mejor selección
+            "max_positions": 8,  # Reducido para mejor control
             # Circuit Breaker Config - Optimizado
             "max_consecutive_losses": 7,  # Aumentado para tolerancia
             "circuit_breaker_cooldown_hours": 1.5,  # Reducido para eficiencia
@@ -55,9 +55,9 @@ class TradingProfiles:
             "max_slippage": 0.10,  # Reducido para mejor ejecución
             "min_liquidity": 4.0,  # Aumentado para liquidez
             # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.8,  # Reducido para control
-            "max_daily_risk": 7.0,  # Reducido para protección
-            "max_drawdown_threshold": 12.0,  # Consistente
+            "max_risk_per_trade": 1.5,  # Optimizado para mejor control
+            "max_daily_risk": 6.0,  # Reducido para mayor protección
+            "max_drawdown_threshold": 10.0,  # Reducido para mejor control
             "correlation_threshold": 0.75,  # Optimizado
             "min_position_size": 12.0,  # Reducido para flexibilidad
             "risk_max_position_size": 8.0,  # Consistente
@@ -73,10 +73,10 @@ class TradingProfiles:
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
+            "tp_min_percentage": 2.5,  # TP mínimo optimizado
+            "tp_max_percentage": 5.5,  # TP máximo optimizado
+            "sl_min_percentage": 0.8,  # SL mínimo más ajustado
+            "sl_max_percentage": 2.5,  # SL máximo optimizado
             "tp_increment_percentage": 1.0,  # Incremento base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
@@ -87,15 +87,15 @@ class TradingProfiles:
             "position_size_multiplier": 1.0,  # Multiplicador de tamaño de posición
             "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad
             # Strategy Config - Optimizado
-            "default_min_confidence": 58.0,  # Aumentado
+            "default_min_confidence": 52.0,  # Reducido para más oportunidades
             "default_atr_period": 10,
-            "rsi_min_confidence": 68.0,  # Aumentado
-            "rsi_oversold": 32,  # Optimizado más estricto
-            "rsi_overbought": 68,  # Optimizado más estricto
+            "rsi_min_confidence": 68.0,  # Aumentado para mejor calidad
+            "rsi_oversold": 35,  # Optimizado para señales de calidad
+            "rsi_overbought": 65,  # Optimizado para mejor balance
             "rsi_period": 10,
-            "min_volume_ratio": 1.4,  # Aumentado para calidad
-            "min_confluence": 3,  # Aumentado para calidad
-            "trend_strength_threshold": 28,  # Optimizado
+            "min_volume_ratio": 1.6,  # Aumentado para mejor calidad
+            "min_confluence": 4,  # Aumentado para mejores señales
+            "trend_strength_threshold": 32,  # Optimizado para mejor filtrado
             "min_atr_ratio": 0.9,  # Optimizado
             "max_spread_threshold": 0.002,  # Optimizado más estricto
             "volume_weight": 0.22,  # Nuevo peso para volumen
@@ -123,9 +123,9 @@ class TradingProfiles:
             "description": "Timeframes 15m-1h, balance velocidad/control optimizado",
             "timeframes": ["15m", "30m", "1h"],
             "analysis_interval": 15,
-            "min_confidence": 70.0,  # Aumentado para mejor calidad
-            "max_daily_trades": 12,
-            "max_positions": 6,
+            "min_confidence": 72.0,  # Optimizado para mejor calidad
+            "max_daily_trades": 15,  # Aumentado para más oportunidades
+            "max_positions": 7,  # Aumentado para diversificación
             # Circuit Breaker Config - Optimizado
             "max_consecutive_losses": 4,  # Mantenido para tolerancia
             "circuit_breaker_cooldown_hours": 3,  # Optimizado para recuperación
@@ -139,14 +139,14 @@ class TradingProfiles:
             "max_slippage": 0.06,  # Reducido para mejor ejecución
             "min_liquidity": 6.0,  # Aumentado para mejor liquidez
             # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.2,  # Reducido para mejor control
-            "max_daily_risk": 5.0,  # Reducido para menor exposición
-            "max_drawdown_threshold": 10.0,  # Reducido para protección
+            "max_risk_per_trade": 1.0,  # Optimizado para control
+            "max_daily_risk": 4.5,  # Reducido para mayor protección
+            "max_drawdown_threshold": 8.0,  # Reducido para mejor control
             "correlation_threshold": 0.65,  # Optimizado
             "min_position_size": 8.0,  # Reducido
             "risk_max_position_size": 6.0,  # Reducido para consistencia
-            "kelly_fraction": 0.22,  # Optimizado
-            "volatility_adjustment": 1.15,  # Optimizado
+            "kelly_fraction": 0.20,  # Optimizado conservador
+            "volatility_adjustment": 1.10,  # Reducido para estabilidad
             "atr_multiplier_min": 2.2,  # Optimizado
             "atr_multiplier_max": 3.8,  # Optimizado
             "atr_default": 2.5,
@@ -207,9 +207,9 @@ class TradingProfiles:
             "description": "Timeframes 1h-4h, máxima precisión optimizada",
             "timeframes": ["1h", "2h", "4h"],
             "analysis_interval": 30,
-            "min_confidence": 78.0,  # Aumentado para máxima calidad
-            "max_daily_trades": 8,  # Aumentado ligeramente
-            "max_positions": 4,  # Aumentado para diversificación
+            "min_confidence": 80.0,  # Aumentado para máxima calidad
+            "max_daily_trades": 10,  # Aumentado para más oportunidades
+            "max_positions": 5,  # Aumentado para diversificación
             # Circuit Breaker Config - Optimizado
             "max_consecutive_losses": 3,  # Aumentado para tolerancia
             "circuit_breaker_cooldown_hours": 4,  # Reducido para eficiencia
@@ -223,14 +223,14 @@ class TradingProfiles:
             "max_slippage": 0.04,  # Reducido para mejor ejecución
             "min_liquidity": 10.0,  # Aumentado para liquidez
             # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 0.8,  # Reducido para conservadurismo
-            "max_daily_risk": 3.5,  # Reducido para protección
-            "max_drawdown_threshold": 8.0,  # Mantenido estricto
+            "max_risk_per_trade": 0.7,  # Optimizado para máximo control
+            "max_daily_risk": 3.0,  # Reducido para máxima protección
+            "max_drawdown_threshold": 6.0,  # Reducido para control estricto
             "correlation_threshold": 0.55,  # Optimizado
             "min_position_size": 20.0,  # Aumentado para calidad
             "risk_max_position_size": 10.0,  # Consistente
-            "kelly_fraction": 0.18,  # Optimizado conservador
-            "volatility_adjustment": 0.95,  # Optimizado
+            "kelly_fraction": 0.15,  # Muy conservador para precisión
+            "volatility_adjustment": 0.90,  # Reducido para estabilidad
             "atr_multiplier_min": 2.2,  # Optimizado
             "atr_multiplier_max": 3.2,  # Optimizado
             "atr_default": 2.2,
@@ -257,9 +257,9 @@ class TradingProfiles:
             # Strategy Config - Optimizado
             "default_min_confidence": 72.0,  # Aumentado
             "default_atr_period": 14,
-            "rsi_min_confidence": 78.0,  # Aumentado
-            "rsi_oversold": 22,  # Optimizado más estricto
-            "rsi_overbought": 78,  # Optimizado más estricto
+            "rsi_min_confidence": 82.0,  # Aumentado para máxima calidad
+            "rsi_oversold": 25,  # Optimizado para mejor balance
+            "rsi_overbought": 75,  # Optimizado para mejor balance
             "rsi_period": 14,
             "min_volume_ratio": 2.2,  # Aumentado para calidad
             "min_confluence": 4,
@@ -291,9 +291,9 @@ class TradingProfiles:
             "description": "Timeframes 4h-1d, máxima preservación de capital",
             "timeframes": ["4h", "8h", "1d"],  # Timeframes más largos
             "analysis_interval": 45,  # Análisis menos frecuente
-            "min_confidence": 82.0,  # Muy alto para seguridad
-            "max_daily_trades": 4,  # Reducido para conservadurismo
-            "max_positions": 2,  # Muy limitado
+            "min_confidence": 85.0,  # Aumentado para máxima seguridad
+            "max_daily_trades": 6,  # Aumentado ligeramente para oportunidades
+            "max_positions": 3,  # Aumentado para diversificación mínima
             # Circuit Breaker Config - Ultra conservador
             "max_consecutive_losses": 2,  # Muy estricto
             "circuit_breaker_cooldown_hours": 8,  # Cooldown largo
@@ -307,14 +307,14 @@ class TradingProfiles:
             "max_slippage": 0.03,  # Muy estricto
             "min_liquidity": 15.0,  # Muy alto
             # Risk Manager Config - Ultra conservador
-            "max_risk_per_trade": 0.5,  # Muy bajo
-            "max_daily_risk": 2.0,  # Muy limitado
-            "max_drawdown_threshold": 5.0,  # Muy estricto
+            "max_risk_per_trade": 0.4,  # Extremadamente bajo
+            "max_daily_risk": 1.5,  # Muy limitado para máxima protección
+            "max_drawdown_threshold": 4.0,  # Muy estricto
             "correlation_threshold": 0.4,  # Muy estricto
             "min_position_size": 30.0,  # Alto para calidad
             "risk_max_position_size": 4.0,  # Consistente
-            "kelly_fraction": 0.1,  # Muy conservador
-            "volatility_adjustment": 0.8,  # Reducido
+            "kelly_fraction": 0.08,  # Extremadamente conservador
+            "volatility_adjustment": 0.75,  # Muy reducido para estabilidad
             "atr_multiplier_min": 3.5,  # Stops más amplios
             "atr_multiplier_max": 5.5,  # Stops muy amplios
             "atr_default": 3.5,
@@ -341,9 +341,9 @@ class TradingProfiles:
             # Strategy Config - Ultra conservador
             "default_min_confidence": 78.0,  # Muy alto
             "default_atr_period": 21,  # Período más largo
-            "rsi_min_confidence": 85.0,  # Muy alto
-            "rsi_oversold": 20,  # Muy estricto
-            "rsi_overbought": 80,  # Muy estricto
+            "rsi_min_confidence": 88.0,  # Extremadamente alto
+            "rsi_oversold": 22,  # Optimizado para mejor calidad
+            "rsi_overbought": 78,  # Optimizado para mejor calidad
             "rsi_period": 21,  # Período más largo
             "min_volume_ratio": 2.5,  # Alto para calidad
             "min_confluence": 5,  # Muy alto

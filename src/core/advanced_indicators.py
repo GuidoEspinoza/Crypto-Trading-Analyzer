@@ -141,8 +141,15 @@ class AdvancedIndicators:
         """
         # Calcular Ichimoku usando pandas-ta
         try:
-            # Método 1: Usar ichimoku directamente
-            ichimoku_data = ta.ichimoku(df['high'], df['low'], df['close'])
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                ichimoku_data = ta.ichimoku(high_float, low_float, close_float)
             
             if ichimoku_data is None or ichimoku_data.empty:
                 raise ValueError("No se pudieron calcular los datos de Ichimoku")
@@ -246,7 +253,15 @@ class AdvancedIndicators:
             d_period = AdvancedIndicatorsConfig.STOCHASTIC_D_PERIOD
             
         try:
-            stoch_data = ta.stoch(df['high'], df['low'], df['close'], k=k_period, d=d_period)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                stoch_data = ta.stoch(high_float, low_float, close_float, k=k_period, d=d_period)
             
             if stoch_data is None or stoch_data.empty:
                 # Calcular manualmente
@@ -315,7 +330,15 @@ class AdvancedIndicators:
             period = AdvancedIndicatorsConfig.WILLIAMS_R_PERIOD
             
         try:
-            willr = ta.willr(df['high'], df['low'], df['close'], length=period)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                willr = ta.willr(high_float, low_float, close_float, length=period)
             
             if willr is None or willr.empty:
                 # Calcular manualmente
@@ -421,7 +444,15 @@ class AdvancedIndicators:
             period = AdvancedIndicatorsConfig.CCI_PERIOD
             
         try:
-            cci = ta.cci(df['high'], df['low'], df['close'], length=period)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                cci = ta.cci(high_float, low_float, close_float, length=period)
             
             if cci is None or cci.empty:
                 # Calcular manualmente
@@ -471,7 +502,15 @@ class AdvancedIndicators:
             Diccionario con valor y señales del Parabolic SAR
         """
         try:
-            psar = ta.psar(df['high'], df['low'], df['close'])
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                psar = ta.psar(high_float, low_float, close_float)
             
             if psar is None or psar.empty:
                 # Implementación básica manual
@@ -648,7 +687,16 @@ class AdvancedIndicators:
                 typical_price = (df['high'] + df['low'] + df['close']) / 3
                 vwap_data = (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
             else:
-                vwap_data = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
+                # Convertir a float64 para evitar warnings de dtype
+                high_float = df['high'].astype('float64')
+                low_float = df['low'].astype('float64')
+                close_float = df['close'].astype('float64')
+                volume_float = df['volume'].astype('float64')
+                
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', FutureWarning)
+                    warnings.simplefilter('ignore', UserWarning)
+                    vwap_data = ta.vwap(high_float, low_float, close_float, volume_float)
                 
                 if vwap_data is None or vwap_data.empty:
                     # Fallback a cálculo manual
@@ -706,7 +754,14 @@ class AdvancedIndicators:
             Diccionario con OBV y señales
         """
         try:
-            obv = ta.obv(df['close'], df['volume'])
+            # Convertir a float64 para evitar warnings de dtype
+            close_float = df['close'].astype('float64')
+            volume_float = df['volume'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                obv = ta.obv(close_float, volume_float)
             
             if obv is None or obv.empty:
                 # Calcular manualmente
@@ -772,14 +827,16 @@ class AdvancedIndicators:
             period = AdvancedIndicatorsConfig.MFI_PERIOD
             
         try:
-            # Convertir todos los datos a float64 para evitar warnings de dtype
-            high_float = df['high'].astype('float64')
-            low_float = df['low'].astype('float64')
-            close_float = df['close'].astype('float64')
-            volume_float = df['volume'].astype('float64')
+            # Crear una copia del DataFrame con tipos explícitos para evitar warnings de dtype
+            df_copy = df[['high', 'low', 'close', 'volume']].copy()
+            high_float = df_copy['high'].astype('float64', copy=False)
+            low_float = df_copy['low'].astype('float64', copy=False)
+            close_float = df_copy['close'].astype('float64', copy=False)
+            volume_float = df_copy['volume'].astype('float64', copy=False)
             
             with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
                 mfi = ta.mfi(high_float, low_float, close_float, volume_float, length=period)
             
             if mfi is None or mfi.empty:
@@ -855,7 +912,15 @@ class AdvancedIndicators:
             period = AdvancedIndicatorsConfig.ATR_PERIOD
             
         try:
-            atr = ta.atr(df['high'], df['low'], df['close'], length=period)
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                atr = ta.atr(high_float, low_float, close_float, length=period)
             
             if atr is None or atr.empty:
                 # Calcular manualmente
@@ -926,7 +991,13 @@ class AdvancedIndicators:
             close_prices = df['close']
             
         try:
-            rsi = ta.rsi(close_prices, length=period)
+            # Convertir a float64 para evitar warnings de dtype
+            close_float = close_prices.astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                rsi = ta.rsi(close_float, length=period)
             
             if rsi is None or rsi.empty:
                 # Calcular manualmente
@@ -981,7 +1052,13 @@ class AdvancedIndicators:
                 rs = gain / loss
                 rsi = 100 - (100 / (1 + rs))
             else:
-                rsi = ta.rsi(df['close'], length=period)
+                # Convertir a float64 para evitar warnings de dtype
+                close_float = df['close'].astype('float64')
+                
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', FutureWarning)
+                    warnings.simplefilter('ignore', UserWarning)
+                    rsi = ta.rsi(close_float, length=period)
                 
                 if rsi is None or rsi.empty:
                     # Fallback a cálculo manual
@@ -994,8 +1071,14 @@ class AdvancedIndicators:
             current_rsi = cls.safe_float(rsi.iloc[-1], 50.0)
             
             # Calcular RSI de diferentes períodos para confirmación
-            rsi_fast = ta.rsi(df['close'], length=7)
-            rsi_slow = ta.rsi(df['close'], length=21)
+            # Convertir a float64 para evitar warnings de dtype
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                rsi_fast = ta.rsi(close_float, length=7)
+                rsi_slow = ta.rsi(close_float, length=21)
             
             current_rsi_fast = cls.safe_float(rsi_fast.iloc[-1] if rsi_fast is not None else current_rsi, current_rsi)
             current_rsi_slow = cls.safe_float(rsi_slow.iloc[-1] if rsi_slow is not None else current_rsi, current_rsi)
@@ -1007,19 +1090,25 @@ class AdvancedIndicators:
             divergence = "BULLISH" if price_trend == "DOWN" and rsi_trend == "UP" else \
                         "BEARISH" if price_trend == "UP" and rsi_trend == "DOWN" else "NONE"
             
-            # Generar señales mejoradas
-            if current_rsi <= 20:
+            # Obtener umbrales configurables
+            from src.config.config import TradingProfiles, TRADING_PROFILE
+            config = TradingProfiles.PROFILES[TRADING_PROFILE]
+            rsi_oversold = config.get('rsi_oversold', 30)
+            rsi_overbought = config.get('rsi_overbought', 70)
+            
+            # Generar señales mejoradas con umbrales configurables
+            if current_rsi <= (rsi_oversold - 10):  # Extremadamente oversold
                 signal = "STRONG_BUY"
-                interpretation = "🟢 RSI extremadamente oversold - Fuerte señal de compra"
-            elif current_rsi <= 30:
+                interpretation = f"🟢 RSI extremadamente oversold ({current_rsi:.1f} <= {rsi_oversold-10}) - Fuerte señal de compra"
+            elif current_rsi <= rsi_oversold:
                 signal = "BUY"
-                interpretation = "📈 RSI oversold - Señal de compra"
-            elif current_rsi >= 80:
+                interpretation = f"📈 RSI oversold ({current_rsi:.1f} <= {rsi_oversold}) - Señal de compra"
+            elif current_rsi >= (rsi_overbought + 10):  # Extremadamente overbought
                 signal = "STRONG_SELL"
-                interpretation = "🔴 RSI extremadamente overbought - Fuerte señal de venta"
-            elif current_rsi >= 70:
+                interpretation = f"🔴 RSI extremadamente overbought ({current_rsi:.1f} >= {rsi_overbought+10}) - Fuerte señal de venta"
+            elif current_rsi >= rsi_overbought:
                 signal = "SELL"
-                interpretation = "📉 RSI overbought - Señal de venta"
+                interpretation = f"📉 RSI overbought ({current_rsi:.1f} >= {rsi_overbought}) - Señal de venta"
             elif current_rsi > 50 and current_rsi_fast > current_rsi_slow:
                 signal = "BUY"
                 interpretation = "🟢 RSI alcista - Momentum positivo"
@@ -1077,7 +1166,13 @@ class AdvancedIndicators:
             period = AdvancedIndicatorsConfig.ROC_PERIOD
             
         try:
-            roc = ta.roc(df['close'], length=period)
+            # Convertir a float64 para evitar warnings de dtype
+            close_float = df['close'].astype('float64')
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                roc = ta.roc(close_float, length=period)
             
             if roc is None or roc.empty:
                 # Calcular manualmente
