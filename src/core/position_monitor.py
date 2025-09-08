@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from .config import TradingBotConfig, RiskManagerConfig
+from src.config.config import TradingBotConfig, RiskManagerConfig
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal

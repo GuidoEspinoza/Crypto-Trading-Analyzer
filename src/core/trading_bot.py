@@ -16,7 +16,7 @@ import json
 import queue
 
 # Importar todos nuestros componentes
-from .config import TradingBotConfig
+from src.config.config import TradingBotConfig
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment

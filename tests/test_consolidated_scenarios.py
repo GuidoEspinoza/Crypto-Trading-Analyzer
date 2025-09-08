@@ -22,7 +22,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 sys.path.insert(0, os.path.join(project_root, 'src'))
 
-from src.core.config import TradingProfiles, TRADING_PROFILE
+from src.config.config import TradingProfiles, TRADING_PROFILE
 from src.core.position_manager import PositionManager
 from src.core.enhanced_risk_manager import EnhancedRiskManager
 from src.core.enhanced_strategies import EnhancedSignal

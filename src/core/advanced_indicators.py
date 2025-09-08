@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 # Importar configuración centralizada
-from .config import AdvancedIndicatorsConfig
+from src.config.config import AdvancedIndicatorsConfig
 
 # Suprimir warnings específicos de pandas_ta
 warnings.filterwarnings('ignore', message='.*dtype incompatible.*')

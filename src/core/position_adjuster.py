@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.core.config import RiskManagerConfig
+from src.config.config import RiskManagerConfig
 from src.database.database import db_manager
 
 # Configurar logger

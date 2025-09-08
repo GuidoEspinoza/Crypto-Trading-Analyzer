@@ -12,7 +12,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from src.core.trading_bot import TradingBot
-from src.core.config import TradingBotConfig
+from src.config.config import TradingBotConfig
 import traceback
 
 def test_trading_bot_initialization():

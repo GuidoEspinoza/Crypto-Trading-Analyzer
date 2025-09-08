@@ -14,7 +14,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from .config import PaperTraderConfig
+from src.config.config import PaperTraderConfig
 
 from database.database import db_manager
 from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal

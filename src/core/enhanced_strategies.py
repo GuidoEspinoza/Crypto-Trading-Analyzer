@@ -14,7 +14,7 @@ from datetime import datetime
 import logging
 from abc import ABC, abstractmethod
 
-from .config import StrategyConfig
+from src.config.config import StrategyConfig
 
 # Clases base para estrategias de trading
 @dataclass
@@ -390,7 +390,7 @@ class EnhancedTradingStrategy(TradingStrategy):
         """
         try:
             # Importar configuración dinámica
-            from .config import RiskManagerConfig
+            from src.config.config import RiskManagerConfig
             
             # Obtener rangos dinámicos desde config
             sl_min = RiskManagerConfig.get_sl_min_percentage()

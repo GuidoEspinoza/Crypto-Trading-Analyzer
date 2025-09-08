@@ -15,7 +15,7 @@ from enum import Enum
 
 # Importar componentes existentes
 from .enhanced_strategies import EnhancedSignal
-from .config import RiskManagerConfig
+from src.config.config import RiskManagerConfig
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from .config import TradingBotConfig, RiskManagerConfig
+from src.config.config import TradingBotConfig, RiskManagerConfig
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -745,7 +745,7 @@ class PositionManager:
         """
         try:
             # Importar configuración dinámica
-            from .config import RiskManagerConfig
+            from src.config.config import RiskManagerConfig
             
             # Obtener umbrales dinámicos desde config
             tp_min = RiskManagerConfig.get_tp_min_percentage()
