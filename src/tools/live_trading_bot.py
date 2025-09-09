@@ -581,8 +581,24 @@ class LiveTradingBot:
                         self.trading_bot.stats["daily_trades"] += 1
                         self.session_stats["total_trades"] += 1
                         
-                        # Determinar si fue exitoso (simplificado)
-                        if "profit" in trade_result.message.lower() or trade_result.entry_value > 0:
+                        # Determinar si fue exitoso basándose en el tipo de trade y PnL real
+                        trade_was_profitable = False
+                        if best_signal.signal_type == "SELL":
+                            # Para ventas, verificar si hay PnL positivo en el mensaje
+                            if "PnL:" in trade_result.message and "$" in trade_result.message:
+                                try:
+                                    # Extraer PnL del mensaje: "PnL: $X.XX"
+                                    pnl_part = trade_result.message.split("PnL: $")[1].split(")")[0]
+                                    pnl_value = float(pnl_part)
+                                    trade_was_profitable = pnl_value > 0
+                                except:
+                                    trade_was_profitable = False
+                        else:
+                            # Para compras, solo contar como exitoso si se ejecutó correctamente
+                            # El éxito real se determinará cuando se venda
+                            trade_was_profitable = trade_result.success
+                        
+                        if trade_was_profitable:
                             self.trading_bot.stats["successful_trades"] += 1
                             self.session_stats["successful_trades"] += 1
                         
@@ -705,10 +721,11 @@ class LiveTradingBot:
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
             portfolio_summary = self.trading_bot.paper_trader.get_portfolio_summary()
             
-            current_balance = portfolio_performance.get('cash_balance', 0)
+            # Obtener balance de USDT correctamente
+            current_balance = self.trading_bot.paper_trader.get_balance('USDT')
             total_value = portfolio_performance.get('total_value', 0)
             pnl = portfolio_performance.get('total_pnl', 0)
-            pnl_pct = portfolio_performance.get('total_pnl_percentage', 0)
+            pnl_pct = portfolio_performance.get('total_return_percentage', 0)
             
             logger.info("\n" + "="*60)
             logger.info("📊 ESTADÍSTICAS ACTUALES")
@@ -748,10 +765,11 @@ class LiveTradingBot:
         try:
             session_duration = datetime.now() - self.session_stats['start_time']
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
-            final_balance = portfolio_performance.get('cash_balance', 0)
+            # Obtener balance final de USDT correctamente
+            final_balance = self.trading_bot.paper_trader.get_balance('USDT')
             total_value = portfolio_performance.get('total_value', 0)
             total_pnl = portfolio_performance.get('total_pnl', 0)
-            pnl_pct = portfolio_performance.get('total_pnl_percentage', 0)
+            pnl_pct = portfolio_performance.get('total_return_percentage', 0)
             
             logger.info("\n" + "="*80)
             logger.info("🏁 RESUMEN FINAL DE LA SESIÓN")

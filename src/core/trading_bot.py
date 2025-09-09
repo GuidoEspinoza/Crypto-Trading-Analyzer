@@ -560,8 +560,23 @@ class TradingBot:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
                         
-                        # Determinar si fue exitoso y actualizar circuit breaker
-                        trade_was_profitable = "profit" in trade_result.message.lower() or trade_result.entry_value > 0
+                        # Determinar si fue exitoso basándose en el tipo de trade y PnL real
+                        trade_was_profitable = False
+                        if signal.signal_type == "SELL":
+                            # Para ventas, verificar si hay PnL positivo en el mensaje
+                            if "PnL:" in trade_result.message and "$" in trade_result.message:
+                                try:
+                                    # Extraer PnL del mensaje: "PnL: $X.XX"
+                                    pnl_part = trade_result.message.split("PnL: $")[1].split(")")[0]
+                                    pnl_value = float(pnl_part)
+                                    trade_was_profitable = pnl_value > 0
+                                except:
+                                    trade_was_profitable = False
+                        else:
+                            # Para compras, solo contar como exitoso si se ejecutó correctamente
+                            # El éxito real se determinará cuando se venda
+                            trade_was_profitable = trade_result.success
+                        
                         if trade_was_profitable:
                             self.stats["successful_trades"] += 1
                         

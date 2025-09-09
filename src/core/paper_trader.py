@@ -664,7 +664,8 @@ class PaperTrader:
                     "total_trades": total_trades,
                     "winning_trades": winning_trades,
                     "win_rate": round(win_rate, 2),
-                    "initial_balance": self.initial_balance
+                    "initial_balance": self.initial_balance,
+                    "cash_balance": self._get_usdt_balance()  # Añadir balance de USDT para compatibilidad
                 }
                 
         except Exception as e:

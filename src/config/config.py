@@ -24,7 +24,7 @@ from typing import List, Dict, Any
 TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
-GLOBAL_INITIAL_BALANCE = 1000.0
+GLOBAL_INITIAL_BALANCE = 500.0
 
 # ============================================================================
 # 📊 DEFINICIÓN DE PERFILES DE TRADING

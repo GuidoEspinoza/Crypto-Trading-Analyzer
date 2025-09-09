@@ -84,13 +84,19 @@ class PositionAdjuster:
         logger.info("📞 Callback de ajustes configurado")
     
     async def start_monitoring(self):
-        """🚀 Iniciar monitoreo de posiciones"""
+        """🚀 Iniciar monitoreo de posiciones
+        
+        IMPORTANTE: Este monitoreo funciona independientemente del límite de trades diarios.
+        Los ajustes de TP/SL no cuentan como trades nuevos y pueden ejecutarse incluso
+        cuando se ha alcanzado el max_daily_trades.
+        """
         if self.is_running:
             logger.warning("⚠️ El monitoreo ya está activo")
             return
         
         self.is_running = True
         logger.info(f"🔄 Iniciando monitoreo de posiciones (intervalo: {self.monitoring_interval}s)")
+        logger.info("📝 Los ajustes de TP/SL funcionan independientemente del límite de trades diarios")
         
         try:
             while self.is_running:
@@ -184,14 +190,18 @@ class PositionAdjuster:
             return 0.0
     
     async def _evaluate_position_adjustment(self, position: PositionInfo):
-        """🎯 Evaluar si una posición necesita ajuste de TP/SL"""
+        """🎯 Evaluar si una posición necesita ajuste de TP/SL
+        
+        NOTA: Los ajustes de TP/SL funcionan independientemente del límite de trades diarios.
+        Solo se limitan por el número máximo de ajustes por posición (max_adjustments).
+        """
         try:
             symbol = position.symbol
             
-            # Verificar límite de ajustes
+            # Verificar límite de ajustes por posición (independiente del límite de trades diarios)
             current_adjustments = self.adjustment_counts.get(symbol, 0)
             if current_adjustments >= self.max_adjustments:
-                logger.debug(f"⏸️ {symbol}: Límite de ajustes alcanzado ({current_adjustments}/{self.max_adjustments})")
+                logger.debug(f"⏸️ {symbol}: Límite de ajustes por posición alcanzado ({current_adjustments}/{self.max_adjustments})")
                 return
             
             # Evaluar condiciones para ajuste
