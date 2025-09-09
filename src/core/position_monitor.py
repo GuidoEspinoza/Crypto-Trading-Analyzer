@@ -81,6 +81,11 @@ class PositionMonitor:
         self.price_cache = {}
         self.last_price_update = {}
         
+        # Control de trades ya procesados para evitar intentos repetitivos
+        self.processed_trades = set()  # Set de trade_ids ya procesados para cierre
+        self.failed_close_attempts = {}  # Dict para contar intentos fallidos por trade_id
+        self.max_close_attempts = 3  # Máximo número de intentos antes de marcar como procesado
+        
         # Configuración de monitoreo desde TradingBotConfig
         self.monitor_interval = self.config.get_live_update_interval()  # segundos entre checks
         self.price_cache_duration = 30  # segundos de validez del cache
@@ -94,6 +99,31 @@ class PositionMonitor:
         }
         
         logger.info("📊 Position Monitor initialized with PositionManager")
+    
+    def _cleanup_processed_trades(self):
+        """🧹 Limpiar trades procesados que ya no están en posiciones activas"""
+        try:
+            # Obtener IDs de posiciones activas actuales
+            active_positions = self.position_manager.get_active_positions(refresh_cache=True)
+            active_trade_ids = {pos.trade_id for pos in active_positions}
+            
+            # Remover trades procesados que ya no están activos
+            processed_to_remove = self.processed_trades - active_trade_ids
+            self.processed_trades -= processed_to_remove
+            
+            # Limpiar intentos fallidos de trades que ya no están activos
+            failed_to_remove = set(self.failed_close_attempts.keys()) - active_trade_ids
+            for trade_id in failed_to_remove:
+                del self.failed_close_attempts[trade_id]
+            
+            if processed_to_remove or failed_to_remove:
+                logger.debug(
+                    f"🧹 Cleaned {len(processed_to_remove)} processed trades and "
+                    f"{len(failed_to_remove)} failed attempts"
+                )
+                
+        except Exception as e:
+            logger.error(f"❌ Error cleaning processed trades: {e}")
     
     def start_monitoring(self):
         """🚀 Iniciar monitoreo de posiciones"""
@@ -131,10 +161,22 @@ class PositionMonitor:
         """🔄 Loop principal de monitoreo"""
         logger.info("📊 Starting position monitoring loop")
         
+        cleanup_counter = 0
+        cleanup_interval = 10  # Limpiar cada 10 ciclos
+        
         while self.monitoring_active and not self.stop_event.is_set():
             try:
-                # Obtener posiciones activas del PositionManager
-                active_positions = self.position_manager.get_active_positions()
+                # Incrementar contador de ciclos
+                self.stats["monitoring_cycles"] += 1
+                cleanup_counter += 1
+                
+                # Limpiar trades procesados periódicamente
+                if cleanup_counter >= cleanup_interval:
+                    self._cleanup_processed_trades()
+                    cleanup_counter = 0
+                
+                # Obtener posiciones activas del PositionManager (refrescar cache)
+                active_positions = self.position_manager.get_active_positions(refresh_cache=True)
                 
                 if not active_positions:
                     # No hay posiciones, esperar más tiempo
@@ -219,6 +261,10 @@ class PositionMonitor:
         symbol = position.symbol
         trade_id = position.trade_id
         
+        # Verificar si este trade ya fue procesado para cierre
+        if trade_id in self.processed_trades:
+            return
+        
         # Obtener precio actual
         current_price = self._get_current_price(symbol)
         if current_price is None:
@@ -232,6 +278,15 @@ class PositionMonitor:
         close_reason = self.position_manager.check_exit_conditions(position)
         
         if close_reason:
+            # Verificar si ya hemos intentado cerrar este trade demasiadas veces
+            if trade_id in self.failed_close_attempts:
+                if self.failed_close_attempts[trade_id] >= self.max_close_attempts:
+                    logger.warning(
+                        f"⚠️ Trade {trade_id} marked as processed after {self.max_close_attempts} failed attempts"
+                    )
+                    self.processed_trades.add(trade_id)
+                    return
+            
             logger.info(
                 f"🎯 Position {trade_id} ({symbol}) should close: {close_reason} "
                 f"| Current: ${current_price:.4f} | Entry: ${position.entry_price:.4f}"
@@ -242,13 +297,27 @@ class PositionMonitor:
             
             if success:
                 logger.info(f"✅ Position {trade_id} closed successfully")
+                # Marcar como procesado exitosamente
+                self.processed_trades.add(trade_id)
+                # Limpiar contador de intentos fallidos si existía
+                if trade_id in self.failed_close_attempts:
+                    del self.failed_close_attempts[trade_id]
+                
                 # Actualizar estadísticas del monitor
                 if close_reason == "TAKE_PROFIT":
                     self.stats["tp_executed"] += 1
                 elif close_reason in ["STOP_LOSS", "TRAILING_STOP"]:
                     self.stats["sl_executed"] += 1
             else:
-                logger.error(f"❌ Failed to close position {trade_id}")
+                # Incrementar contador de intentos fallidos
+                if trade_id not in self.failed_close_attempts:
+                    self.failed_close_attempts[trade_id] = 0
+                self.failed_close_attempts[trade_id] += 1
+                
+                logger.error(
+                    f"❌ Failed to close position {trade_id} "
+                    f"(attempt {self.failed_close_attempts[trade_id]}/{self.max_close_attempts})"
+                )
         else:
             # Log de estado (solo cada minuto para evitar spam)
             if trade_id not in getattr(self, '_last_log_time', {}) or \
@@ -405,6 +474,32 @@ class PositionMonitor:
                     
         except Exception as e:
             logger.error(f"❌ Error updating closed trade {status.trade_id}: {e}")
+    
+    def get_monitor_stats(self) -> Dict:
+        """📊 Obtener estadísticas del monitor
+        
+        Returns:
+            Diccionario con estadísticas del monitor
+        """
+        return {
+            "monitoring_active": self.monitoring_active,
+            "monitoring_cycles": self.stats["monitoring_cycles"],
+            "tp_executed": self.stats["tp_executed"],
+            "sl_executed": self.stats["sl_executed"],
+            "positions_monitored": self.stats["positions_monitored"],
+            "processed_trades_count": len(self.processed_trades),
+            "failed_attempts_count": len(self.failed_close_attempts),
+            "processed_trades": list(self.processed_trades),
+            "failed_attempts": dict(self.failed_close_attempts),
+            "max_close_attempts": self.max_close_attempts
+        }
+    
+    def reset_processed_trades(self):
+        """🔄 Resetear lista de trades procesados (para debugging)"""
+        logger.info(f"🔄 Resetting {len(self.processed_trades)} processed trades")
+        self.processed_trades.clear()
+        self.failed_close_attempts.clear()
+        logger.info("✅ Processed trades reset completed")
     
     def _calculate_trailing_stop(self, position: Dict, current_price: float) -> Optional[float]:
         """📈 Calcular trailing stop dinámico"""

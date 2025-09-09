@@ -69,7 +69,9 @@ class PositionAdjuster:
         self.config = config or RiskManagerConfig()
         self.simulation_mode = simulation_mode
         self.adjustment_counts = {}  # Contador de ajustes por posición
-        self.max_adjustments = 5
+        # Obtener max_adjustments desde configuración del perfil activo
+        risk_config = RiskManagerConfig()
+        self.max_adjustments = risk_config.get_max_tp_adjustments()
         self.monitoring_interval = 30  # segundos
         self.active_positions = {}
         self.adjustment_history = []
@@ -231,6 +233,7 @@ class PositionAdjuster:
     def _calculate_new_levels(self, position: PositionInfo) -> Tuple[bool, AdjustmentReason, float, float]:
         """🧮 Calcular nuevos niveles de TP/SL"""
         try:
+            risk_config = RiskManagerConfig()
             symbol = position.symbol
             current_price = position.current_price
             entry_price = position.entry_price
@@ -249,15 +252,18 @@ class PositionAdjuster:
                 
                 return True, AdjustmentReason.PROFIT_SCALING, new_tp, new_sl
             
-            # Condición 2: Trailing Stop (posición muy ganadora > 5%)
-            if pnl_pct > 5.0:
+            # Condición 2: Trailing Stop (posición muy ganadora)
+            trailing_activation = risk_config.get_trailing_stop_activation() if hasattr(risk_config, 'get_trailing_stop_activation') else 5.0
+            if pnl_pct > trailing_activation:
                 # Implementar trailing stop más agresivo
+                sl_pct = 0.02  # 2% por defecto
+                tp_pct = 0.05  # 5% por defecto
                 if side == 'BUY':
-                    new_sl = current_price * 0.98  # SL a -2% del precio actual
-                    new_tp = current_price * 1.05  # TP a +5% del precio actual
+                    new_sl = current_price * (1 - sl_pct)  # SL dinámico
+                    new_tp = current_price * (1 + tp_pct)  # TP dinámico
                 else:
-                    new_sl = current_price * 1.02  # SL a +2% del precio actual
-                    new_tp = current_price * 0.95  # TP a -5% del precio actual
+                    new_sl = current_price * (1 + sl_pct)  # SL dinámico
+                    new_tp = current_price * (1 - tp_pct)  # TP dinámico
                 
                 return True, AdjustmentReason.TRAILING_STOP, new_tp, new_sl
             

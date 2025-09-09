@@ -63,7 +63,7 @@ class DynamicTakeProfit:
     last_update: datetime
     take_profit_price: float = 0.0  # Precio actual del take profit
     confidence_threshold: float = 0.0  # Umbral de confianza para ajustar TP
-    max_tp_adjustments: int = 5  # Máximo número de ajustes permitidos
+    max_tp_adjustments: int = 5  # Máximo número de ajustes permitidos (se inicializa desde config)
     adjustments_made: int = 0  # Número de ajustes realizados
 
 @dataclass
@@ -376,17 +376,21 @@ class EnhancedRiskManager:
                 else:
                     initial_tp = signal.price - (3 * atr_data)  # 3 ATR por debajo para SELL
             
-            # Configurar parámetros del trailing TP
-            tp_increment_pct = 1.0  # Incrementar TP en 1% cuando se alcance cierto nivel
-            confidence_threshold = 0.7  # Umbral de confianza para ajustar TP
+            # Obtener configuración desde perfil activo
+            from src.config.config import RiskManagerConfig
+            risk_config = RiskManagerConfig()
+            
+            # Configurar parámetros del trailing TP desde configuración
+            tp_increment_pct = 1.0  # Valor base
+            confidence_threshold = risk_config.get_tp_confidence_threshold()  # Desde perfil activo
             
             # Ajustar según régimen de mercado
             if signal.market_regime == "TRENDING":
                 tp_increment_pct = 1.5  # Más agresivo en tendencias
-                confidence_threshold = 0.6
+                confidence_threshold = max(0.5, confidence_threshold - 0.1)  # Reducir umbral
             elif signal.market_regime == "VOLATILE":
                 tp_increment_pct = 0.8  # Más conservador en volatilidad
-                confidence_threshold = 0.8
+                confidence_threshold = min(0.9, confidence_threshold + 0.1)  # Aumentar umbral
             
             return DynamicTakeProfit(
                 initial_tp=round(initial_tp, 2),
@@ -397,7 +401,7 @@ class EnhancedRiskManager:
                 last_update=datetime.now(),
                 take_profit_price=round(initial_tp, 2),
                 confidence_threshold=confidence_threshold,
-                max_tp_adjustments=5,
+                max_tp_adjustments=risk_config.get_max_tp_adjustments(),
                 adjustments_made=0
             )
             
@@ -412,8 +416,8 @@ class EnhancedRiskManager:
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=tp_price,
-                confidence_threshold=0.7,
-                max_tp_adjustments=5,
+                confidence_threshold=risk_config.get_tp_confidence_threshold(),
+                max_tp_adjustments=risk_config.get_max_tp_adjustments(),
                 adjustments_made=0
             )
     
@@ -572,8 +576,8 @@ class EnhancedRiskManager:
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=default_tp_price,
-                confidence_threshold=0.7,
-                max_tp_adjustments=5,
+                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold(),
+                max_tp_adjustments=RiskManagerConfig().get_max_tp_adjustments(),
                 adjustments_made=0
             ),
             market_risk_factors={"error": "Could not calculate risk factors"},

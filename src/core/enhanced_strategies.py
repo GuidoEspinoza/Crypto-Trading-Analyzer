@@ -111,19 +111,22 @@ class EnhancedTradingStrategy(TradingStrategy):
     
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)
-        self.min_volume_ratio = 1.2  # Volumen debe ser 20% mayor al promedio
-        self.min_confluence = 2  # Mínimo 2 indicadores deben confirmar
+        # Importar configuración para obtener valores del perfil activo
+        from src.config.config import StrategyConfig
+        config = StrategyConfig.ProfessionalRSI()
+        self.min_volume_ratio = config.get_min_volume_ratio()  # Volumen según perfil activo
+        self.min_confluence = config.get_min_confluence()  # Confluencia según perfil activo
         # Signal filters deshabilitados (módulo eliminado)
         self.signal_filter = None
         
         # Configuración avanzada de confluencia
         self.confluence_weights = {
             "technical": 0.4,    # Indicadores técnicos
-            "volume": 0.25,      # Análisis de volumen
+            "volume": config.get_volume_weight() if hasattr(config, 'get_volume_weight') else 0.25,      # Análisis de volumen según perfil
             "structure": 0.2,    # Estructura de mercado (S/R, tendencias)
             "momentum": 0.15     # Momentum e impulso
         }
-        self.min_confluence_score = 0.65  # Puntuación mínima de confluencia
+        self.min_confluence_score = config.get_confluence_threshold() if hasattr(config, 'get_confluence_threshold') else 0.65  # Puntuación según perfil
     
     @classmethod
     def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
@@ -628,19 +631,19 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
         
         # Configuración desde archivo centralizado
         self.config = StrategyConfig.ProfessionalRSI()
-        self.min_confidence = self.config.MIN_CONFIDENCE
-        self.rsi_oversold = self.config.RSI_OVERSOLD
-        self.rsi_overbought = self.config.RSI_OVERBOUGHT
-        self.rsi_period = self.config.RSI_PERIOD
+        self.min_confidence = self.config.get_min_confidence()
+        self.rsi_oversold = self.config.get_rsi_oversold()
+        self.rsi_overbought = self.config.get_rsi_overbought()
+        self.rsi_period = self.config.get_rsi_period()
         
         # Configuración de confirmaciones
-        self.min_volume_ratio = self.config.MIN_VOLUME_RATIO
-        self.min_confluence = self.config.MIN_CONFLUENCE
-        self.trend_strength_threshold = self.config.TREND_STRENGTH_THRESHOLD
+        self.min_volume_ratio = self.config.get_min_volume_ratio()
+        self.min_confluence = self.config.get_min_confluence()
+        self.trend_strength_threshold = self.config.get_trend_strength_threshold()
         
-        # Configuración de filtros de calidad
-        self.min_atr_ratio = self.config.MIN_ATR_RATIO
-        self.max_spread_threshold = self.config.MAX_SPREAD_THRESHOLD
+        # Configuración de filtros de calidad (usar fallbacks si no existen métodos)
+        self.min_atr_ratio = getattr(self.config, 'MIN_ATR_RATIO', 0.8)
+        self.max_spread_threshold = getattr(self.config, 'MAX_SPREAD_THRESHOLD', 0.002)
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis RSI profesional con confirmaciones avanzadas"""
@@ -912,12 +915,12 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
         
         # Configuración desde archivo centralizado
         self.config = StrategyConfig.MultiTimeframe()
-        self.timeframes = self.config.TIMEFRAMES
-        self.min_confidence = self.config.MIN_CONFIDENCE
-        self.rsi_config = self.config.RSI_CONFIG
-        self.timeframe_weights = self.config.TIMEFRAME_WEIGHTS
-        self.min_timeframe_consensus = self.config.MIN_TIMEFRAME_CONSENSUS
-        self.trend_alignment_required = self.config.TREND_ALIGNMENT_REQUIRED
+        self.timeframes = getattr(self.config, 'TIMEFRAMES', ["1m", "5m", "15m"])
+        self.min_confidence = self.config.get_min_confidence()
+        self.rsi_config = getattr(self.config, 'RSI_CONFIG', {"1m": {"oversold": 35, "overbought": 65}})
+        self.timeframe_weights = getattr(self.config, 'TIMEFRAME_WEIGHTS', {"1m": 0.5, "5m": 0.3, "15m": 0.2})
+        self.min_timeframe_consensus = getattr(self.config, 'MIN_TIMEFRAME_CONSENSUS', 2)
+        self.trend_alignment_required = getattr(self.config, 'TREND_ALIGNMENT_REQUIRED', True)
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis multi-timeframe"""
@@ -1062,11 +1065,11 @@ class EnsembleStrategy(EnhancedTradingStrategy):
         self.mtf_strategy = MultiTimeframeStrategy()
         
         # Pesos para cada estrategia (basado en performance histórica)
-        self.strategy_weights = self.config.STRATEGY_WEIGHTS
+        self.strategy_weights = getattr(self.config, 'STRATEGY_WEIGHTS', {"Professional_RSI": 0.4, "Multi_Timeframe": 0.6})
         
         # Configuración de consenso
-        self.min_consensus_threshold = self.config.MIN_CONSENSUS_THRESHOLD
-        self.confidence_boost_factor = self.config.CONFIDENCE_BOOST_FACTOR
+        self.min_consensus_threshold = self.config.get_min_consensus_threshold()
+        self.confidence_boost_factor = self.config.get_confidence_boost_factor()
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis ensemble combinando múltiples estrategias"""

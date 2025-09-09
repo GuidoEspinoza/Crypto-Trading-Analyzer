@@ -21,7 +21,7 @@ from typing import List, Dict, Any
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
+TRADING_PROFILE = "AGRESIVO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
 GLOBAL_INITIAL_BALANCE = 500.0
@@ -478,6 +478,11 @@ class TradingBotConfig:
     def get_circuit_breaker_cooldown_hours(cls) -> int:
         """Horas de cooldown después de activar circuit breaker según perfil activo."""
         return TradingProfiles.get_current_profile()["circuit_breaker_cooldown_hours"]
+    
+    @classmethod
+    def get_max_drawdown_threshold(cls) -> float:
+        """Umbral máximo de drawdown según perfil activo."""
+        return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
 
 
 # ============================================================================
@@ -702,51 +707,85 @@ class RiskManagerConfig:
 class StrategyConfig:
     """Configuración de las estrategias de trading."""
     
+    @classmethod
+    def get_current_profile_config(cls) -> Dict[str, Any]:
+        """Obtiene la configuración del perfil activo."""
+        return TradingProfiles.get_current_profile()
+    
     # ---- Configuración Base de Estrategias ----
     class Base:
         """Parámetros base para todas las estrategias."""
         
-        # Confianza mínima por defecto para estrategias base (rápido: 55.0 - agresivo: 60.0 - óptimo: 65.0)
-        DEFAULT_MIN_CONFIDENCE: float = 55.0  # Estrategia rápida
+        @classmethod
+        def get_default_min_confidence(cls) -> float:
+            """Confianza mínima según perfil activo."""
+            return TradingProfiles.get_current_profile().get("default_min_confidence", 55.0)
+        
+        @classmethod
+        def get_default_atr_period(cls) -> int:
+            """Período ATR según perfil activo."""
+            return TradingProfiles.get_current_profile().get("default_atr_period", 10)
         
         # Valores de confianza por defecto para diferentes señales
         HOLD_CONFIDENCE: float = 45.0
         BASE_CONFIDENCE: float = 50.0
         ENHANCED_CONFIDENCE: float = 60.0
         
-        # Período ATR por defecto para cálculos de stop-loss (rápido: 10 - agresivo: 14 - óptimo: 20)
-        DEFAULT_ATR_PERIOD: int = 10  # Estrategia rápida
+        # Compatibilidad con código existente
+        DEFAULT_MIN_CONFIDENCE: float = 55.0  # Fallback
+        DEFAULT_ATR_PERIOD: int = 10  # Fallback
     
     # ---- Estrategia RSI Profesional ----
     class ProfessionalRSI:
         """Parámetros para la estrategia RSI profesional."""
         
-        # Confianza base para señales (óptimo: 50.0)
-        BASE_CONFIDENCE: float = 50.0
+        @classmethod
+        def get_min_confidence(cls) -> float:
+            """Confianza mínima según perfil activo."""
+            return TradingProfiles.get_current_profile().get("rsi_min_confidence", 65.0)
         
-        # Confianza para señales HOLD (óptimo: 45.0)
+        @classmethod
+        def get_rsi_oversold(cls) -> int:
+            """Nivel RSI sobreventa según perfil activo."""
+            return TradingProfiles.get_current_profile().get("rsi_oversold", 35)
+        
+        @classmethod
+        def get_rsi_overbought(cls) -> int:
+            """Nivel RSI sobrecompra según perfil activo."""
+            return TradingProfiles.get_current_profile().get("rsi_overbought", 65)
+        
+        @classmethod
+        def get_rsi_period(cls) -> int:
+            """Período RSI según perfil activo."""
+            return TradingProfiles.get_current_profile().get("rsi_period", 10)
+        
+        @classmethod
+        def get_min_volume_ratio(cls) -> float:
+            """Ratio mínimo de volumen según perfil activo."""
+            return TradingProfiles.get_current_profile().get("min_volume_ratio", 1.2)
+        
+        @classmethod
+        def get_min_confluence(cls) -> int:
+            """Confluencia mínima según perfil activo."""
+            return TradingProfiles.get_current_profile().get("min_confluence", 2)
+        
+        @classmethod
+        def get_trend_strength_threshold(cls) -> float:
+            """Umbral fuerza tendencia según perfil activo."""
+            return TradingProfiles.get_current_profile().get("trend_strength_threshold", 25)
+        
+        # Valores estáticos
+        BASE_CONFIDENCE: float = 50.0
         HOLD_CONFIDENCE: float = 45.0
         
-        # Confianza mínima requerida en % (rápido: 65.0 - agresivo: 68.0 - óptimo: 72.0)
-        MIN_CONFIDENCE: float = 65.0  # Estrategia rápida
-        
-        # Nivel de sobreventa del RSI - señal de compra (rápido: 35 - agresivo: 30 - óptimo: 25)
-        RSI_OVERSOLD: int = 35  # Estrategia rápida
-        
-        # Nivel de sobrecompra del RSI - señal de venta (rápido: 65 - agresivo: 70 - óptimo: 75)
-        RSI_OVERBOUGHT: int = 65  # Estrategia rápida
-        
-        # Período del RSI - ventana de cálculo (rápido: 10 - agresivo: 14 - óptimo: 21)
-        RSI_PERIOD: int = 10  # Estrategia rápida
-        
-        # Ratio mínimo de volumen vs promedio (rápido: 1.2 - agresivo: 1.5 - óptimo: 1.8)
-        MIN_VOLUME_RATIO: float = 1.2  # Estrategia rápida
-        
-        # Confluencia mínima de indicadores requerida (rápido: 2 - agresivo: 3 - óptimo: 4)
-        MIN_CONFLUENCE: int = 2  # Estrategia rápida
-        
-        # Umbral de fuerza de tendencia ADX (rápido: 25 - agresivo: 30 - óptimo: 35)
-        TREND_STRENGTH_THRESHOLD: float = 25  # Estrategia rápida
+        # Compatibilidad con código existente (fallbacks)
+        MIN_CONFIDENCE: float = 65.0
+        RSI_OVERSOLD: int = 35
+        RSI_OVERBOUGHT: int = 65
+        RSI_PERIOD: int = 10
+        MIN_VOLUME_RATIO: float = 1.2
+        MIN_CONFLUENCE: int = 2
+        TREND_STRENGTH_THRESHOLD: float = 25.0
         
         # Ratio ATR mínimo para volatilidad (rápido: 0.8 - agresivo: 1.0 - óptimo: 1.2)
         MIN_ATR_RATIO: float = 0.8  # Estrategia rápida
@@ -758,17 +797,28 @@ class StrategyConfig:
     class MultiTimeframe:
         """Parámetros para la estrategia multi-timeframe."""
         
-        # Confianza base para señales (óptimo: 50.0)
-        BASE_CONFIDENCE: float = 50.0
+        @classmethod
+        def get_enhanced_confidence(cls) -> float:
+            """Confianza mejorada según perfil activo."""
+            return TradingProfiles.get_current_profile().get("mtf_enhanced_confidence", 60.0)
         
-        # Confianza para señales HOLD (óptimo: 45.0)
+        @classmethod
+        def get_min_confidence(cls) -> float:
+            """Confianza mínima según perfil activo."""
+            return TradingProfiles.get_current_profile().get("mtf_min_confidence", 62.0)
+        
+        @classmethod
+        def get_min_consensus(cls) -> float:
+            """Consenso mínimo según perfil activo."""
+            return TradingProfiles.get_current_profile().get("mtf_min_consensus", 0.6)
+        
+        # Valores estáticos
+        BASE_CONFIDENCE: float = 50.0
         HOLD_CONFIDENCE: float = 45.0
         
-        # Confianza mejorada para señales (rápido: 60.0 - agresivo: 65.0 - óptimo: 70.0)
-        ENHANCED_CONFIDENCE: float = 60.0  # Estrategia rápida
-        
-        # Confianza mínima requerida en % (rápido: 62.0 - agresivo: 65.0 - óptimo: 70.0)
-        MIN_CONFIDENCE: float = 62.0  # Estrategia rápida
+        # Compatibilidad con código existente (fallbacks)
+        ENHANCED_CONFIDENCE: float = 60.0
+        MIN_CONFIDENCE: float = 62.0
         
         # Timeframes utilizados para análisis (rápido: ["1m", "5m", "15m"] - agresivo: ["15m", "30m", "1h"] - óptimo: ["1h", "4h", "1d"])
         TIMEFRAMES: List[str] = ["1m", "5m", "15m"]  # Estrategia rápida
@@ -807,23 +857,29 @@ class StrategyConfig:
     class Ensemble:
         """Parámetros para la estrategia ensemble (combinación de estrategias)."""
         
-        # Confianza base para señales (óptimo: 50.0)
-        BASE_CONFIDENCE: float = 50.0
+        @classmethod
+        def get_min_consensus_threshold(cls) -> float:
+            """Umbral consenso mínimo según perfil activo."""
+            return TradingProfiles.get_current_profile().get("ensemble_min_consensus_threshold", 0.55)
         
-        # Confianza para señales HOLD (óptimo: 45.0)
+        @classmethod
+        def get_confidence_boost_factor(cls) -> float:
+            """Factor boost confianza según perfil activo."""
+            return TradingProfiles.get_current_profile().get("ensemble_confidence_boost_factor", 1.25)
+        
+        # Valores estáticos
+        BASE_CONFIDENCE: float = 50.0
         HOLD_CONFIDENCE: float = 45.0
         
-        # Pesos de cada estrategia en el ensemble (óptimo: RSI=0.4, MultiTF=0.6)
+        # Pesos de cada estrategia en el ensemble
         STRATEGY_WEIGHTS: Dict[str, float] = {
             "Professional_RSI": 0.4,
             "Multi_Timeframe": 0.6
         }
         
-        # Umbral mínimo de consenso entre estrategias (rápido: 0.55 - agresivo: 0.6 - óptimo: 0.7)
-        MIN_CONSENSUS_THRESHOLD: float = 0.55  # Estrategia rápida
-        
-        # Factor de boost de confianza cuando hay consenso (rápido: 1.25 - agresivo: 1.2 - óptimo: 1.15)
-        CONFIDENCE_BOOST_FACTOR: float = 1.25  # Estrategia rápida
+        # Compatibilidad con código existente (fallbacks)
+        MIN_CONSENSUS_THRESHOLD: float = 0.55
+        CONFIDENCE_BOOST_FACTOR: float = 1.25
 
 
 # ============================================================================
