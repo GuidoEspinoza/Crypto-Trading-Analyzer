@@ -1,71 +1,76 @@
-# 🤖 Crypto Trading Analyzer - Bot de Trading Inteligente
+# 🤖 Crypto Trading Analyzer - Sistema de Trading Automatizado
 
-## 🚀 El Futuro del Trading Automatizado
+## 🚀 Plataforma Completa de Trading con API REST
 
-**Crypto Trading Analyzer** es un sistema de trading automatizado de última generación que combina inteligencia artificial, análisis técnico avanzado y gestión de riesgo profesional para maximizar las oportunidades en el mercado de criptomonedas.
+**Crypto Trading Analyzer** es un sistema completo de trading automatizado que combina una **API REST con FastAPI**, análisis técnico avanzado y gestión de riesgo profesional. Incluye tanto **paper trading** como capacidades de **trading en vivo** con monitoreo en tiempo real.
 
-### ⚡ Capacidades Principales
+### ⚡ Características Principales
 
-- **🔄 Análisis Simultáneo**: Monitorea 15 activos en paralelo con procesamiento multi-hilo
-- **🧠 IA Avanzada**: Estrategias de trading con machine learning y análisis de confluencia
-- **🛡️ Gestión de Riesgo**: Circuit breakers, stop-loss dinámico y protección de capital
-- **📊 Trading Profesional**: Paper trading validado con 4 perfiles optimizados
-- **⚡ Velocidad Extrema**: Análisis cada 5 minutos con timeframes de 1m, 5m, 15m
-- **🎯 Precisión Quirúrgica**: Señales con confianza mínima del 65-85% según perfil
+- **🌐 API REST Completa**: FastAPI con documentación automática en `/docs`
+- **🔄 Análisis Multi-Timeframe**: Estrategias con timeframes de 1m hasta 1d
+- **🧠 Estrategias Avanzadas**: RSI Profesional, Multi-Timeframe y Ensemble
+- **🛡️ Gestión de Riesgo**: Circuit breakers, stop-loss dinámico y Kelly Criterion
+- **📊 Paper Trading**: Simulación completa sin riesgo real
+- **⚡ Monitoreo en Tiempo Real**: Sistema de monitoreo integral
+- **🎯 3 Perfiles Optimizados**: Rápido, Agresivo y Óptimo
 
-## 🎯 Perfiles de Trading Optimizados
+## 🎯 Perfiles de Trading Disponibles
 
 ### 🚀 RÁPIDO - Ultra-Velocidad
-- **Objetivo**: Máxima rentabilidad con alta frecuencia
+- **Objetivo**: Máxima frecuencia de trading
 - **Timeframes**: 1m, 5m, 15m
-- **Análisis**: Cada 5 minutos
+- **Análisis**: Cada 30 segundos (mínimo)
 - **Trades diarios**: Hasta 20
 - **Confianza mínima**: 65%
 - **Riesgo por trade**: 1.5%
+- **Take Profit**: 2.5% - 5.5%
+- **Stop Loss**: 0.8% - 2.5%
 
-### ⚔️ AGRESIVO - Alto Rendimiento
-- **Objetivo**: Balance óptimo riesgo/rentabilidad
-- **Timeframes**: 5m, 15m, 1h
-- **Análisis**: Cada 10 minutos
+### ⚔️ AGRESIVO - Balance Optimizado
+- **Objetivo**: Balance entre velocidad y control
+- **Timeframes**: 15m, 30m, 1h
+- **Análisis**: Cada 30 segundos
 - **Trades diarios**: Hasta 15
-- **Confianza mínima**: 70%
-- **Riesgo por trade**: 2.0%
+- **Confianza mínima**: 72%
+- **Riesgo por trade**: 1.0%
+- **Take Profit**: 3.0% - 6.0%
+- **Stop Loss**: 1.0% - 3.0%
 
 ### 🎯 ÓPTIMO - Máxima Precisión
-- **Objetivo**: Señales de alta calidad y precisión
-- **Timeframes**: 15m, 1h, 4h
-- **Análisis**: Cada 15 minutos
+- **Objetivo**: Señales de alta calidad
+- **Timeframes**: 1h, 2h, 4h
+- **Análisis**: Cada 30 segundos
 - **Trades diarios**: Hasta 10
 - **Confianza mínima**: 80%
-- **Riesgo por trade**: 2.5%
+- **Riesgo por trade**: 0.8%
+- **Take Profit**: 4.0% - 8.0%
+- **Stop Loss**: 1.2% - 3.5%
 
-### 🛡️ CONSERVADOR - Protección de Capital
-- **Objetivo**: Mínima pérdida, crecimiento estable
-- **Timeframes**: 1h, 4h, 1d
-- **Análisis**: Cada 30 minutos
-- **Trades diarios**: Hasta 8
-- **Confianza mínima**: 85%
-- **Riesgo por trade**: 1.0%
+## 🔥 Arquitectura del Sistema
 
-## 🔥 Tecnología de Vanguardia
+### 🌐 API REST con FastAPI
+- **Documentación Automática**: Swagger UI en `/docs` y ReDoc en `/redoc`
+- **Endpoints Completos**: Control total del bot, configuración y monitoreo
+- **Validación de Datos**: Pydantic para validación automática
+- **CORS Habilitado**: Acceso desde cualquier frontend
 
-### 🧠 Motor de Análisis Inteligente
-- **Procesamiento Paralelo**: ThreadPoolExecutor con 4 hilos
-- **Cache Inteligente**: TTL de 3 minutos para optimización
-- **Análisis Multi-Timeframe**: Confluencia de señales
-- **Indicadores Avanzados**: RSI, MACD, Bollinger, CCI, Williams %R
+### 🧠 Motor de Trading Inteligente
+- **Estrategias Avanzadas**: RSI Profesional, Multi-Timeframe, Ensemble
+- **Análisis Multi-Timeframe**: Confluencia de señales en múltiples períodos
+- **Indicadores Técnicos**: Más de 150 indicadores con pandas-ta
+- **Paper Trading**: Simulación completa sin riesgo
 
-### 🛡️ Gestión de Riesgo Profesional
-- **Circuit Breakers**: Protección automática ante pérdidas
-- **Stop Loss Dinámico**: Ajuste automático según volatilidad
-- **Take Profit Inteligente**: Optimización basada en momentum
-- **Kelly Criterion**: Sizing óptimo de posiciones
+### 🛡️ Gestión de Riesgo Avanzada
+- **Circuit Breakers**: Protección automática ante pérdidas consecutivas
+- **Kelly Criterion**: Cálculo óptimo del tamaño de posiciones
+- **Stop Loss Dinámico**: Ajuste automático basado en ATR
+- **Take Profit Inteligente**: Optimización según volatilidad del mercado
 
-### 📊 Activos Monitoreados (15 símbolos)
+### 📊 Activos Soportados
 ```
-🥇 PRINCIPALES: BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, AVAXUSDT
-🚀 ALTCOINS:    ADAUSDT, XRPUSDT, LINKUSDT, DOGEUSDT, TRXUSDT
-⚡ VOLÁTILES:   DOTUSDT, MATICUSDT, ATOMUSDT, NEARUSDT, SUIUSDT
+🥇 PRINCIPALES: BTCUSDT, ETHUSDT, SOLUSDT, ADAUSDT
+🚀 ALTCOINS:    LINKUSDT, DOGEUSDT, ATOMUSDT, NEARUSDT, SUIUSDT
+⚡ Y MUCHOS MÁS: Cualquier par disponible en Binance
 ```
 
 ## 🚀 Inicio Rápido
@@ -74,46 +79,51 @@
 # 1. Clonar e instalar
 git clone <repository-url>
 cd crypto-trading-analyzer
-pip3 install -r src/config/requirements.txt
+pip3 install -r requirements.txt
 
-# 2. Configurar
-cp src/config/.env.example .env
+# 2. Configurar base de datos
 python3 src/database/db_manager_cli.py migrate
 
-# 3. ¡Ejecutar!
+# 3. Configurar variables de entorno (opcional)
+cp src/config/.env.example .env
+# Editar .env con tus claves de API de Binance
+
+# 4. ¡Ejecutar la API!
 python3 main.py
+# La API estará disponible en http://localhost:8000
+# Documentación en http://localhost:8000/docs
 ```
 
-## 💎 Características Destacadas
+## 💎 Funcionalidades Principales
 
-### ⚡ Velocidad y Eficiencia
-- **Análisis Simultáneo**: 15 activos procesados en paralelo
-- **Latencia Ultra-Baja**: Respuesta en milisegundos
-- **Cache Inteligente**: Optimización automática de recursos
-- **Fallback Robusto**: Análisis secuencial como respaldo
+### 🌐 API REST Completa
+- **FastAPI Framework**: API moderna y rápida
+- **Documentación Automática**: Swagger UI integrado
+- **Endpoints de Control**: Start/stop del bot, configuración en tiempo real
+- **Monitoreo en Vivo**: Estado del sistema y posiciones activas
 
-### 🎯 Precisión Quirúrgica
-- **Confluencia de Señales**: Múltiples indicadores confirman trades
-- **Filtrado Inteligente**: Solo señales de alta confianza
-- **Validación Cruzada**: Verificación en múltiples timeframes
-- **Análisis de Momentum**: Detección de tendencias emergentes
+### 🎯 Estrategias de Trading
+- **RSI Profesional**: Estrategia optimizada con múltiples filtros
+- **Multi-Timeframe**: Análisis en múltiples períodos de tiempo
+- **Ensemble Strategy**: Combinación inteligente de estrategias
+- **Confluencia de Señales**: Validación cruzada de indicadores
 
-### 🛡️ Protección Total
-- **Circuit Breakers**: Parada automática ante pérdidas consecutivas
-- **Drawdown Protection**: Límites de pérdida configurables
-- **Reactivación Gradual**: Recuperación inteligente post-pérdidas
-- **Gestión de Correlación**: Evita sobre-exposición
+### 🛡️ Gestión de Riesgo Avanzada
+- **Circuit Breakers**: Protección ante pérdidas consecutivas
+- **Kelly Criterion**: Cálculo científico del tamaño de posiciones
+- **Stop Loss Dinámico**: Ajuste automático basado en volatilidad
+- **Take Profit Inteligente**: Optimización según condiciones del mercado
 
-### 📊 Monitoreo Profesional
+### 📊 Herramientas de Monitoreo
 ```bash
-# Dashboard en tiempo real
-python3 src/tools/trading_monitor.py
+# Monitor integral del sistema
+python3 src/tools/trading_monitor.py --detailed
 
-# Estadísticas detalladas
+# Estadísticas de la base de datos
 python3 src/database/db_manager_cli.py stats
 
-# Análisis de rendimiento
-python3 main.py --report
+# Bot de trading en vivo
+python3 src/tools/live_trading_bot.py
 ```
 
 ## 🏆 Resultados Comprobados
@@ -152,73 +162,101 @@ MAX_RISK_PER_TRADE=2.0
 MIN_CONFIDENCE=65.0
 ```
 
-## 🚀 Arquitectura de Clase Mundial
+## 🚀 Arquitectura del Proyecto
 
-### 🏗️ Diseño Modular
+### 🏗️ Estructura Modular
 ```
 crypto-trading-analyzer/
-├── 🧠 core/                    # Motor de trading IA
-│   ├── trading_bot.py         # Bot principal multi-hilo
+├── 📄 main.py                  # API REST principal (FastAPI)
+├── 📄 requirements.txt        # Dependencias del proyecto
+├── 🧠 src/core/               # Motor de trading
+│   ├── trading_bot.py         # Bot principal
 │   ├── enhanced_strategies.py # Estrategias avanzadas
 │   ├── enhanced_risk_manager.py # Gestión de riesgo
-│   ├── position_monitor.py    # Monitor de posiciones
+│   ├── paper_trader.py        # Simulador de trading
+│   ├── position_manager.py    # Gestor de posiciones
+│   ├── market_validator.py    # Validador de mercado
 │   └── advanced_indicators.py # Indicadores técnicos
-├── ⚙️ config/                 # Configuración optimizada
-│   ├── config.py             # 4 perfiles de trading
-│   └── production_config.py  # Configuración de producción
-├── 💾 database/               # Persistencia profesional
-│   ├── models.py             # Modelos de datos
-│   ├── database.py           # ORM optimizado
+├── ⚙️ src/config/             # Configuración
+│   ├── config.py             # 3 perfiles de trading
+│   └── .env.example          # Variables de entorno
+├── 💾 src/database/           # Persistencia de datos
+│   ├── models.py             # Modelos SQLAlchemy
+│   ├── database.py           # Gestor de base de datos
+│   ├── db_manager_cli.py     # CLI para base de datos
 │   └── migrations.py         # Sistema de migraciones
-├── 🔧 tools/                  # Herramientas avanzadas
-│   ├── live_trading_bot.py   # Bot de trading en vivo
-│   └── trading_monitor.py    # Monitor en tiempo real
-└── 🧪 tests/                  # Suite de testing completa
+├── 🔧 src/tools/              # Herramientas
+│   ├── live_trading_bot.py   # Bot en vivo
+│   └── trading_monitor.py    # Monitor del sistema
+├── 🧪 tests/                  # Suite de testing
+├── 📚 docs/                   # Documentación
+└── 🐳 deployment/             # Docker y despliegue
 ```
 
 ### 🛠️ Stack Tecnológico
-- **🐍 python3 3.8+**: Lenguaje principal optimizado
-- **⚡ Threading**: Procesamiento paralelo nativo
-- **📊 CCXT**: Conectividad con exchanges
-- **💾 SQLite**: Base de datos embebida
-- **🐳 Docker**: Containerización profesional
-- **📈 TA-Lib**: Análisis técnico avanzado
+- **🐍 Python 3.8+**: Lenguaje principal
+- **🌐 FastAPI**: Framework web moderno y rápido
+- **📊 CCXT**: Conectividad con exchanges de criptomonedas
+- **📈 pandas-ta**: 150+ indicadores técnicos
+- **💾 SQLAlchemy**: ORM para base de datos
+- **🗄️ SQLite**: Base de datos embebida
+- **🔧 Pydantic**: Validación de datos
+- **🐳 Docker**: Containerización y despliegue
+- **🎨 Rich**: Interfaz de terminal avanzada
 
-## 🎮 Comandos Esenciales
+## 🎮 Comandos Principales
 
-### 🚀 Ejecución Principal
+### 🚀 Ejecución de la API
 ```bash
-# Iniciar bot con perfil específico
-python3 main.py --profile RAPIDO
-python3 main.py --profile CONSERVADOR
+# Iniciar API REST (recomendado)
+python3 main.py
+# Acceder a http://localhost:8000/docs para la documentación
 
-# Monitor en tiempo real
-python3 src/tools/trading_monitor.py
+# Cambiar perfil de trading en src/config/config.py:
+# TRADING_PROFILE = "RAPIDO"    # o "AGRESIVO" o "OPTIMO"
+```
 
-# Análisis de rendimiento
+### 📊 Herramientas de Monitoreo
+```bash
+# Monitor integral del sistema
+python3 src/tools/trading_monitor.py --detailed
+
+# Bot de trading en vivo
+python3 src/tools/live_trading_bot.py
+
+# Estadísticas de la base de datos
 python3 src/database/db_manager_cli.py stats
 ```
 
-### 🧪 Testing y Validación
+### 🗄️ Gestión de Base de Datos
 ```bash
-# Suite completa de tests
-python3 -m pytest tests/ -v
+# Migrar base de datos
+python3 src/database/db_manager_cli.py migrate
 
-# Test de perfiles optimizados
-python3 test_optimized_profiles.py
+# Limpiar base de datos
+python3 src/database/db_manager_cli.py clean
 
-# Validación de configuraciones
-python3 tests/test_trading_bot.py
+# Backup de base de datos
+python3 src/database/db_manager_cli.py backup
 ```
 
-### 🐳 Despliegue Profesional
+### 🧪 Testing
 ```bash
-# Docker Compose (Recomendado)
+# Ejecutar tests
+python3 -m pytest tests/ -v
+
+# Test específico del sistema
+python3 tests/test_system.py
+```
+
+### 🐳 Despliegue con Docker
+```bash
+# Docker Compose
 docker-compose -f deployment/docker-compose.yml up -d
 
-# Build personalizado
-docker build -f deployment/Dockerfile -t crypto-bot .
-docker run -d --name trading-bot crypto-bot
+# Build manual
+docker build -f deployment/Dockerfile -t crypto-trading-analyzer .
+docker run -d -p 8000:8000 --name trading-bot crypto-trading-analyzer
 ```
 
 ## 🏆 ¿Por Qué Elegir Este Bot?
@@ -245,24 +283,46 @@ docker run -d --name trading-bot crypto-bot
 
 ---
 
-## ⚠️ Aviso Legal
+## 📊 Endpoints de la API
 
-**Este bot está diseñado para paper trading y fines educativos.** El trading de criptomonedas conlleva riesgos significativos. Siempre prueba en modo simulación antes de considerar trading real.
+La API REST proporciona acceso completo a todas las funcionalidades:
 
-## 📞 Soporte
+- **GET /health** - Estado del sistema
+- **GET /positions** - Posiciones activas
+- **POST /analyze** - Análisis técnico de un símbolo
+- **GET /performance** - Métricas de rendimiento
+- **GET /config** - Configuración actual
+- **POST /backtest** - Ejecutar backtesting
 
-- 📧 **Issues**: GitHub Issues para reportes
-- 📚 **Docs**: Documentación completa en `/docs`
-- 🔍 **Logs**: Sistema de logging detallado
+📖 **Documentación completa**: http://localhost:8000/docs
+
+## ⚠️ Disclaimer
+
+**IMPORTANTE**: Este software es para fines educativos y de investigación. El trading de criptomonedas conlleva riesgos significativos. Nunca inviertas más de lo que puedes permitirte perder.
+
+- ✅ Probado en modo paper trading
+- ✅ Gestión de riesgo integrada
+- ✅ Monitoreo en tiempo real
+- ⚠️ Úsalo bajo tu propia responsabilidad
+
+## 🤝 Contribuir
+
+¿Quieres mejorar el proyecto?
+
+1. **Fork** el repositorio
+2. **Crea** tu rama (`git checkout -b feature/nueva-funcionalidad`)
+3. **Commit** tus cambios (`git commit -m 'Agregar nueva funcionalidad'`)
+4. **Push** a la rama (`git push origin feature/nueva-funcionalidad`)
+5. **Abre** un Pull Request
 
 ---
 
-### 🚀 **¡Comienza Tu Viaje de Trading Automatizado Hoy!**
+<div align="center">
 
-```bash
-git clone <repository-url>
-cd crypto-trading-analyzer
-python3 main.py
-```
+**🚀 Crypto Trading Analyzer - Trading Inteligente 🚀**
 
-**Desarrollado con 🧠 IA y ❤️ para traders inteligentes**
+*Desarrollado para traders que buscan automatización y análisis avanzado*
+
+**⭐ Si te gusta el proyecto, ¡dale una estrella! ⭐**
+
+</div>
