@@ -328,6 +328,7 @@ class SystemTester:
                 strength="Strong",
                 strategy_name="TrailingStopTest",
                 timestamp=datetime.now(),
+                timeframe="1h",
                 indicators_data={"rsi": 30, "macd": 0.5, "atr": test_price * 0.02},
                 notes="Test signal for trailing stop integration",
                 volume_confirmation=True,
@@ -351,7 +352,7 @@ class SystemTester:
                 
                 if len(active_positions) > 0:
                     # Simular cambio de precio para probar trailing stops
-                    new_price = test_price * 1.05  # 5% de ganancia
+                    new_price = test_price * 1.20  # 20% de ganancia (mayor al 15% requerido para activar trailing stop)
                     market_data = {"BTC/USDT": new_price}
                     
                     # Actualizar trailing stops
@@ -368,10 +369,13 @@ class SystemTester:
                         position = updated_positions[0]
                         if hasattr(position, 'trailing_stop') and position.trailing_stop:
                             self.log_success(f"✓ Trailing stop actualizado: ${position.trailing_stop:.2f}")
-                        if hasattr(position, 'take_profit') and position.take_profit:
-                            self.log_success(f"✓ Take profit dinámico actualizado: ${position.take_profit:.2f}")
+                        elif updated_count > 0:
+                            self.log_success(f"✓ Trailing stops actualizados: {updated_count} posiciones")
                         else:
                             self.log_warning("⚠️ Trailing stop no se actualizó correctamente")
+                        
+                        if hasattr(position, 'take_profit') and position.take_profit:
+                            self.log_success(f"✓ Take profit dinámico actualizado: ${position.take_profit:.2f}")
                     
                     # Simular precio bajando para probar activación del trailing stop
                     trigger_price = test_price * 0.98  # Precio que podría activar el trailing stop
@@ -517,6 +521,7 @@ class SystemTester:
                 strength="Strong",
                 strategy_name="TestStrategy",
                 timestamp=datetime.now(),
+                timeframe="1h",
                 indicators_data={"rsi": 30, "macd": 0.8, "bb_position": 0.2},
                 notes="Comprehensive test signal using config",
                 volume_confirmation=True,
@@ -585,6 +590,7 @@ class SystemTester:
                 strength="Strong",
                 strategy_name="TestStrategy",
                 timestamp=datetime.now(),
+                timeframe="1h",
                 indicators_data={"rsi": 75, "macd": -0.5},
                 notes="Test enhanced signal",
                 volume_confirmation=True,
@@ -650,6 +656,7 @@ class SystemTester:
                 strength="Strong",
                 strategy_name="TestStrategy",
                 timestamp=datetime.now(),
+                timeframe="1h",
                 indicators_data={"rsi": 30, "macd": 0.5},
                 notes="Test signal for paper trader"
             )
@@ -865,6 +872,7 @@ class SystemTester:
                     strength="Strong",
                     strategy_name="TestStrategy",
                     timestamp=datetime.now(),
+                    timeframe="1h",
                     indicators_data={"rsi": 30, "macd": 0.8},
                     notes="High confidence test signal",
                     volume_confirmation=True,

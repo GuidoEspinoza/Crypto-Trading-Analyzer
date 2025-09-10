@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.config import TradingBotConfig
+from src.config.config import TradingBotConfig, TradingProfiles, APIConfig
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
@@ -67,7 +67,11 @@ class TradingBot:
     # Cache compartido entre instancias
     _cache = {}
     _cache_timestamps = {}
-    _cache_ttl = 180  # 3 minutos TTL para datos de mercado
+    # Cache TTL se obtiene de la configuración del perfil
+    @classmethod
+    def _get_cache_ttl(cls):
+        profile_config = TradingProfiles.get_current_profile()
+        return profile_config.get('cache_ttl_seconds', 180)
     
     def __init__(self, analysis_interval_minutes: int = None):
         """
@@ -103,7 +107,8 @@ class TradingBot:
         )
         
         # Sistema de eventos para comunicación con LiveTradingBot
-        self.event_queue = queue.Queue(maxsize=1000)
+        profile_config = TradingProfiles.get_current_profile()
+        self.event_queue = queue.Queue(maxsize=profile_config.get('event_queue_maxsize', 1000))
         self.adjustment_thread = None
         self.trade_event_callback = None  # Callback para eventos de trades
         
@@ -238,7 +243,7 @@ class TradingBot:
         current_time = time.time()
         if (cache_key in cls._cache and 
             cache_key in cls._cache_timestamps and
-            current_time - cls._cache_timestamps[cache_key] < cls._cache_ttl):
+            current_time - cls._cache_timestamps[cache_key] < cls._get_cache_ttl()):
             return cls._cache[cache_key]
         return None
     
@@ -258,7 +263,7 @@ class TradingBot:
         current_time = time.time()
         expired_keys = [
             key for key, timestamp in cls._cache_timestamps.items()
-            if current_time - timestamp >= cls._cache_ttl
+            if current_time - timestamp >= cls._get_cache_ttl()
         ]
         for key in expired_keys:
             cls._cache.pop(key, None)
@@ -319,14 +324,20 @@ class TradingBot:
         
         # Limpiar ThreadPoolExecutor
         if hasattr(self, 'executor') and self.executor:
-            self.executor.shutdown(wait=True, timeout=30)
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_executor_shutdown_timeout()
+            self.executor.shutdown(wait=True, timeout=timeout)
             self.logger.info("🧹 ThreadPoolExecutor cleaned up")
         
         if self.analysis_thread and self.analysis_thread.is_alive():
-            self.analysis_thread.join(timeout=10)
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_thread_join_timeout()
+            self.analysis_thread.join(timeout=timeout)
             
         if self.adjustment_thread and self.adjustment_thread.is_alive():
-            self.adjustment_thread.join(timeout=10)
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_thread_join_timeout()
+            self.adjustment_thread.join(timeout=timeout)
         
         # Limpiar cache si es necesario
         self._cleanup_cache()
@@ -383,10 +394,10 @@ class TradingBot:
         while not self.stop_event.is_set():
             try:
                 schedule.run_pending()
-                time.sleep(1)
+                time.sleep(APIConfig.SCHEDULER_SLEEP_INTERVAL)
             except Exception as e:
                 self.logger.error(f"❌ Error in scheduler: {e}")
-                time.sleep(5)
+                time.sleep(APIConfig.ERROR_RECOVERY_SLEEP)
     
     def _run_analysis_cycle(self):
         """
@@ -452,9 +463,11 @@ class TradingBot:
                 futures.append(future)
             
             # Recopilar resultados
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_analysis_future_timeout()
             for future in futures:
                 try:
-                    signal = future.result(timeout=30)  # Timeout de 30 segundos
+                    signal = future.result(timeout=timeout)  # Timeout configurable
                     if signal and signal.signal_type != "HOLD":
                         all_signals.append(signal)
                         self.stats["signals_generated"] += 1

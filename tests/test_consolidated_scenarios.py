@@ -230,6 +230,7 @@ class ConsolidatedTester:
             strength="Strong",
             strategy_name="TEST_SIGNAL",
             timestamp=datetime.now(),
+            timeframe="1h",
             indicators_data={"test": True},
             notes="Test signal",
             stop_loss_price=price * 0.96 if signal_type == "BUY" else price * 1.04,

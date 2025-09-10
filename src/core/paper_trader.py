@@ -14,7 +14,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.config import PaperTraderConfig
+from src.config.config import PaperTraderConfig, TradingBotConfig, USDT_BASE_PRICE
 
 from database.database import db_manager
 from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
@@ -259,6 +259,69 @@ class PaperTrader:
                 
                 quantity = trade_value / signal.price
                 
+                # Obtener TP/SL de la señal o calcularlos automáticamente
+                stop_loss_price = None
+                take_profit_price = None
+                
+                # Verificar si la señal incluye TP/SL
+                if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
+                    stop_loss_price = signal.stop_loss_price
+                if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
+                    take_profit_price = signal.take_profit_price
+                
+                # Si faltan TP/SL, calcularlos usando enhanced_risk_manager
+                if stop_loss_price is None or take_profit_price is None:
+                    try:
+                        from .enhanced_risk_manager import EnhancedRiskManager
+                        risk_manager = EnhancedRiskManager()
+                        
+                        # Convertir TradingSignal a EnhancedSignal si es necesario
+                        if not hasattr(signal, 'market_regime'):
+                            # Crear EnhancedSignal temporal para el cálculo
+                            from .enhanced_strategies import EnhancedSignal
+                            enhanced_signal = EnhancedSignal(
+                                symbol=signal.symbol,
+                                signal_type=signal.signal_type,
+                                price=signal.price,
+                                confidence_score=signal.confidence_score,
+                                strength=getattr(signal, 'strength', 'Moderate'),
+                                strategy_name=signal.strategy_name,
+                                timestamp=signal.timestamp,
+                                indicators_data=getattr(signal, 'indicators_data', {}),
+                                notes=signal.notes,
+                                stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
+                                take_profit_price=getattr(signal, 'take_profit_price', 0.0),
+                                market_regime='NORMAL',
+                                timeframe=TradingBotConfig.get_primary_timeframe()
+                            )
+                        else:
+                            enhanced_signal = signal
+                        
+                        # Calcular evaluación de riesgo
+                        risk_assessment = risk_manager.evaluate_signal_risk(enhanced_signal)
+                        
+                        # Usar TP/SL calculados si no están disponibles
+                        if stop_loss_price is None:
+                            stop_loss_price = risk_assessment.dynamic_stop_loss.stop_loss_price
+                        if take_profit_price is None:
+                            take_profit_price = risk_assessment.dynamic_take_profit.take_profit_price
+                            
+                        self.logger.info(f"🛡️ TP/SL calculados automáticamente: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Error calculando TP/SL automáticos: {e}")
+                        # Fallback: usar porcentajes fijos desde config
+                        from src.config.config import RiskManagerConfig
+                        sl_pct = RiskManagerConfig.get_sl_min_percentage()
+                        tp_pct = RiskManagerConfig.get_tp_min_percentage()
+                        
+                        if stop_loss_price is None:
+                            stop_loss_price = signal.price * (1 - sl_pct / 100)
+                        if take_profit_price is None:
+                            take_profit_price = signal.price * (1 + tp_pct / 100)
+                            
+                        self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
+
                 # Crear trade en base de datos
                 new_trade = Trade(
                     symbol=signal.symbol,
@@ -269,12 +332,11 @@ class PaperTrader:
                     entry_value=trade_value,
                     status="OPEN",
                     is_paper_trade=True,
-                    timeframe="1h",  # Default
+                    timeframe=TradingBotConfig.get_primary_timeframe(),
                     confidence_score=signal.confidence_score,
                     notes=signal.notes,
-                    # Aplicar stop_loss y take_profit de la señal si están disponibles
-                    stop_loss=getattr(signal, 'stop_loss_price', None) if getattr(signal, 'stop_loss_price', 0) > 0 else None,
-                    take_profit=getattr(signal, 'take_profit_price', None) if getattr(signal, 'take_profit_price', 0) > 0 else None
+                    stop_loss=stop_loss_price,
+                    take_profit=take_profit_price
                 )
                 
                 session.add(new_trade)
@@ -379,7 +441,7 @@ class PaperTrader:
                     pnl=0.0,  # Para trades de venta directa
                     status="CLOSED",
                     is_paper_trade=True,
-                    timeframe="1h",
+                    timeframe=TradingBotConfig.get_primary_timeframe(),
                     confidence_score=signal.confidence_score,
                     notes=signal.notes,
                     exit_time=datetime.now()
@@ -468,8 +530,8 @@ class PaperTrader:
                     initial_portfolio = Portfolio(
                         symbol="USDT",
                         quantity=self.initial_balance,
-                        avg_price=1.0,
-                        current_price=1.0,
+                        avg_price=USDT_BASE_PRICE,
+                    current_price=USDT_BASE_PRICE,
                         current_value=self.initial_balance,
                         unrealized_pnl=0.0,
                         unrealized_pnl_percentage=0.0,
@@ -528,15 +590,15 @@ class PaperTrader:
         
         if usdt_portfolio:
             usdt_portfolio.quantity += amount
-            usdt_portfolio.current_value = usdt_portfolio.quantity * 1.0
+            usdt_portfolio.current_value = usdt_portfolio.quantity * USDT_BASE_PRICE
             usdt_portfolio.last_updated = datetime.now()
         else:
             # Crear entrada USDT si no existe
             new_usdt = Portfolio(
                 symbol="USDT",
                 quantity=max(0, amount),
-                avg_price=1.0,
-                current_price=1.0,
+                avg_price=USDT_BASE_PRICE,
+                current_price=USDT_BASE_PRICE,
                 current_value=max(0, amount),
                 is_paper=True
             )
@@ -595,7 +657,7 @@ class PaperTrader:
                 symbol=signal.symbol,
                 strategy_name=signal.strategy_name,
                 signal_type=signal.signal_type,
-                timeframe="1h",  # Default
+                timeframe=TradingBotConfig.get_primary_timeframe(),
                 price=signal.price,
                 confidence_score=signal.confidence_score,
                 strength=signal.strength,

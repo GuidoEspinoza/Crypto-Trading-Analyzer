@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.config import TradingBotConfig, RiskManagerConfig
+from src.config.config import TradingBotConfig, RiskManagerConfig, TradingProfiles
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -84,11 +84,12 @@ class PositionMonitor:
         # Control de trades ya procesados para evitar intentos repetitivos
         self.processed_trades = set()  # Set de trade_ids ya procesados para cierre
         self.failed_close_attempts = {}  # Dict para contar intentos fallidos por trade_id
-        self.max_close_attempts = 3  # Máximo número de intentos antes de marcar como procesado
+        profile = TradingProfiles.get_current_profile()
+        self.max_close_attempts = profile.get('max_close_attempts', 3)  # Máximo número de intentos antes de marcar como procesado
         
         # Configuración de monitoreo desde TradingBotConfig
         self.monitor_interval = self.config.get_live_update_interval()  # segundos entre checks
-        self.price_cache_duration = 30  # segundos de validez del cache
+        self.price_cache_duration = profile.get('price_cache_duration', 30)  # segundos de validez del cache
         
         # Inicializar estadísticas del monitor
         self.stats = {
@@ -153,7 +154,10 @@ class PositionMonitor:
         self.stop_event.set()
         
         if self.monitor_thread and self.monitor_thread.is_alive():
-            self.monitor_thread.join(timeout=5)
+            profile = TradingProfiles.get_current_profile()
+            from src.config.config import TradingBotConfig
+            timeout = TradingBotConfig.get_thread_join_timeout()
+            self.monitor_thread.join(timeout=timeout)
         
         logger.info("🛑 Position monitoring stopped")
     
@@ -162,7 +166,9 @@ class PositionMonitor:
         logger.info("📊 Starting position monitoring loop")
         
         cleanup_counter = 0
-        cleanup_interval = 10  # Limpiar cada 10 ciclos
+        profile = TradingProfiles.get_current_profile()
+        from src.config.config import TradingBotConfig
+        cleanup_interval = TradingBotConfig.get_cleanup_interval()  # Limpiar cada N ciclos
         
         while self.monitoring_active and not self.stop_event.is_set():
             try:

@@ -18,7 +18,7 @@ from functools import lru_cache
 import hashlib
 import time
 
-from src.config.config import StrategyConfig
+from src.config.config import StrategyConfig, CacheConfig, TechnicalAnalysisConfig, ConfluenceConfig
 
 # Clases base para estrategias de trading
 @dataclass
@@ -100,6 +100,7 @@ class EnhancedSignal(TradingSignal):
     take_profit_price: float = 0.0
     market_regime: str = "NORMAL"  # TRENDING, RANGING, VOLATILE
     confluence_score: int = 0  # Número de indicadores que confirman la señal
+    timeframe: str = "1h"  # Timeframe de la señal
 
 class EnhancedTradingStrategy(TradingStrategy):
     """Clase base para estrategias mejoradas con optimizaciones de cache"""
@@ -107,7 +108,7 @@ class EnhancedTradingStrategy(TradingStrategy):
     # Cache compartido entre instancias
     _cache = {}
     _cache_timestamps = {}
-    _cache_ttl = 300  # 5 minutos TTL
+    _cache_ttl = CacheConfig.DEFAULT_TTL  # TTL desde configuración centralizada
     
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)
@@ -119,14 +120,12 @@ class EnhancedTradingStrategy(TradingStrategy):
         # Signal filters deshabilitados (módulo eliminado)
         self.signal_filter = None
         
-        # Configuración avanzada de confluencia
-        self.confluence_weights = {
-            "technical": 0.4,    # Indicadores técnicos
-            "volume": config.get_volume_weight() if hasattr(config, 'get_volume_weight') else 0.25,      # Análisis de volumen según perfil
-            "structure": 0.2,    # Estructura de mercado (S/R, tendencias)
-            "momentum": 0.15     # Momentum e impulso
-        }
-        self.min_confluence_score = config.get_confluence_threshold() if hasattr(config, 'get_confluence_threshold') else 0.65  # Puntuación según perfil
+        # Configuración avanzada de confluencia desde configuración centralizada
+        self.confluence_weights = ConfluenceConfig.COMPONENT_WEIGHTS.copy()
+        # Sobrescribir peso de volumen si está disponible en el perfil
+        if hasattr(config, 'get_volume_weight'):
+            self.confluence_weights["volume"] = config.get_volume_weight()
+        self.min_confluence_score = config.get_confluence_threshold() if hasattr(config, 'get_confluence_threshold') else ConfluenceConfig.CONFLUENCE_THRESHOLDS["strong"]
     
     @classmethod
     def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
@@ -155,7 +154,7 @@ class EnhancedTradingStrategy(TradingStrategy):
         cls._cache_timestamps[cache_key] = time.time()
         
         # Limpiar cache viejo si es necesario
-        if len(cls._cache) > 1000:  # Límite de entradas
+        if len(cls._cache) > CacheConfig.MAX_CACHE_ENTRIES:  # Límite desde configuración
             cls._cleanup_cache()
     
     @classmethod
@@ -190,8 +189,8 @@ class EnhancedTradingStrategy(TradingStrategy):
             current_volume = volume_series.iloc[-1]
             
             # Usar vectorización para mejor rendimiento
-            rolling_20 = volume_series.rolling(20, min_periods=10)
-            rolling_50 = volume_series.rolling(50, min_periods=25)
+            rolling_20 = volume_series.rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["medium"], min_periods=10)
+            rolling_50 = volume_series.rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["long"], min_periods=25)
             
             avg_volume_20 = rolling_20.mean().iloc[-1]
             avg_volume_50 = rolling_50.mean().iloc[-1]
@@ -213,21 +212,14 @@ class EnhancedTradingStrategy(TradingStrategy):
             vwap = volume_price / volume_cumsum
             vwap_deviation = abs(df['close'].iloc[-1] - vwap.iloc[-1]) / vwap.iloc[-1]
             
-            # Clasificación de fuerza de volumen
-            if volume_ratio_20 >= 2.5:
-                volume_strength = "VERY_STRONG"
-            elif volume_ratio_20 >= 1.8:
-                volume_strength = "STRONG"
-            elif volume_ratio_20 >= 1.3:
-                volume_strength = "MODERATE"
-            else:
-                volume_strength = "WEAK"
+            # Clasificación de fuerza de volumen usando configuración centralizada
+            volume_strength = TechnicalAnalysisConfig.get_volume_strength(volume_ratio_20)
             
             # Confirmación mejorada
             volume_confirmation = (
                 volume_ratio_20 >= self.min_volume_ratio and
                 volume_strength in ["STRONG", "VERY_STRONG"] and
-                vwap_deviation < 0.02  # Precio cerca del VWAP
+                vwap_deviation < TechnicalAnalysisConfig.VWAP_DEVIATION_THRESHOLD  # Precio cerca del VWAP
             )
             
             result = {
@@ -424,8 +416,8 @@ class EnhancedTradingStrategy(TradingStrategy):
             
             # Cálculos optimizados de EMA
             close_series = df['close']
-            ema_20 = ta.ema(close_series, length=20)
-            ema_50 = ta.ema(close_series, length=50)
+            ema_20 = ta.ema(close_series, length=TechnicalAnalysisConfig.EMA_PERIODS["fast"])
+            ema_50 = ta.ema(close_series, length=TechnicalAnalysisConfig.EMA_PERIODS["slow"])
             
             if ema_20 is None or ema_50 is None:
                 return "NEUTRAL"
@@ -449,9 +441,9 @@ class EnhancedTradingStrategy(TradingStrategy):
                 adx_value = 25
             
             # Determinar tendencia
-            if current_ema_20 > current_ema_50 and adx_value > 25:
+            if current_ema_20 > current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS["strong_trend"]:
                 result = "BULLISH"
-            elif current_ema_20 < current_ema_50 and adx_value > 25:
+            elif current_ema_20 < current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS["strong_trend"]:
                 result = "BEARISH"
             else:
                 result = "NEUTRAL"
@@ -501,9 +493,9 @@ class EnhancedTradingStrategy(TradingStrategy):
             price_range = df['high'].rolling(20).max().iloc[-1] - df['low'].rolling(20).min().iloc[-1]
             current_price = df['close'].iloc[-1]
             
-            if volatility_ratio > 1.5:
+            if volatility_ratio > TechnicalAnalysisConfig.VOLATILITY_RATIO_THRESHOLD:
                 result = "VOLATILE"
-            elif abs(current_price - (df['high'].rolling(20).max().iloc[-1] + df['low'].rolling(20).min().iloc[-1]) / 2) < price_range * 0.2:
+            elif abs(current_price - (df['high'].rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["medium"]).max().iloc[-1] + df['low'].rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["medium"]).min().iloc[-1]) / 2) < price_range * TechnicalAnalysisConfig.PRICE_RANGE_TOLERANCE:
                 result = "RANGING"
             else:
                 result = "TRENDING"
@@ -843,6 +835,7 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
                 confidence_score=min(95, max(0, confidence)),
                 strength=self._get_signal_strength(confidence),
                 timestamp=datetime.now(),
+                timeframe=timeframe,
                 indicators_data={
                     # Indicadores tradicionales
                     "rsi": enhanced_rsi,

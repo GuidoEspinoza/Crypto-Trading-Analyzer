@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from database.database import db_manager
 from database.models import Trade, Portfolio
 from .position_manager import PositionManager
+from src.config.config import APIConfig, MonitoringConfig
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -40,9 +41,11 @@ class MarketValidator:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.binance_base_url = "https://api.binance.com/api/v3"
+        self.binance_base_url = APIConfig.BINANCE_BASE_URL
         
-    def check_missed_executions(self, hours_back: int = 24) -> List[MissedExecution]:
+    def check_missed_executions(self, hours_back: int = None) -> List[MissedExecution]:
+        if hours_back is None:
+            hours_back = MonitoringConfig.DEFAULT_HOURS_BACK
         """🔍 Verificar ejecuciones perdidas en las últimas horas
         
         Args:
@@ -174,16 +177,17 @@ class MarketValidator:
             start_time = int((datetime.now() - timedelta(hours=hours_back)).timestamp() * 1000)
             
             # Usar klines de 1 minuto para máxima precisión
-            url = f"{self.binance_base_url}/klines"
+            url = APIConfig.get_binance_url("klines")
             params = {
                 'symbol': symbol,
                 'interval': '1m',
                 'startTime': start_time,
                 'endTime': end_time,
-                'limit': 1000
+                'limit': APIConfig.DEFAULT_KLINES_LIMIT
             }
             
-            response = requests.get(url, params=params, timeout=10)
+            request_config = APIConfig.get_request_config()
+            response = requests.get(url, params=params, timeout=request_config['timeout'])
             response.raise_for_status()
             
             klines = response.json()
@@ -216,10 +220,11 @@ class MarketValidator:
             Precio actual
         """
         try:
-            url = f"{self.binance_base_url}/ticker/price"
+            url = APIConfig.get_binance_url("ticker_price")
             params = {'symbol': symbol}
             
-            response = requests.get(url, params=params, timeout=5)
+            request_config = APIConfig.get_request_config()
+            response = requests.get(url, params=params, timeout=request_config['timeout'])
             response.raise_for_status()
             
             data = response.json()
@@ -257,7 +262,9 @@ class MarketValidator:
             self.logger.error(f"❌ Error calculating missed PnL: {e}")
             return 0.0
     
-    def generate_missed_executions_report(self, hours_back: int = 24) -> str:
+    def generate_missed_executions_report(self, hours_back: int = None) -> str:
+        if hours_back is None:
+            hours_back = MonitoringConfig.DEFAULT_HOURS_BACK
         """📊 Generar reporte de ejecuciones perdidas
         
         Args:

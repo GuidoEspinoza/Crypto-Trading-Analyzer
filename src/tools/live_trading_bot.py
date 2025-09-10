@@ -182,11 +182,65 @@ class LiveTradingBot:
     
     def get_status(self):
         """Obtener estado del bot delegando al TradingBot interno"""
-        return self.trading_bot.get_status()
+        try:
+            bot_status = self.trading_bot.get_status()
+            # Asegurar que siempre retornemos un diccionario
+            if not isinstance(bot_status, dict):
+                bot_status = {"status": str(bot_status)}
+            
+            # Agregar información específica del live bot
+            live_status = {
+                "is_running": self.running,
+                "uptime": str(datetime.now() - self.session_stats['start_time']),
+                "total_trades": self.session_stats['total_trades'],
+                "successful_trades": self.session_stats['successful_trades'],
+                "session_pnl": self.session_stats['total_pnl']
+            }
+            
+            return {**bot_status, **live_status}
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estado: {e}")
+            return {
+                "error": str(e),
+                "is_running": getattr(self, 'running', False),
+                "total_trades": 0
+            }
     
     def get_detailed_report(self) -> Dict:
         """Obtener reporte detallado del bot delegando al TradingBot interno"""
         return self.trading_bot.get_detailed_report()
+    
+    def get_statistics(self) -> Dict:
+        """Obtener estadísticas del live trading bot"""
+        try:
+            # Obtener estadísticas del trading bot interno
+            bot_stats = self.trading_bot.get_statistics() if hasattr(self.trading_bot, 'get_statistics') else {}
+            
+            # Calcular estadísticas de la sesión
+            session_duration = datetime.now() - self.session_stats['start_time']
+            success_rate = (self.session_stats['successful_trades'] / max(1, self.session_stats['total_trades'])) * 100
+            
+            live_stats = {
+                "session_duration_minutes": session_duration.total_seconds() / 60,
+                "total_trades": self.session_stats['total_trades'],
+                "successful_trades": self.session_stats['successful_trades'],
+                "failed_trades": self.session_stats['total_trades'] - self.session_stats['successful_trades'],
+                "success_rate_percent": round(success_rate, 2),
+                "total_pnl": self.session_stats['total_pnl'],
+                "average_pnl_per_trade": self.session_stats['total_pnl'] / max(1, self.session_stats['total_trades']),
+                "symbols_traded": list(self.symbols),
+                "is_running": self.running,
+                "update_interval_seconds": self.update_interval
+            }
+            
+            return {**bot_stats, **live_stats}
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo estadísticas: {e}")
+            return {
+                "error": str(e),
+                "total_trades": 0,
+                "success_rate_percent": 0.0
+            }
     
     def get_configuration(self) -> Dict:
         """

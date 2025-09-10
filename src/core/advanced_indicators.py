@@ -14,7 +14,7 @@ from functools import lru_cache
 import hashlib
 
 # Importar configuración centralizada
-from src.config.config import AdvancedIndicatorsConfig
+from src.config.config import AdvancedIndicatorsConfig, FibonacciConfig, OscillatorConfig, CalculationConfig
 
 # Suprimir warnings específicos de pandas_ta
 warnings.filterwarnings('ignore', message='.*dtype incompatible.*')
@@ -111,20 +111,32 @@ class AdvancedIndicators:
         
         # Encontrar máximo y mínimo en el período
         recent_data = df.tail(lookback)
-        swing_high = recent_data['high'].max()
-        swing_low = recent_data['low'].min()
+        
+        # Acceso seguro a las columnas
+        try:
+            swing_high = recent_data['high'].max()
+            swing_low = recent_data['low'].min()
+        except (KeyError, TypeError):
+            # Si falla el acceso por string, usar iloc
+            if len(recent_data.columns) >= 4:
+                swing_high = recent_data.iloc[:, 1].max()  # high es típicamente la columna 1
+                swing_low = recent_data.iloc[:, 2].min()   # low es típicamente la columna 2
+            else:
+                swing_high = recent_data.iloc[:, -1].max()
+                swing_low = recent_data.iloc[:, -1].min()
         
         # Calcular diferencia
         diff = swing_high - swing_low
         
         # Calcular niveles de Fibonacci (retracement desde el máximo)
+        # RETRACEMENT_LEVELS = [0.236, 0.382, 0.500, 0.618, 0.786]
         return FibonacciLevels(
             level_0=AdvancedIndicators.safe_float(swing_high),
-            level_236=AdvancedIndicators.safe_float(swing_high - (diff * 0.236)),
-            level_382=AdvancedIndicators.safe_float(swing_high - (diff * 0.382)),
-            level_500=AdvancedIndicators.safe_float(swing_high - (diff * 0.500)),
-            level_618=AdvancedIndicators.safe_float(swing_high - (diff * 0.618)),
-            level_786=AdvancedIndicators.safe_float(swing_high - (diff * 0.786)),
+            level_236=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[0])),  # 0.236
+            level_382=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[1])),  # 0.382
+            level_500=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[2])),  # 0.500
+            level_618=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[3])),  # 0.618
+            level_786=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[4])),  # 0.786
             level_100=AdvancedIndicators.safe_float(swing_low)
         )
     
@@ -165,11 +177,12 @@ class AdvancedIndicators:
             # Extraer componentes (los nombres pueden variar)
             columns = ichimoku_data.columns.tolist()
             
-            tenkan_sen = latest[columns[0]]  # Generalmente ITS_9
-            kijun_sen = latest[columns[1]]   # Generalmente IKS_26
-            senkou_a = latest[columns[2]]    # Generalmente ISA_9
-            senkou_b = latest[columns[3]]    # Generalmente ISB_26
-            chikou_span = latest[columns[4]] # Generalmente ICS_26
+            # Usar iloc para acceso seguro por índice
+            tenkan_sen = latest.iloc[0] if len(latest) > 0 else 0  # Generalmente ITS_9
+            kijun_sen = latest.iloc[1] if len(latest) > 1 else 0   # Generalmente IKS_26
+            senkou_a = latest.iloc[2] if len(latest) > 2 else 0    # Generalmente ISA_9
+            senkou_b = latest.iloc[3] if len(latest) > 3 else 0    # Generalmente ISB_26
+            chikou_span = latest.iloc[4] if len(latest) > 4 else 0 # Generalmente ICS_26
             
         except Exception:
             # Método 2: Calcular manualmente si falla el método automático
@@ -349,9 +362,9 @@ class AdvancedIndicators:
             current_willr = AdvancedIndicators.safe_float(willr.iloc[-1], -50.0)
             
             # Generar señales (Williams %R se mueve entre -100 y 0)
-            if current_willr <= -80:
+            if current_willr <= OscillatorConfig.WILLIAMS_R_THRESHOLDS["oversold"]:
                 signal = "BUY"
-                interpretation = "🟢 Zona de sobrecompra (-80 a -100) - Posible rebote"
+                interpretation = f"🟢 Zona de sobrecompra ({OscillatorConfig.WILLIAMS_R_THRESHOLDS['oversold']} a -100) - Posible rebote"
             elif current_willr >= -20:
                 signal = "SELL"
                 interpretation = "🔴 Zona de sobreventa (-20 a 0) - Posible corrección"
@@ -459,17 +472,17 @@ class AdvancedIndicators:
                 typical_price = (df['high'] + df['low'] + df['close']) / 3
                 sma_tp = typical_price.rolling(window=period).mean()
                 mad = typical_price.rolling(window=period).apply(lambda x: np.mean(np.abs(x - x.mean())))
-                cci = (typical_price - sma_tp) / (0.015 * mad)
+                cci = (typical_price - sma_tp) / (CalculationConfig.CCI_CONSTANT * mad)
             
             current_cci = AdvancedIndicators.safe_float(cci.iloc[-1], 0.0)
             
             # Generar señales basadas en niveles del CCI
-            if current_cci > 100:
+            if current_cci > OscillatorConfig.CCI_THRESHOLDS["overbought"]:
                 signal = "SELL"
-                interpretation = "🔴 CCI > +100 - Sobrecomprado, posible corrección"
-            elif current_cci < -100:
+                interpretation = f"🔴 CCI > +{OscillatorConfig.CCI_THRESHOLDS['overbought']} - Sobrecomprado, posible corrección"
+            elif current_cci < OscillatorConfig.CCI_THRESHOLDS["oversold"]:
                 signal = "BUY"
-                interpretation = "🟢 CCI < -100 - Sobrevendido, posible rebote"
+                interpretation = f"🟢 CCI < {OscillatorConfig.CCI_THRESHOLDS['oversold']} - Sobrevendido, posible rebote"
             elif current_cci > 0:
                 signal = "BUY"
                 interpretation = "📈 CCI positivo - Tendencia alcista"
@@ -521,9 +534,9 @@ class AdvancedIndicators:
                 
                 # SAR aproximado basado en tendencia reciente
                 if current_price > (high_20 + low_20) / 2:
-                    current_psar = low_20 * 0.98  # Tendencia alcista
+                    current_psar = low_20 * CalculationConfig.APPROXIMATION_FACTORS["close"]  # Tendencia alcista
                 else:
-                    current_psar = high_20 * 1.02  # Tendencia bajista
+                    current_psar = high_20 * CalculationConfig.APPROXIMATION_FACTORS["far"]  # Tendencia bajista
             else:
                 # Usar pandas-ta
                 if isinstance(psar, pd.DataFrame):
@@ -532,7 +545,7 @@ class AdvancedIndicators:
                     current_psar = psar.iloc[-1]
             
             current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
-            current_psar = AdvancedIndicators.safe_float(current_psar, current_price * 0.99)
+            current_psar = AdvancedIndicators.safe_float(current_psar, current_price * CalculationConfig.APPROXIMATION_FACTORS["very_close"])
             
             # El Parabolic SAR da señales de cambio de tendencia
             if current_price > current_psar:
@@ -1437,11 +1450,26 @@ class AdvancedIndicators:
             recent = df.tail(3)
             latest = recent.iloc[-1]
             
-            # Calcular tamaños de cuerpos y sombras
-            body_size = abs(latest['close'] - latest['open'])
-            upper_shadow = latest['high'] - max(latest['open'], latest['close'])
-            lower_shadow = min(latest['open'], latest['close']) - latest['low']
-            total_range = latest['high'] - latest['low']
+            # Calcular tamaños de cuerpos y sombras usando indexación segura
+            def safe_get_value(row, column):
+                if hasattr(row, column):
+                    return getattr(row, column)
+                elif hasattr(row, 'iloc') and len(row) > 0:
+                    col_names = ['open', 'high', 'low', 'close', 'volume']
+                    if column in col_names:
+                        idx = col_names.index(column)
+                        return row.iloc[idx] if idx < len(row) else 0
+                return 0
+            
+            latest_close = safe_get_value(latest, 'close')
+            latest_open = safe_get_value(latest, 'open')
+            latest_high = safe_get_value(latest, 'high')
+            latest_low = safe_get_value(latest, 'low')
+            
+            body_size = abs(latest_close - latest_open)
+            upper_shadow = latest_high - max(latest_open, latest_close)
+            lower_shadow = min(latest_open, latest_close) - latest_low
+            total_range = latest_high - latest_low
             
             detected_patterns = []
             
@@ -1460,7 +1488,7 @@ class AdvancedIndicators:
             # Martillo (Hammer)
             if (lower_shadow > body_size * 2 and 
                 upper_shadow < body_size * 0.5 and 
-                latest['close'] > latest['open']):
+                latest_close > latest_open):
                 detected_patterns.append({
                     "name": "Martillo",
                     "signal": "BUY",
@@ -1470,7 +1498,7 @@ class AdvancedIndicators:
             # Estrella fugaz (Shooting Star)
             if (upper_shadow > body_size * 2 and 
                 lower_shadow < body_size * 0.5 and 
-                latest['close'] < latest['open']):
+                latest_close < latest_open):
                 detected_patterns.append({
                     "name": "Estrella Fugaz",
                     "signal": "SELL",
@@ -1480,10 +1508,13 @@ class AdvancedIndicators:
             # Engulfing alcista
             if len(recent) >= 2:
                 prev = recent.iloc[-2]
-                if (prev['close'] < prev['open'] and  # Vela anterior bajista
-                    latest['close'] > latest['open'] and  # Vela actual alcista
-                    latest['open'] < prev['close'] and  # Abre por debajo del cierre anterior
-                    latest['close'] > prev['open']):  # Cierra por encima de la apertura anterior
+                prev_close = safe_get_value(prev, 'close')
+                prev_open = safe_get_value(prev, 'open')
+                
+                if (prev_close < prev_open and  # Vela anterior bajista
+                    latest_close > latest_open and  # Vela actual alcista
+                    latest_open < prev_close and  # Abre por debajo del cierre anterior
+                    latest_close > prev_open):  # Cierra por encima de la apertura anterior
                     detected_patterns.append({
                         "name": "Envolvente Alcista",
                         "signal": "BUY",

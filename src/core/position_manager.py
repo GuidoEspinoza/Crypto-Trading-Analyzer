@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.config import TradingBotConfig, RiskManagerConfig
+from src.config.config import TradingBotConfig, RiskManagerConfig, TradingProfiles
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -93,11 +93,12 @@ class PositionManager:
         # Cache de posiciones para optimización
         self.positions_cache = {}
         self.last_cache_update = 0
-        self.cache_duration = 30  # segundos
+        profile = TradingProfiles.get_current_profile()
+        self.cache_duration = profile.get('position_check_interval', 30)  # segundos
         
         # Configuración de trailing stops desde RiskManagerConfig
         self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
-        self.trailing_stop_distance = 0.01     # 1% de distancia del trailing (puede ser configurado después)
+        self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
         
         # Estadísticas
         self.stats = {
@@ -572,6 +573,9 @@ class PositionManager:
         try:
             positions = self.get_active_positions()
             
+            if not positions:
+                return 0
+            
             with db_manager.get_db_session() as session:
                 for position in positions:
                     if position.symbol not in market_data:
@@ -596,6 +600,18 @@ class PositionManager:
                     ).first()
                     
                     if not trade:
+                        continue
+                    
+                    # Verificar si la posición tiene suficiente ganancia para activar trailing stop
+                    profit_pct = 0
+                    if position.trade_type == "BUY":
+                        profit_pct = (current_price - position.entry_price) / position.entry_price
+                    else:  # SELL
+                        profit_pct = (position.entry_price - current_price) / position.entry_price
+                    
+                    # Solo activar trailing stop si hay ganancia suficiente
+                    if profit_pct < self.trailing_stop_activation:
+                        logger.debug(f"Trailing stop not activated for {position.symbol}: profit {profit_pct:.2%} < activation threshold {self.trailing_stop_activation:.2%}")
                         continue
                     
                     # Verificar si necesita actualizar trailing stop
@@ -638,6 +654,8 @@ class PositionManager:
                 if updated_count > 0:
                     self.stats["trailing_stops_activated"] += updated_count
                     logger.info(f"🎯 Updated {updated_count} trailing stops")
+                    # Invalidar caché para reflejar los nuevos trailing stops
+                    self.positions_cache.clear()
                 
         except Exception as e:
             logger.error(f"❌ Error updating trailing stops: {e}")

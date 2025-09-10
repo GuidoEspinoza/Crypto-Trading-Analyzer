@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.config.config import RiskManagerConfig
+from src.config.config import RiskManagerConfig, TradingProfiles, TradingBotConfig, APIConfig
 from src.database.database import db_manager
 
 # Configurar logger
@@ -72,7 +72,9 @@ class PositionAdjuster:
         # Obtener max_adjustments desde configuración del perfil activo
         risk_config = RiskManagerConfig()
         self.max_adjustments = risk_config.get_max_tp_adjustments()
-        self.monitoring_interval = 30  # segundos
+        # Obtener configuración del perfil activo
+        self.profile = TradingProfiles.get_current_profile()
+        self.monitoring_interval = TradingBotConfig.get_monitoring_interval()  # segundos
         self.active_positions = {}
         self.adjustment_history = []
         self.is_running = False
@@ -240,15 +242,18 @@ class PositionAdjuster:
             side = position.side
             pnl_pct = position.unrealized_pnl_pct
             
-            # Condición 1: Escalado de ganancias (posición ganadora > 2%)
-            if pnl_pct > 2.0:
+            # Condición 1: Escalado de ganancias (posición ganadora > threshold%)
+            profit_threshold = self.profile.get('profit_scaling_threshold', 2.0)
+            if pnl_pct > profit_threshold:
                 # Mover SL más cerca para proteger ganancias
+                sl_pct = self.profile.get('profit_protection_sl_pct', 0.01)
+                tp_pct = self.profile.get('profit_protection_tp_pct', 0.03)
                 if side == 'BUY':
-                    new_sl = entry_price * 1.01  # SL a +1% del precio de entrada
-                    new_tp = current_price * 1.03  # TP a +3% del precio actual
+                    new_sl = entry_price * (1 + sl_pct)  # SL para protección de ganancias
+                    new_tp = current_price * (1 + tp_pct)  # TP para protección de ganancias
                 else:
-                    new_sl = entry_price * 0.99  # SL a -1% del precio de entrada
-                    new_tp = current_price * 0.97  # TP a -3% del precio actual
+                    new_sl = entry_price * (1 - sl_pct)  # SL para protección de ganancias
+                    new_tp = current_price * (1 - tp_pct)  # TP para protección de ganancias
                 
                 return True, AdjustmentReason.PROFIT_SCALING, new_tp, new_sl
             
@@ -256,8 +261,8 @@ class PositionAdjuster:
             trailing_activation = risk_config.get_trailing_stop_activation() if hasattr(risk_config, 'get_trailing_stop_activation') else 5.0
             if pnl_pct > trailing_activation:
                 # Implementar trailing stop más agresivo
-                sl_pct = 0.02  # 2% por defecto
-                tp_pct = 0.05  # 5% por defecto
+                sl_pct = self.profile.get('trailing_stop_sl_pct', 0.02)  # 2% por defecto
+                tp_pct = self.profile.get('trailing_stop_tp_pct', 0.05)  # 5% por defecto
                 if side == 'BUY':
                     new_sl = current_price * (1 - sl_pct)  # SL dinámico
                     new_tp = current_price * (1 + tp_pct)  # TP dinámico
@@ -267,15 +272,18 @@ class PositionAdjuster:
                 
                 return True, AdjustmentReason.TRAILING_STOP, new_tp, new_sl
             
-            # Condición 3: Gestión de riesgo (posición perdedora < -1%)
-            if pnl_pct < -1.0:
+            # Condición 3: Gestión de riesgo (posición perdedora < threshold%)
+            risk_threshold = self.profile.get('risk_management_threshold', -1.0)
+            if pnl_pct < risk_threshold:
                 # Ajustar SL más conservador
+                sl_pct = self.profile.get('risk_management_sl_pct', 0.015)
+                tp_pct = self.profile.get('risk_management_tp_pct', 0.02)
                 if side == 'BUY':
-                    new_sl = current_price * 0.985  # SL más cerca
-                    new_tp = entry_price * 1.02  # TP más conservador
+                    new_sl = current_price * (1 - sl_pct)  # SL más cerca
+                    new_tp = entry_price * (1 + tp_pct)  # TP más conservador
                 else:
-                    new_sl = current_price * 1.015  # SL más cerca
-                    new_tp = entry_price * 0.98  # TP más conservador
+                    new_sl = current_price * (1 + sl_pct)  # SL más cerca
+                    new_tp = entry_price * (1 - tp_pct)  # TP más conservador
                 
                 return True, AdjustmentReason.RISK_MANAGEMENT, new_tp, new_sl
             
@@ -294,11 +302,11 @@ class PositionAdjuster:
             if self.simulation_mode:
                 # Simular cancelación de órdenes OCO existentes
                 logger.info(f"🔄 {symbol}: Simulando cancelación de órdenes OCO existentes")
-                await asyncio.sleep(0.1)  # Simular latencia
+                await asyncio.sleep(APIConfig.LATENCY_SIMULATION_SLEEP)  # Simular latencia
                 
                 # Simular creación de nuevas órdenes OCO
                 logger.info(f"🔄 {symbol}: Simulando creación de nuevas órdenes OCO")
-                await asyncio.sleep(0.1)  # Simular latencia
+                await asyncio.sleep(APIConfig.LATENCY_SIMULATION_SLEEP)  # Simular latencia
                 
                 # Actualizar en base de datos (simulado)
                 success = self._update_position_levels(symbol, new_tp, new_sl)

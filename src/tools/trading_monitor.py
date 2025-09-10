@@ -28,8 +28,10 @@ sys.path.insert(0, os.path.join(project_root, 'src'))
 
 from src.core.market_validator import market_validator
 from src.core.position_manager import PositionManager
+from src.config.config import TradingBotConfig, APIConfig
 from src.core.paper_trader import PaperTrader
 from src.config.production_config import get_config
+from src.config.config import TradingBotConfig, APIConfig, MonitoringConfig
 from src.database.database import db_manager
 from src.database.models import Trade
 
@@ -88,7 +90,7 @@ Ejemplos de uso:
     parser.add_argument(
         '--hours', 
         type=int, 
-        default=24,
+        default=MonitoringConfig.DEFAULT_HOURS_BACK,
         help='Horas hacia atrás para verificar ejecuciones perdidas (default: 24)'
     )
     
@@ -323,7 +325,7 @@ def check_active_positions_detailed():
             active_trades = session.query(Trade).filter(
                 Trade.status == "OPEN",
                 Trade.is_paper_trade == True
-            ).all()
+            ).order_by(Trade.entry_time.desc()).all()
             
             print(f"📊 ANÁLISIS DETALLADO DE POSICIONES: {len(active_trades)}")
             print("-" * 50)
@@ -333,17 +335,29 @@ def check_active_positions_detailed():
                 return
             
             positions_with_tp_sl = 0
-            positions_without_tp_sl = 0
+            positions_without_tp = 0
+            positions_without_sl = 0
+            positions_without_both = 0
+            pending_executions = 0
             total_pnl = 0.0
+            trades_without_tp = []
+            trades_without_sl = []
             
             for trade in active_trades:
-                has_tp = trade.take_profit is not None
-                has_sl = trade.stop_loss is not None
+                has_tp = trade.take_profit is not None and trade.take_profit > 0
+                has_sl = trade.stop_loss is not None and trade.stop_loss > 0
                 
+                # Contar posiciones sin TP/SL
+                if not has_tp:
+                    positions_without_tp += 1
+                    trades_without_tp.append(trade)
+                if not has_sl:
+                    positions_without_sl += 1
+                    trades_without_sl.append(trade)
+                if not has_tp and not has_sl:
+                    positions_without_both += 1
                 if has_tp or has_sl:
                     positions_with_tp_sl += 1
-                else:
-                    positions_without_tp_sl += 1
                 
                 # Obtener precio actual
                 current_price = get_current_price(trade.symbol.replace('/', ''))
@@ -362,6 +376,22 @@ def check_active_positions_detailed():
                     pnl_pct = 0
                     current_price = 0
                 
+                # Verificar ejecuciones pendientes
+                tp_alert = ""
+                sl_alert = ""
+                
+                if has_tp:
+                    if (trade.trade_type == "BUY" and current_price >= trade.take_profit) or \
+                       (trade.trade_type == "SELL" and current_price <= trade.take_profit):
+                        tp_alert = " 🚨 TP PENDIENTE"
+                        pending_executions += 1
+                
+                if has_sl:
+                    if (trade.trade_type == "BUY" and current_price <= trade.stop_loss) or \
+                       (trade.trade_type == "SELL" and current_price >= trade.stop_loss):
+                        sl_alert = " 🚨 SL PENDIENTE"
+                        pending_executions += 1
+                
                 print(f"\n   🎯 Trade #{trade.id} - {trade.symbol} ({trade.trade_type})")
                 print(f"      Strategy: {trade.strategy_name}")
                 print(f"      Entry: ${trade.entry_price:.4f} | Current: ${current_price:.4f}")
@@ -370,39 +400,56 @@ def check_active_positions_detailed():
                 
                 if has_tp:
                     tp_distance = abs(current_price - trade.take_profit) / trade.take_profit * 100
-                    print(f"      ✅ Take Profit: ${trade.take_profit:.4f} (Distance: {tp_distance:.2f}%)")
+                    print(f"      ✅ Take Profit: ${trade.take_profit:.4f} (Distance: {tp_distance:.2f}%){tp_alert}")
                 else:
                     print(f"      ❌ Take Profit: No configurado")
                 
                 if has_sl:
                     sl_distance = abs(current_price - trade.stop_loss) / trade.stop_loss * 100
-                    print(f"      ✅ Stop Loss: ${trade.stop_loss:.4f} (Distance: {sl_distance:.2f}%)")
+                    print(f"      ✅ Stop Loss: ${trade.stop_loss:.4f} (Distance: {sl_distance:.2f}%){sl_alert}")
                 else:
                     print(f"      ❌ Stop Loss: No configurado")
                 
                 print(f"      Opened: {trade.entry_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                
-                # Verificar si debería haberse ejecutado
-                if has_tp and trade.trade_type == "BUY" and current_price >= trade.take_profit:
-                    print(f"      ⚠️  ALERTA: TP debería haberse ejecutado!")
-                elif has_tp and trade.trade_type == "SELL" and current_price <= trade.take_profit:
-                    print(f"      ⚠️  ALERTA: TP debería haberse ejecutado!")
-                
-                if has_sl and trade.trade_type == "BUY" and current_price <= trade.stop_loss:
-                    print(f"      ⚠️  ALERTA: SL debería haberse ejecutado!")
-                elif has_sl and trade.trade_type == "SELL" and current_price >= trade.stop_loss:
-                    print(f"      ⚠️  ALERTA: SL debería haberse ejecutado!")
             
             print(f"\n📊 RESUMEN DE CONFIGURACIÓN:")
+            print(f"   Total posiciones: {len(active_trades)}")
             print(f"   Posiciones con TP/SL: {positions_with_tp_sl}")
-            print(f"   Posiciones sin TP/SL: {positions_without_tp_sl}")
+            print(f"   Sin TP configurado: {positions_without_tp}")
+            print(f"   Sin SL configurado: {positions_without_sl}")
+            print(f"   Sin TP ni SL: {positions_without_both}")
+            print(f"   Ejecuciones pendientes: {pending_executions}")
             print(f"   PnL total actual: ${total_pnl:.2f}")
             
-            if positions_without_tp_sl > 0:
-                print(f"   ⚠️  {positions_without_tp_sl} posiciones sin protección!")
+            # Alertas específicas para TP/SL faltantes
+            if positions_without_tp > 0 or positions_without_sl > 0:
+                print(f"\n⚠️  ADVERTENCIA: Posiciones sin protección adecuada")
+                
+                if positions_without_both > 0:
+                    print(f"   🔴 CRÍTICO: {positions_without_both} posiciones sin TP ni SL")
+                    print(f"   Estas posiciones están completamente desprotegidas")
+                
+                if positions_without_tp > 0:
+                    print(f"   🟡 {positions_without_tp} posiciones sin Take Profit")
+                    print(f"   No se capturarán ganancias automáticamente")
+                
+                if positions_without_sl > 0:
+                    print(f"   🟠 {positions_without_sl} posiciones sin Stop Loss")
+                    print(f"   No hay protección contra pérdidas")
+                
+                print(f"\n💡 RECOMENDACIÓN:")
+                print(f"   Ejecuta: python src/tools/fix_missing_tp_sl.py")
+                print(f"   Para configurar automáticamente TP/SL faltantes")
+            
+            if pending_executions > 0:
+                print(f"\n🚨 ALERTA CRÍTICA: {pending_executions} ejecuciones pendientes")
+                print(f"   El sistema de ejecución automática puede tener problemas")
+                print(f"   Revisa los logs del position_manager")
             
     except Exception as e:
         print(f"❌ Error verificando posiciones: {e}")
+        import traceback
+        print(f"   Detalles: {traceback.format_exc()}")
 
 def check_tp_sl_configuration():
     """🎯 Verificar configuración de TP/SL"""
@@ -556,10 +603,11 @@ def show_missed_executions_detailed(missed_executions: List[Any]):
 def get_current_price(symbol: str) -> float:
     """💰 Obtener precio actual de Binance"""
     try:
-        url = "https://api.binance.com/api/v3/ticker/price"
+        url = APIConfig.get_binance_url("ticker_price")
         params = {'symbol': symbol}
         
-        response = requests.get(url, params=params, timeout=5)
+        request_config = APIConfig.get_request_config()
+        response = requests.get(url, params=params, timeout=request_config['timeout'])
         response.raise_for_status()
         
         data = response.json()

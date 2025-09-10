@@ -286,16 +286,20 @@ def test_paper_trader_risk_management():
             is_valid = trader.validate_trade(valid_trade)
             print(f"✅ Validación de trade válido: {is_valid}")
             
-            # Trade inválido (cantidad muy grande)
+            # Trade inválido (cantidad muy grande que excede el balance)
             invalid_trade = {
                 'symbol': 'BTCUSDT',
-                'quantity': 100.0,  # Cantidad muy grande
+                'quantity': 100.0,  # Cantidad muy grande (5M USD con precio 50k)
                 'price': 50000.0,
                 'side': 'BUY'
             }
             
             is_invalid = trader.validate_trade(invalid_trade)
-            print(f"⚠️ Validación de trade inválido: {is_invalid}")
+            # Un trade inválido debe retornar False
+            if is_invalid == False:
+                print(f"✅ Validación de trade inválido correcta: {is_invalid}")
+            else:
+                print(f"⚠️ Validación de trade inválido inesperada: {is_invalid} (debería ser False)")
         
         else:
             print("⚠️ Método validate_trade no encontrado")
