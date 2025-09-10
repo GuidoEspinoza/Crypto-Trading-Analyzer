@@ -41,10 +41,7 @@ try:
     from src.config.config import (
         TradingProfiles, TRADING_PROFILE
     )
-    from src.config.production_config import (
-        ProductionConfig, DatabaseConfig, ExchangeConfig, 
-        RiskConfig, MonitoringConfig
-    )
+    # Configuraciones de production_config removidas (no utilizadas)
     # Importar LiveTradingBot desde el nuevo módulo
     from src.tools.live_trading_bot import LiveTradingBot
 except ImportError as e:
@@ -81,10 +78,7 @@ class SystemTester:
         }
         
         # Configuraciones centralizadas
-        self.production_config = ProductionConfig()
-        self.database_config = DatabaseConfig()
-        self.exchange_config = ExchangeConfig()
-        self.risk_config = RiskConfig()
+        # Configuraciones de production_config removidas (no utilizadas)
         self.bot_config = TradingProfiles.PROFILES[TRADING_PROFILE]
         
         # Símbolos para testing

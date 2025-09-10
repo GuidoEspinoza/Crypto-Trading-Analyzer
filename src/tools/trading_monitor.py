@@ -30,7 +30,7 @@ from src.core.market_validator import market_validator
 from src.core.position_manager import PositionManager
 from src.config.config import TradingBotConfig, APIConfig
 from src.core.paper_trader import PaperTrader
-from src.config.production_config import get_config
+from src.config.config import TradingProfiles
 from src.config.config import TradingBotConfig, APIConfig, MonitoringConfig
 from src.database.database import db_manager
 from src.database.models import Trade
@@ -457,18 +457,18 @@ def check_tp_sl_configuration():
     print("-" * 40)
     
     try:
-        # Crear instancia para acceder a las propiedades
-        config = get_config()
-        risk_config = config.profile_config
+        # Obtener configuración del perfil activo
+        profile_config = TradingProfiles.get_current_profile()
         
-        print(f"   ATR Multiplier Min: {risk_config.get('ATR_MULTIPLIER_MIN', 'N/A')}x")
-        print(f"   ATR Multiplier Max: {risk_config.get('ATR_MULTIPLIER_MAX', 'N/A')}x")
-        print(f"   Volatility Threshold: {risk_config.get('VOLATILITY_THRESHOLD', 'N/A')}")
-        print(f"   Initial TP: {risk_config.get('initial_tp_percent', 'N/A')}%")
-        print(f"   Initial SL: {risk_config.get('initial_sl_percent', 'N/A')}%")
-        print(f"   Max posiciones: {risk_config.get('max_positions', 'N/A')}")
-        print(f"   Max trades diarios: {risk_config.get('max_daily_trades', 'N/A')}")
-        print(f"   Max drawdown: {risk_config.get('max_drawdown_threshold', 'N/A')}%")
+        print(f"   ATR Multiplier Min: {profile_config.get('atr_multiplier_min', 'N/A')}x")
+        print(f"   ATR Multiplier Max: {profile_config.get('atr_multiplier_max', 'N/A')}x")
+        print(f"   TP Min: {profile_config.get('tp_min_percentage', 'N/A')}%")
+        print(f"   TP Max: {profile_config.get('tp_max_percentage', 'N/A')}%")
+        print(f"   SL Min: {profile_config.get('sl_min_percentage', 'N/A')}%")
+        print(f"   SL Max: {profile_config.get('sl_max_percentage', 'N/A')}%")
+        print(f"   Max posiciones: {profile_config.get('max_positions', 'N/A')}")
+        print(f"   Max trades diarios: {profile_config.get('max_daily_trades', 'N/A')}")
+        print(f"   Max drawdown: {profile_config.get('max_drawdown_threshold', 'N/A')}%")
         
         print(f"\n   ✅ Configuración de Risk Manager encontrada")
         
