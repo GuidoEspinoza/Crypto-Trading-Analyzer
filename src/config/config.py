@@ -97,8 +97,8 @@ class TradingProfiles:
             "default_min_confidence": 52.0,  # Reducido para más oportunidades
             "default_atr_period": 10,
             "rsi_min_confidence": 68.0,  # Aumentado para mejor calidad
-            "rsi_oversold": 35,  # Optimizado para señales de calidad
-            "rsi_overbought": 65,  # Optimizado para mejor balance
+            "rsi_oversold": 25,  # Más estricto para mejor calidad
+        "rsi_overbought": 75,  # Más estricto para mejor precisión
             "rsi_period": 10,
             "min_volume_ratio": 1.6,  # Aumentado para mejor calidad
             "min_confluence": 4,  # Aumentado para mejores señales
@@ -106,7 +106,7 @@ class TradingProfiles:
             "min_atr_ratio": 0.9,  # Optimizado
             "max_spread_threshold": 0.002,  # Optimizado más estricto
             "volume_weight": 0.22,  # Nuevo peso para volumen
-            "confluence_threshold": 0.65,  # Nuevo umbral
+            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
             # Multi-Timeframe Config - Optimizado
             "mtf_enhanced_confidence": 62.0,  # Optimizado
             "mtf_min_confidence": 65.0,  # Aumentado para calidad
@@ -228,8 +228,8 @@ class TradingProfiles:
             "default_min_confidence": 65.0,  # Aumentado
             "default_atr_period": 14,
             "rsi_min_confidence": 72.0,  # Aumentado para calidad
-            "rsi_oversold": 28,  # Optimizado
-            "rsi_overbought": 72,  # Optimizado
+            "rsi_oversold": 25,  # Más estricto para mejor calidad
+            "rsi_overbought": 75,  # Más estricto para mejor precisión
             "rsi_period": 14,
             "min_volume_ratio": 1.8,  # Aumentado para calidad
             "min_confluence": 3,
@@ -237,7 +237,7 @@ class TradingProfiles:
             "min_atr_ratio": 1.1,  # Optimizado
             "max_spread_threshold": 0.0012,  # Optimizado
             "volume_weight": 0.15,  # Nuevo peso para volumen
-            "confluence_threshold": 0.68,  # Nuevo umbral de confluencia
+            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
             # Multi-Timeframe Config - Optimizado
             "mtf_enhanced_confidence": 68.0,  # Optimizado
             "mtf_min_confidence": 72.0,  # Aumentado
@@ -349,8 +349,8 @@ class TradingProfiles:
             "default_min_confidence": 72.0,  # Aumentado
             "default_atr_period": 14,
             "rsi_min_confidence": 82.0,  # Aumentado para máxima calidad
-            "rsi_oversold": 25,  # Optimizado para mejor balance
-            "rsi_overbought": 75,  # Optimizado para mejor balance
+            "rsi_oversold": 25,  # Más estricto para mejor calidad
+            "rsi_overbought": 75,  # Más estricto para mejor precisión
             "rsi_period": 14,
             "min_volume_ratio": 2.2,  # Aumentado para calidad
             "min_confluence": 4,
@@ -358,7 +358,7 @@ class TradingProfiles:
             "min_atr_ratio": 1.3,  # Optimizado
             "max_spread_threshold": 0.0008,  # Optimizado más estricto
             "volume_weight": 0.18,  # Nuevo peso para volumen
-            "confluence_threshold": 0.72,  # Nuevo umbral alto
+            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
             # Multi-Timeframe Config - Optimizado
             "mtf_enhanced_confidence": 78.0,  # Optimizado
             "mtf_min_confidence": 82.0,  # Aumentado para calidad
@@ -480,8 +480,8 @@ class TradingProfiles:
             "default_min_confidence": 78.0,  # Muy alto
             "default_atr_period": 21,  # Período más largo
             "rsi_min_confidence": 88.0,  # Extremadamente alto
-            "rsi_oversold": 22,  # Optimizado para mejor calidad
-            "rsi_overbought": 78,  # Optimizado para mejor calidad
+            "rsi_oversold": 25,  # Más estricto para mejor calidad
+            "rsi_overbought": 75,  # Más estricto para mejor precisión
             "rsi_period": 21,  # Período más largo
             "min_volume_ratio": 2.5,  # Alto para calidad
             "min_confluence": 5,  # Muy alto
@@ -489,7 +489,7 @@ class TradingProfiles:
             "min_atr_ratio": 1.5,  # Alto
             "max_spread_threshold": 0.0005,  # Muy estricto
             "volume_weight": 0.25,  # Peso alto para volumen
-            "confluence_threshold": 0.8,  # Muy alto
+            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
             # Multi-Timeframe Config - Ultra conservador
             "mtf_enhanced_confidence": 82.0,  # Muy alto
             "mtf_min_confidence": 88.0,  # Extremadamente alto

@@ -704,24 +704,24 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             if rsi_signal in ["BUY", "STRONG_BUY"]:
                 confluence_score += 2 if rsi_signal == "STRONG_BUY" else 1
                 signal_type = "BUY"
-                confidence += 25 if rsi_signal == "STRONG_BUY" else 15
+                confidence += 15 if rsi_signal == "STRONG_BUY" else 8
                 notes.append(f"Enhanced RSI: {enhanced_rsi['interpretation']}")
             elif rsi_signal in ["SELL", "STRONG_SELL"]:
                 confluence_score += 2 if rsi_signal == "STRONG_SELL" else 1
                 signal_type = "SELL"
-                confidence += 25 if rsi_signal == "STRONG_SELL" else 15
+                confidence += 15 if rsi_signal == "STRONG_SELL" else 8
                 notes.append(f"Enhanced RSI: {enhanced_rsi['interpretation']}")
             
             # === CONFIRMACIÓN BOLLINGER BANDS ===
             if bollinger["signal"] == signal_type and signal_type != "HOLD":
                 confluence_score += 1
-                confidence += 12
+                confidence += 6
                 notes.append(f"Bollinger confirms: {bollinger['interpretation']}")
             
             # === CONFIRMACIÓN VWAP ===
             if vwap_analysis["signal"] == signal_type and signal_type != "HOLD":
                 confluence_score += 1
-                confidence += 10
+                confidence += 5
                 notes.append(f"VWAP confirms: {vwap_analysis['interpretation']}")
             
             # === ANÁLISIS DE VOLUMEN AVANZADO ===
@@ -730,17 +730,17 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             
             if volume_confirmations >= 2:
                 confluence_score += 2
-                confidence += 20
+                confidence += 10
                 notes.append(f"Strong volume confirmation ({volume_confirmations}/3)")
             elif volume_confirmations == 1:
                 confluence_score += 1
-                confidence += 10
+                confidence += 4
                 notes.append("Volume confirmation")
             
             # === MOMENTUM Y VOLATILIDAD ===
             if roc_analysis["signal"] == signal_type and signal_type != "HOLD":
                 confluence_score += 1
-                confidence += 8
+                confidence += 4
                 notes.append(f"ROC momentum: {roc_analysis['interpretation']}")
             
             # Ajustar por volatilidad (ATR)
@@ -754,13 +754,13 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             # === SOPORTE Y RESISTENCIA ===
             if support_resistance["signal"] == signal_type and signal_type != "HOLD":
                 confluence_score += 1
-                confidence += 15
+                confidence += 6
                 notes.append(f"S/R level: {support_resistance['interpretation']}")
             
             # === LÍNEAS DE TENDENCIA ===
             if trend_lines["signal"] == signal_type and signal_type != "HOLD":
                 confluence_score += 1
-                confidence += 12
+                confidence += 5
                 notes.append(f"Trend line: {trend_lines['interpretation']}")
             
             # === PATRONES DE GRÁFICO ===
@@ -768,14 +768,14 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
                 # Determinar fuerza del patrón basado en confianza
                 pattern_strength = "STRONG" if any(p.get("confidence", 0) >= 75 for p in chart_patterns.get("patterns", [])) else "MODERATE"
                 confluence_score += 2 if pattern_strength == "STRONG" else 1
-                confidence += 18 if pattern_strength == "STRONG" else 10
+                confidence += 8 if pattern_strength == "STRONG" else 5
                 notes.append(f"Chart pattern: {chart_patterns['interpretation']}")
             
             # === CONFIRMACIONES TRADICIONALES ===
             # Confirmación con Stochastic
             if stoch["signal"] == signal_type and signal_type != "HOLD":
                 confluence_score += 1
-                confidence += 8
+                confidence += 4
                 notes.append("Stochastic confirms")
             
             # Confirmación con Williams %R
