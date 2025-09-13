@@ -143,6 +143,14 @@ class TradingBot:
             "last_reset_date": datetime.now().date()
         }
         
+        # Sistema de throttling/espaciado entre trades
+        self.min_time_between_trades = self.config.get_min_time_between_trades_seconds()
+        self.max_trades_per_hour = self.config.get_max_trades_per_hour()
+        self.post_reset_spacing_minutes = self.config.get_post_reset_spacing_minutes()
+        self.last_trade_time = None
+        self.hourly_trade_count = 0
+        self.hourly_trade_reset_time = datetime.now()
+        
         # Circuit breaker avanzado
         self.consecutive_losses = 0
         self.circuit_breaker_active = False
@@ -511,7 +519,71 @@ class TradingBot:
                 except Exception as e:
                     self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
         return all_signals
+
+    def _can_execute_trade(self) -> bool:
+        """
+        🚦 Verificar si se puede ejecutar un trade basado en throttling
+        
+        Returns:
+            bool: True si se puede ejecutar el trade
+        """
+        current_time = datetime.now()
+        
+        # 1. Verificar tiempo mínimo entre trades
+        if self.last_trade_time:
+            time_since_last_trade = (current_time - self.last_trade_time).total_seconds()
+            if time_since_last_trade < self.min_time_between_trades:
+                remaining_time = self.min_time_between_trades - time_since_last_trade
+                self.logger.info(f"⏱️ Throttling: {remaining_time:.0f}s remaining until next trade allowed")
+                return False
+        
+        # 2. Verificar límite de trades por hora
+        # Resetear contador si ha pasado una hora
+        if (current_time - self.hourly_trade_reset_time).total_seconds() >= 3600:
+            self.hourly_trade_count = 0
+            self.hourly_trade_reset_time = current_time
+        
+        if self.hourly_trade_count >= self.max_trades_per_hour:
+            next_reset = self.hourly_trade_reset_time + timedelta(hours=1)
+            remaining_minutes = (next_reset - current_time).total_seconds() / 60
+            self.logger.info(f"⏱️ Hourly limit reached: {remaining_minutes:.0f}m until reset")
+            return False
+        
+        # 3. Verificar espaciado especial post-reset (primeras horas del día)
+        if self._is_in_post_reset_window():
+            if self.last_trade_time:
+                time_since_last_trade_minutes = (current_time - self.last_trade_time).total_seconds() / 60
+                if time_since_last_trade_minutes < self.post_reset_spacing_minutes:
+                    remaining_minutes = self.post_reset_spacing_minutes - time_since_last_trade_minutes
+                    self.logger.info(f"🌅 Post-reset spacing: {remaining_minutes:.0f}m remaining")
+                    return False
+        
+        return True
     
+    def _is_in_post_reset_window(self) -> bool:
+        """
+        🌅 Verificar si estamos en la ventana post-reset (primeras 3 horas del día)
+        
+        Returns:
+            bool: True si estamos en la ventana post-reset
+        """
+        current_time = datetime.now()
+        # Considerar las primeras 3 horas del día como ventana post-reset
+        if current_time.hour < 3:
+            return True
+        return False
+    
+    def _update_trade_timing(self):
+        """
+        📊 Actualizar contadores de timing después de ejecutar un trade
+        """
+        current_time = datetime.now()
+        self.last_trade_time = current_time
+        self.hourly_trade_count += 1
+        
+        # Log del estado actual
+        self.logger.info(f"📊 Trade timing updated: {self.hourly_trade_count}/{self.max_trades_per_hour} trades this hour")
+
     def _process_signals(self, signals: List[TradingSignal]):
         """
         🎯 Procesar y ejecutar señales de trading
@@ -556,6 +628,11 @@ class TradingBot:
                     self.logger.info("⏸️ Daily trade limit reached")
                     break
                 
+                # Verificar throttling/espaciado entre trades
+                if not self._can_execute_trade():
+                    self.logger.info(f"⏸️ Trade throttled for {signal.symbol} - spacing requirements not met")
+                    continue
+                
                 # Análisis de riesgo
                 risk_assessment = self.risk_manager.assess_trade_risk(signal, portfolio_value)
                 
@@ -572,6 +649,9 @@ class TradingBot:
                     if trade_result.success:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
+                        
+                        # Actualizar timing de trades para throttling
+                        self._update_trade_timing()
                         
                         # Determinar si fue exitoso basándose en el tipo de trade y PnL real
                         trade_was_profitable = False
@@ -623,17 +703,74 @@ class TradingBot:
     
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias si es un nuevo día
+        📅 Resetear estadísticas diarias según horario optimizado para trading en Chile
         """
-        today = datetime.now().date()
-        if today != self.stats["last_reset_date"]:
+        import pytz
+        from ..config.config import (
+            TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE, 
+            RESET_STRATEGIES, ACTIVE_RESET_STRATEGY
+        )
+        
+        # Obtener zona horaria de Chile
+        chile_tz = pytz.timezone(TIMEZONE)
+        current_time_chile = datetime.now(chile_tz)
+        
+        # Obtener configuración de reset activa
+        if ACTIVE_RESET_STRATEGY in RESET_STRATEGIES:
+            reset_config = RESET_STRATEGIES[ACTIVE_RESET_STRATEGY]
+            reset_hour = reset_config["hour"]
+            reset_minute = reset_config["minute"]
+        else:
+            reset_hour = DAILY_RESET_HOUR
+            reset_minute = DAILY_RESET_MINUTE
+        
+        # Crear tiempo de reset para hoy
+        reset_time_today = current_time_chile.replace(
+            hour=reset_hour, minute=reset_minute, second=0, microsecond=0
+        )
+        
+        # Verificar si necesitamos resetear
+        should_reset = False
+        
+        if self.stats["last_reset_date"] is None:
+            # Primera ejecución
+            should_reset = True
+            self.logger.info(f"🚀 Primera ejecución del bot")
+        else:
+            # Convertir last_reset_date a datetime con zona horaria
+            if isinstance(self.stats["last_reset_date"], datetime):
+                last_reset_chile = self.stats["last_reset_date"]
+                if last_reset_chile.tzinfo is None:
+                    last_reset_chile = chile_tz.localize(last_reset_chile)
+            else:
+                # Si es solo fecha, convertir a datetime
+                last_reset_chile = chile_tz.localize(
+                    datetime.combine(self.stats["last_reset_date"], datetime.min.time())
+                )
+            
+            # Verificar si ya pasó el horario de reset de hoy
+            if current_time_chile >= reset_time_today and last_reset_chile < reset_time_today:
+                should_reset = True
+        
+        if should_reset:
+            self.logger.info(
+                f"🔄 Horario de reset alcanzado ({reset_hour:02d}:{reset_minute:02d} CLT). "
+                f"Reseteando estadísticas diarias..."
+            )
+            
+            # Reset estadísticas diarias
             self.stats["daily_trades"] = 0
-            self.stats["last_reset_date"] = today
-            # Resetear circuit breaker al inicio de un nuevo día
+            self.stats["last_reset_date"] = current_time_chile
+            
+            # Resetear circuit breaker al inicio de un nuevo período de trading
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
             self.circuit_breaker_activated_at = None
-            self.logger.info(f"📅 Daily stats reset for {today} - Circuit breaker reset")
+            
+            self.logger.info(
+                f"✅ Estadísticas diarias reseteadas para período de trading óptimo "
+                f"({current_time_chile.strftime('%Y-%m-%d %H:%M:%S %Z')}) - Circuit breaker reset"
+            )
     
     def _check_circuit_breaker(self) -> bool:
         """

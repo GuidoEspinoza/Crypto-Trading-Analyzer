@@ -23,6 +23,7 @@ aiohttp>=3.12.0           # Cliente HTTP asíncrono (actualizado) ✅
 # Utilidades
 python-json-logger==3.3.0 # Logging estructurado (actualizado) ✅
 PyYAML>=6.0.2             # Manejo de archivos de configuración ✅
+pytz>=2024.1              # Manejo de zonas horarias para trading optimizado ✅
 
 # Visualización y gráficos para backtesting
 matplotlib>=3.8.0        # Gráficos y visualización ✅

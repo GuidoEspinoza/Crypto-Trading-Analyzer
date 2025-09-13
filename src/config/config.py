@@ -34,6 +34,32 @@ GLOBAL_INITIAL_BALANCE = 1000.0
 USDT_BASE_PRICE = 1.0
 
 # ============================================================================
+# ⏰ CONFIGURACIÓN DE ZONA HORARIA Y RESET DIARIO
+# ============================================================================
+
+# Zona horaria para Chile (CLT/CLST)
+TIMEZONE = "America/Santiago"
+
+# Horario de reset diario optimizado para trading de criptomonedas en Chile
+# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
+# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
+DAILY_RESET_HOUR = 11  # 11:00 AM CLT
+DAILY_RESET_MINUTE = 0  # 11:00 AM exacto
+
+# Configuración alternativa para diferentes estrategias de reset:
+# - CONSERVATIVE: 6:00 AM CLT (antes de mercados globales)
+# - AGGRESSIVE: 11:00 AM CLT (antes del horario óptimo de trading)
+# - OPTIMAL: 6:00 PM CLT (después del horario óptimo de trading)
+RESET_STRATEGIES = {
+    "CONSERVATIVE": {"hour": 6, "minute": 0},   # 6:00 AM CLT
+    "AGGRESSIVE": {"hour": 11, "minute": 0},    # 11:00 AM CLT (RECOMENDADO)
+    "OPTIMAL": {"hour": 18, "minute": 0}        # 6:00 PM CLT
+}
+
+# Estrategia de reset activa (cambiar según perfil de trading)
+ACTIVE_RESET_STRATEGY = "AGGRESSIVE"  # Recomendado para máxima rentabilidad
+
+# ============================================================================
 # 📊 DEFINICIÓN DE PERFILES DE TRADING
 # ============================================================================
 
@@ -170,7 +196,12 @@ class TradingProfiles:
             "error_cooldown_seconds": 60,  # Tiempo de espera tras error (seg)
             "max_consecutive_errors": 5,  # Máximo errores consecutivos
             "circuit_breaker_threshold": 10,  # Umbral para circuit breaker
-            "circuit_breaker_timeout": 300  # Timeout del circuit breaker (seg)
+            "circuit_breaker_timeout": 300,  # Timeout del circuit breaker (seg)
+            
+            # Trade Spacing Config - Para evitar ejecución masiva post-reset
+            "min_time_between_trades_seconds": 30,  # Mínimo 30 segundos entre trades
+            "max_trades_per_hour": 15,  # Máximo 15 trades por hora
+            "post_reset_spacing_minutes": 60  # Espaciado especial en primera hora post-reset
         },
         "AGRESIVO": {
             "name": "⚡ Agresivo",
@@ -291,7 +322,12 @@ class TradingProfiles:
             "error_cooldown_seconds": 45,  # Menor tiempo de espera
             "max_consecutive_errors": 7,  # Más tolerancia a errores
             "circuit_breaker_threshold": 12,  # Mayor umbral para circuit breaker
-            "circuit_breaker_timeout": 240  # Menor timeout del circuit breaker
+            "circuit_breaker_timeout": 240,  # Menor timeout del circuit breaker
+            
+            # Trade Spacing Config - Para evitar ejecución masiva post-reset
+            "min_time_between_trades_seconds": 60,  # Mínimo 1 minuto entre trades
+            "max_trades_per_hour": 10,  # Máximo 10 trades por hora
+            "post_reset_spacing_minutes": 90  # Espaciado especial en primera hora y media post-reset
         },
         "OPTIMO": {
             "name": "🎯 Óptimo",
@@ -422,7 +458,12 @@ class TradingProfiles:
             "error_cooldown_seconds": 75,  # Tiempo de espera balanceado
             "max_consecutive_errors": 4,  # Tolerancia a errores balanceada
             "circuit_breaker_threshold": 8,  # Umbral balanceado para circuit breaker
-            "circuit_breaker_timeout": 360  # Timeout balanceado del circuit breaker
+            "circuit_breaker_timeout": 360,  # Timeout balanceado del circuit breaker
+            
+            # Trade Spacing Config - Para evitar ejecución masiva post-reset
+            "min_time_between_trades_seconds": 120,  # Mínimo 2 minutos entre trades
+            "max_trades_per_hour": 6,  # Máximo 6 trades por hora
+            "post_reset_spacing_minutes": 120  # Espaciado especial en primeras 2 horas post-reset
         },
         "CONSERVADOR": {
             "name": "🛡️ Conservador",
@@ -553,7 +594,12 @@ class TradingProfiles:
             "error_cooldown_seconds": 120,  # Mayor tiempo de espera
             "max_consecutive_errors": 2,  # Menor tolerancia a errores
             "circuit_breaker_threshold": 5,  # Menor umbral para circuit breaker
-            "circuit_breaker_timeout": 600  # Mayor timeout del circuit breaker
+            "circuit_breaker_timeout": 600,  # Mayor timeout del circuit breaker
+            
+            # Trade Spacing Config - Para evitar ejecución masiva post-reset
+            "min_time_between_trades_seconds": 300,  # Mínimo 5 minutos entre trades
+            "max_trades_per_hour": 3,  # Máximo 3 trades por hora
+            "post_reset_spacing_minutes": 180  # Espaciado especial en primeras 3 horas post-reset
         }
     }
     
@@ -693,6 +739,21 @@ class TradingBotConfig:
     def get_max_drawdown_threshold(cls) -> float:
         """Umbral máximo de drawdown según perfil activo."""
         return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
+    
+    @classmethod
+    def get_min_time_between_trades_seconds(cls) -> int:
+        """Tiempo mínimo entre trades en segundos según perfil activo."""
+        return TradingProfiles.get_current_profile().get("min_time_between_trades_seconds", 60)
+    
+    @classmethod
+    def get_max_trades_per_hour(cls) -> int:
+        """Máximo número de trades por hora según perfil activo."""
+        return TradingProfiles.get_current_profile().get("max_trades_per_hour", 10)
+    
+    @classmethod
+    def get_post_reset_spacing_minutes(cls) -> int:
+        """Minutos de espaciado especial después del reset diario según perfil activo."""
+        return TradingProfiles.get_current_profile().get("post_reset_spacing_minutes", 90)
 
 
 # ============================================================================

@@ -648,13 +648,13 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             
             # === INDICADORES PRINCIPALES ===
             # RSI Mejorado con análisis de divergencias
-            enhanced_rsi = AdvancedIndicators.enhanced_rsi(df)
+            enhanced_rsi = AdvancedIndicators.enhanced_rsi(df, symbol, timeframe)
             
             # Bollinger Bands para contexto de volatilidad
-            bollinger = AdvancedIndicators.bollinger_bands(df)
+            bollinger = AdvancedIndicators.bollinger_bands(df, symbol, timeframe)
             
             # VWAP para análisis institucional
-            vwap_analysis = AdvancedIndicators.vwap(df)
+            vwap_analysis = AdvancedIndicators.vwap(df, symbol, timeframe)
             
             # === INDICADORES DE VOLUMEN ===
             # On Balance Volume

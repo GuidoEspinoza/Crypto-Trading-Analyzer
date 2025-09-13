@@ -4,6 +4,7 @@ Biblioteca completa de indicadores profesionales para análisis técnico
 """
 
 import pandas as pd
+import pandas as pd
 import pandas_ta as ta
 import numpy as np
 import warnings
@@ -13,8 +14,9 @@ from datetime import datetime
 from functools import lru_cache
 import hashlib
 
-# Importar configuración centralizada
 from src.config.config import AdvancedIndicatorsConfig, FibonacciConfig, OscillatorConfig, CalculationConfig
+from src.utils.advanced_cache import indicator_cache, cached_function
+from src.utils.error_handler import handle_errors
 
 # Suprimir warnings específicos de pandas_ta
 warnings.filterwarnings('ignore', message='.*dtype incompatible.*')
@@ -43,37 +45,27 @@ class IchimokuCloud:
     price_position: str      # Arriba/Dentro/Debajo de la nube
 
 class AdvancedIndicators:
-    """Clase para calcular indicadores técnicos avanzados con optimizaciones"""
-    
-    # Cache para resultados de indicadores
-    _indicator_cache = {}
-    _cache_max_size = 1000
+    """Clase para calcular indicadores técnicos avanzados con cache optimizado"""
     
     @classmethod
-    def _get_cache_key(cls, df: pd.DataFrame, indicator_name: str, **kwargs) -> str:
-        """🔑 Generar clave de cache basada en datos y parámetros"""
+    def _get_cache_key(cls, symbol: str, timeframe: str, indicator_name: str, **kwargs) -> str:
+        """🔑 Generar clave de cache optimizada"""
         try:
-            # Usar hash de los últimos valores para identificar el dataset
-            last_values = f"{df['close'].iloc[-1]}_{df['volume'].iloc[-1]}_{len(df)}"
             params_str = "_".join([f"{k}_{v}" for k, v in sorted(kwargs.items())])
-            cache_key = f"{indicator_name}_{last_values}_{params_str}"
+            cache_key = f"{symbol}_{timeframe}_{indicator_name}_{params_str}"
             return hashlib.md5(cache_key.encode()).hexdigest()[:16]
         except:
-            return f"{indicator_name}_{id(df)}"
+            return f"{indicator_name}_{symbol}_{timeframe}"
     
     @classmethod
-    def _get_from_cache(cls, cache_key: str):
-        """📦 Obtener resultado del cache"""
-        return cls._indicator_cache.get(cache_key)
+    def _get_cached_indicator(cls, symbol: str, timeframe: str, indicator_name: str, params: Dict):
+        """📦 Obtener indicador del cache avanzado"""
+        return indicator_cache.get_indicator(symbol, timeframe, indicator_name, params)
     
     @classmethod
-    def _store_in_cache(cls, cache_key: str, result):
-        """💾 Almacenar resultado en cache"""
-        if len(cls._indicator_cache) >= cls._cache_max_size:
-            # Limpiar cache más antiguo (FIFO simple)
-            oldest_key = next(iter(cls._indicator_cache))
-            del cls._indicator_cache[oldest_key]
-        cls._indicator_cache[cache_key] = result
+    def _cache_indicator(cls, symbol: str, timeframe: str, indicator_name: str, params: Dict, result):
+        """💾 Almacenar indicador en cache avanzado"""
+        return indicator_cache.cache_indicator(symbol, timeframe, indicator_name, params, result)
     
     @staticmethod
     def safe_float(value, default: float = 0.0) -> float:
@@ -572,14 +564,18 @@ class AdvancedIndicators:
             }
     
     @classmethod
-    def bollinger_bands(cls, df: pd.DataFrame, period: int = None, std_dev: float = None) -> Dict:
+    @handle_errors()
+    def bollinger_bands(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = '1h', 
+                       period: int = None, std_dev: float = None) -> Dict:
         """
-        📊 Calcular Bandas de Bollinger (optimizado con cache)
+        📊 Calcular Bandas de Bollinger con análisis avanzado y cache optimizado
         
         Args:
             df: DataFrame con datos OHLCV
-            period: Período para la media móvil
-            std_dev: Desviaciones estándar para las bandas
+            symbol: Símbolo del activo
+            timeframe: Marco temporal
+            period: Período para la media móvil (default desde config)
+            std_dev: Desviaciones estándar (default desde config)
             
         Returns:
             Diccionario con bandas y señales
@@ -589,108 +585,97 @@ class AdvancedIndicators:
         if std_dev is None:
             std_dev = AdvancedIndicatorsConfig.BOLLINGER_STD_DEV
             
-        # Verificar cache
-        cache_key = cls._get_cache_key(df, 'bollinger_bands', period=period, std_dev=std_dev)
-        cached_result = cls._get_from_cache(cache_key)
+        # Verificar cache avanzado
+        params = {'period': period, 'std_dev': std_dev}
+        cached_result = cls._get_cached_indicator(symbol, timeframe, 'bollinger_bands', params)
         if cached_result is not None:
             return cached_result
+        
+        # Optimización: usar cálculo manual para datasets pequeños
+        if len(df) < 100:
+            sma = df['close'].rolling(window=period).mean()
+            std = df['close'].rolling(window=period).std()
+            upper_band = sma + (std * std_dev)
+            lower_band = sma - (std * std_dev)
+            middle_band = sma
+        else:
+            bb = ta.bbands(df['close'], length=period, std=std_dev)
             
-        try:
-            # Optimización: usar cálculo manual para datasets pequeños
-            if len(df) < 100:
+            if bb is None or bb.empty:
+                # Fallback a cálculo manual
                 sma = df['close'].rolling(window=period).mean()
                 std = df['close'].rolling(window=period).std()
                 upper_band = sma + (std * std_dev)
                 lower_band = sma - (std * std_dev)
                 middle_band = sma
             else:
-                bb = ta.bbands(df['close'], length=period, std=std_dev)
-                
-                if bb is None or bb.empty:
-                    # Fallback a cálculo manual
-                    sma = df['close'].rolling(window=period).mean()
-                    std = df['close'].rolling(window=period).std()
-                    upper_band = sma + (std * std_dev)
-                    lower_band = sma - (std * std_dev)
-                    middle_band = sma
-                else:
-                    # Usar pandas-ta
-                    columns = bb.columns.tolist()
-                    upper_band = bb[columns[0]]  # BBU
-                    middle_band = bb[columns[1]]  # BBM
-                    lower_band = bb[columns[2]]  # BBL
-            
-            current_price = df['close'].iloc[-1]
-            current_upper = cls.safe_float(upper_band.iloc[-1])
-            current_middle = cls.safe_float(middle_band.iloc[-1])
-            current_lower = cls.safe_float(lower_band.iloc[-1])
-            
-            # Calcular posición del precio en las bandas (0-100%)
-            if current_upper != current_lower:
-                bb_position = ((current_price - current_lower) / (current_upper - current_lower)) * 100
-            else:
-                bb_position = 50.0
-            
-            # Generar señales
-            if current_price <= current_lower:
-                signal = "BUY"
-                interpretation = "🟢 Precio toca banda inferior - Posible rebote"
-            elif current_price >= current_upper:
-                signal = "SELL"
-                interpretation = "🔴 Precio toca banda superior - Posible corrección"
-            elif bb_position < 20:
-                signal = "BUY"
-                interpretation = "📈 Precio cerca de banda inferior - Zona de compra"
-            elif bb_position > 80:
-                signal = "SELL"
-                interpretation = "📉 Precio cerca de banda superior - Zona de venta"
-            else:
-                signal = "HOLD"
-                interpretation = "⚪ Precio en rango medio de las bandas"
-            
-            # Calcular ancho de las bandas (volatilidad)
-            band_width = ((current_upper - current_lower) / current_middle) * 100
-            
-            result = {
-                "upper_band": round(current_upper, 2),
-                "middle_band": round(current_middle, 2),
-                "lower_band": round(current_lower, 2),
-                "bb_position": round(bb_position, 1),
-                "band_width": round(band_width, 2),
-                "signal": signal,
-                "interpretation": interpretation
-            }
-            
-            # Almacenar en cache
-            cls._store_in_cache(cache_key, result)
-            return result
-            
-        except Exception as e:
-            current_price = cls.safe_float(df['close'].iloc[-1])
-            return {
-                "upper_band": current_price * 1.02,
-                "middle_band": current_price,
-                "lower_band": current_price * 0.98,
-                "bb_position": 50.0,
-                "band_width": 4.0,
-                "signal": "HOLD",
-                "interpretation": f"Error calculando Bollinger Bands: {str(e)}"
-            }
+                # Usar pandas-ta
+                columns = bb.columns.tolist()
+                upper_band = bb[columns[0]]  # BBU
+                middle_band = bb[columns[1]]  # BBM
+                lower_band = bb[columns[2]]  # BBL
+        
+        current_price = df['close'].iloc[-1]
+        current_upper = cls.safe_float(upper_band.iloc[-1])
+        current_middle = cls.safe_float(middle_band.iloc[-1])
+        current_lower = cls.safe_float(lower_band.iloc[-1])
+        
+        # Calcular posición del precio en las bandas (0-100%)
+        if current_upper != current_lower:
+            bb_position = ((current_price - current_lower) / (current_upper - current_lower)) * 100
+        else:
+            bb_position = 50.0
+        
+        # Generar señales
+        if current_price <= current_lower:
+            signal = "BUY"
+            interpretation = "🟢 Precio toca banda inferior - Posible rebote"
+        elif current_price >= current_upper:
+            signal = "SELL"
+            interpretation = "🔴 Precio toca banda superior - Posible corrección"
+        elif bb_position < 20:
+            signal = "BUY"
+            interpretation = "📈 Precio cerca de banda inferior - Zona de compra"
+        elif bb_position > 80:
+            signal = "SELL"
+            interpretation = "📉 Precio cerca de banda superior - Zona de venta"
+        else:
+            signal = "HOLD"
+            interpretation = "⚪ Precio en rango medio de las bandas"
+        
+        # Calcular ancho de las bandas (volatilidad)
+        band_width = ((current_upper - current_lower) / current_middle) * 100
+        
+        result = {
+            "upper_band": round(current_upper, 2),
+            "middle_band": round(current_middle, 2),
+            "lower_band": round(current_lower, 2),
+            "bb_position": round(bb_position, 1),
+            "band_width": round(band_width, 2),
+            "signal": signal,
+            "interpretation": interpretation
+        }
+        
+        # Almacenar en cache avanzado
+        cls._cache_indicator(symbol, timeframe, 'bollinger_bands', params, result)
+        return result
     
     @classmethod
-    def vwap(cls, df: pd.DataFrame) -> Dict:
+    def vwap(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = '1h') -> Dict:
         """
         📊 Calcular Volume Weighted Average Price (VWAP) (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
+            symbol: Símbolo del activo
+            timeframe: Timeframe de los datos
             
         Returns:
             Diccionario con VWAP y señales
         """
         # Verificar cache
-        cache_key = cls._get_cache_key(df, 'vwap')
-        cached_result = cls._get_from_cache(cache_key)
+        params = {}
+        cached_result = cls._get_cached_indicator(symbol, timeframe, 'vwap', params)
         if cached_result is not None:
             return cached_result
             
@@ -742,7 +727,7 @@ class AdvancedIndicators:
             }
             
             # Almacenar en cache
-            cls._store_in_cache(cache_key, result)
+            cls._cache_indicator(symbol, timeframe, 'vwap', params, result)
             return result
             
         except Exception as e:
@@ -1036,12 +1021,14 @@ class AdvancedIndicators:
             }
     
     @classmethod
-    def enhanced_rsi(cls, df: pd.DataFrame, period: int = None) -> Dict:
+    def enhanced_rsi(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = '1h', period: int = None) -> Dict:
         """
         📊 RSI Mejorado con análisis de divergencias (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
+            symbol: Símbolo del activo
+            timeframe: Timeframe de los datos
             period: Período para el cálculo
             
         Returns:
@@ -1051,8 +1038,8 @@ class AdvancedIndicators:
             period = AdvancedIndicatorsConfig.RSI_PERIOD
             
         # Verificar cache
-        cache_key = cls._get_cache_key(df, 'enhanced_rsi', period=period)
-        cached_result = cls._get_from_cache(cache_key)
+        params = {'period': period}
+        cached_result = cls._get_cached_indicator(symbol, timeframe, 'enhanced_rsi', params)
         if cached_result is not None:
             return cached_result
             
@@ -1150,7 +1137,7 @@ class AdvancedIndicators:
             }
             
             # Almacenar en cache
-            cls._store_in_cache(cache_key, result)
+            cls._cache_indicator(symbol, timeframe, 'enhanced_rsi', params, result)
             return result
             
         except Exception as e:
