@@ -14,7 +14,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 try:
-    from utils.advanced_cache import (
+    from src.utils.advanced_cache import (
         IndicatorCache,
         indicator_cache,
         cached_function,

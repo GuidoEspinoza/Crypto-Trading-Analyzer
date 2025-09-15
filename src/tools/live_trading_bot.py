@@ -20,7 +20,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 from src.core.trading_bot import TradingBot
-from src.config.config import TradingBotConfig
+from src.config.config import TradingBotConfig, SYMBOLS
 from src.database.database import db_manager
 from src.config.live_trading_bot_config import LiveTradingBotConfig, live_trading_bot_config
 
@@ -120,7 +120,7 @@ class LiveTradingBot:
         self.live_config = live_trading_bot_config
         
         # Configuración del bot
-        self.symbols = TradingBotConfig.SYMBOLS_LIVE_BOT
+        self.symbols = SYMBOLS
         self.update_interval = self.config.get_live_update_interval()
         self.running = False
         

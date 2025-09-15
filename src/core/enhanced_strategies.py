@@ -60,8 +60,9 @@ class TradingStrategy(ABC):
         """Obtener datos de mercado"""
         # Usar timeframe del perfil activo si no se especifica
         if timeframe is None:
-            from src.config.config import TradingConfig
-            timeframe = TradingConfig.get_primary_timeframe()
+            from src.config.config import TradingBotConfig
+            config = TradingBotConfig()
+            timeframe = config.get_primary_timeframe()
         
         import ccxt
         exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
@@ -86,8 +87,9 @@ class TradingStrategy(ABC):
             logging.error(f"Error getting current price for {symbol}: {e}")
             # Fallback: usar el último precio de los datos históricos con timeframe primario
             try:
-                from src.config.config import TradingConfig
-                primary_timeframe = TradingConfig.get_primary_timeframe()
+                from src.config.config import TradingBotConfig
+                config = TradingBotConfig()
+                primary_timeframe = config.get_primary_timeframe()
                 df = self.get_market_data(symbol, primary_timeframe, limit=1)
                 return float(df['close'].iloc[-1]) if not df.empty else 0.0
             except:
@@ -926,8 +928,9 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
         # Configuración desde archivo centralizado
         self.config = StrategyConfig.MultiTimeframe()
         # Usar timeframes del perfil activo en lugar de hardcodeados
-        from src.config.config import TradingConfig
-        self.timeframes = TradingConfig.get_professional_timeframes()
+        from src.config.config import TradingBotConfig
+        config = TradingBotConfig()
+        self.timeframes = config.get_professional_timeframes()
         self.min_confidence = self.config.get_min_confidence()
         # Configurar RSI dinámicamente basado en timeframes del perfil
         self.rsi_config = self._build_dynamic_rsi_config()
@@ -984,8 +987,8 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             # Analizar cada timeframe
             for tf in self.timeframes:
                 try:
-                    from src.config.config import DataLimitsConfig
-                    df = self.get_market_data(symbol, tf, limit=DataLimitsConfig.get_trend_limit())
+                    from src.config.config import ThresholdConfig
+                    df = self.get_market_data(symbol, tf, limit=ThresholdConfig.get_trend_limit())
                     if not df.empty:
                         trends[tf] = self.analyze_trend(df)
                         
@@ -1060,6 +1063,9 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                 current_price, signal_type, current_atr
             )
             
+            # Usar el timeframe más largo disponible para confirmación de tendencia
+            longest_tf = self.timeframes[-1] if self.timeframes else list(trends.keys())[-1] if trends else "1h"
+            
             return EnhancedSignal(
                 symbol=symbol,
                 strategy_name=self.name,
@@ -1079,8 +1085,6 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                 },
                 notes=f"Multi-TF: {buy_votes}B/{sell_votes}S votes, Trends: {trends}",
                 volume_confirmation=bool(volume_analysis.get("volume_confirmation", False)),
-                # Usar el timeframe más largo disponible para confirmación de tendencia
-                longest_tf = self.timeframes[-1] if self.timeframes else list(trends.keys())[-1] if trends else "1h",
                 trend_confirmation=str(trends.get(longest_tf, "NEUTRAL")),
                 risk_reward_ratio=round(float(risk_reward), 2),
                 stop_loss_price=round(float(stop_loss), 2),

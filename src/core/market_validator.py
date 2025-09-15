@@ -24,8 +24,8 @@ from functools import lru_cache
 import time
 
 # Importaciones locales
-from database.database import db_manager
-from database.models import Trade, Portfolio
+from ..database.database import db_manager
+from ..database.models import Trade, Portfolio
 from .position_manager import PositionManager
 from src.config.config import (
     CONSOLIDATED_CONFIG,

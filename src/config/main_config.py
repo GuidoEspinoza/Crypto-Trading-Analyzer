@@ -58,7 +58,14 @@ class TradingBotDefaults:
     
     def __post_init__(self):
         if self.default_symbols is None:
-            self.default_symbols = ["BTC/USDT", "ETH/USDT", "ADA/USDT"]
+            # Importar símbolos centralizados desde global_constants
+            try:
+                from .global_constants import TEST_SYMBOLS
+                # Convertir formato BTCUSDT a BTC/USDT para compatibilidad
+                self.default_symbols = [symbol.replace('USDT', '/USDT') for symbol in TEST_SYMBOLS]
+            except ImportError:
+                # Fallback en caso de error de importación
+                self.default_symbols = ["BTC/USDT", "ETH/USDT", "ADA/USDT"]
 
 @dataclass
 class AnalysisConfig:

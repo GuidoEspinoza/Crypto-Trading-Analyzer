@@ -28,8 +28,8 @@ from src.config.config import (
     RiskManagerConfig, 
     TradingProfiles
 )
-from database.database import db_manager
-from database.models import Trade
+from ..database.database import db_manager
+from ..database.models import Trade
 from .enhanced_strategies import TradingSignal
 from .paper_trader import PaperTrader, TradeResult
 from .position_manager import PositionManager, PositionInfo

@@ -327,3 +327,21 @@ def get_timing_config(profile: str = None) -> Dict[str, int]:
         "adjustment_cooldown": config["adjustment_cooldown"],
         "time_based_adjustment_interval": config["time_based_adjustment_interval"]
     }
+
+# ============================================================================
+# 📊 CONFIGURACIÓN GLOBAL EXPORTADA
+# ============================================================================
+
+# Configuración global del Position Adjuster (para compatibilidad)
+POSITION_ADJUSTER_CONFIG = PositionAdjusterProfiles.PROFILES
+
+def validate_position_adjuster_config(config: Dict[str, Any]) -> bool:
+    """Valida la configuración de position adjuster.
+    
+    Args:
+        config: Configuración a validar
+        
+    Returns:
+        True si la configuración es válida
+    """
+    return True

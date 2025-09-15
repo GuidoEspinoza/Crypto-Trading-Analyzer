@@ -31,6 +31,17 @@ import os
 from typing import List, Dict, Any
 from dataclasses import dataclass, field
 
+# Importar constantes globales (siempre disponibles)
+from .global_constants import (
+    GLOBAL_INITIAL_BALANCE,
+    USDT_BASE_PRICE,
+    TIMEZONE,
+    DAILY_RESET_HOUR,
+    DAILY_RESET_MINUTE,
+    SYMBOLS,
+    TEST_SYMBOLS
+)
+
 # Importar todas las configuraciones modulares
 try:
     from .advanced_indicators_config import (
@@ -76,13 +87,12 @@ try:
     from .trading_bot_config import (
         TRADING_BOT_CONFIG,
         TRADING_PROFILE as TRADING_PROFILE_FROM_CONFIG,
-        GLOBAL_INITIAL_BALANCE,
-        USDT_BASE_PRICE,
-        TIMEZONE,
-        DAILY_RESET_HOUR,
-        DAILY_RESET_MINUTE,
         get_trading_bot_config,
         validate_trading_bot_config
+    )
+    from .global_constants import (
+        SYMBOLS,
+        TEST_SYMBOLS
     )
 except ImportError as e:
     logger = logging.getLogger(__name__)
@@ -98,12 +108,7 @@ except ImportError as e:
     POSITION_MONITOR_CONFIG = {}
     TRADING_BOT_CONFIG = {}
     
-    # Constantes de fallback importadas desde trading_bot_config
-    GLOBAL_INITIAL_BALANCE = 1000.0
-    USDT_BASE_PRICE = 1.0
-    TIMEZONE = 'America/Santiago'
-    DAILY_RESET_HOUR = 11
-    DAILY_RESET_MINUTE = 0
+    # Las constantes ya están importadas al inicio del archivo
     
     # Funciones de fallback
     def get_trading_bot_config(profile: str = None):
@@ -507,6 +512,19 @@ class TradingProfiles:
         # Los valores específicos del perfil tienen prioridad sobre los defaults
         result = defaults.copy()
         
+        # Agregar datos básicos del perfil desde TradingProfiles.PROFILES
+        if TRADING_PROFILE in cls.PROFILES:
+            profile_data = cls.PROFILES[TRADING_PROFILE]
+            result.update({
+                'name': profile_data.get('name', TRADING_PROFILE),
+                'description': profile_data.get('description', ''),
+                'timeframes': profile_data.get('timeframes', []),
+                'risk_level': profile_data.get('risk_level', 'medium'),
+                'frequency': profile_data.get('frequency', 'medium'),
+                'analysis_interval': profile_data.get('analysis_interval', 60),  # Default 60 segundos
+                'min_confidence': profile_data.get('min_confidence', 65.0)  # Default 65%
+            })
+        
         # Actualizar con configuración específica del paper trader si existe
         if 'paper_trader' in config and config['paper_trader']:
             result.update(config['paper_trader'])
@@ -654,6 +672,18 @@ class TradingBotConfig:
             # Fallback si no se puede importar
             return 0.15  # 15% por defecto
     
+    def get_professional_timeframes(self) -> list:
+        """Obtiene los timeframes profesionales para análisis multi-timeframe."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('timeframes', ['15m', '1h', '4h'])
+        except ImportError:
+            # Fallback basado en el perfil desde TradingProfiles
+            if self.profile in TradingProfiles.PROFILES:
+                return TradingProfiles.PROFILES[self.profile].get('timeframes', ['15m', '1h', '4h'])
+            return ['15m', '1h', '4h']  # Fallback por defecto
+    
     @classmethod
     def get_thread_join_timeout(cls) -> int:
         """Obtiene el timeout para join de threads en segundos."""
@@ -675,6 +705,16 @@ class TradingBotConfig:
         except ImportError:
             # Fallback si no se puede importar
             return 300  # 5 minutos por defecto
+    
+    def get_min_confidence_threshold(self) -> float:
+        """Obtiene el umbral mínimo de confianza para trades."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('min_confidence_threshold', 70.0)
+        except ImportError:
+            # Fallback usando TradingProfiles
+            return TradingProfiles.get_current_profile().get("min_confidence_threshold", 70.0)
 
 @dataclass
 class RiskManagerConfig:
@@ -786,8 +826,8 @@ def reload_config():
 
 
 # Funciones de utilidad para configuración
-def validate_consolidated_config():
-    """Valida la configuración consolidada."""
+def validate_consolidated_config_legacy():
+    """Valida la configuración consolidada (versión legacy)."""
     required_sections = ['trading_bot', 'risk_manager', 'strategies']
     for section in required_sections:
         if section not in CONSOLIDATED_CONFIG:
@@ -834,13 +874,8 @@ __all__ = [
 # CONFIGURACIÓN DEL PAPER TRADER
 # ============================================================================
 
-# Importar variables centralizadas desde trading_bot_config
-try:
-    from .global_constants import GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE
-except ImportError:
-    # Fallback si no se puede importar
-    GLOBAL_INITIAL_BALANCE = 1000.0
-    USDT_BASE_PRICE = 1.0
+# Importar variables centralizadas desde global_constants
+from .global_constants import GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE
 
 class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
@@ -1421,8 +1456,8 @@ class AdvancedIndicatorsConfig:
 class TestingConfig:
     """Configuración específica para testing y desarrollo."""
     
-    # Símbolos para testing - subset reducido para pruebas rápidas
-    TEST_SYMBOLS: List[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    # Símbolos para testing - subset reducido para pruebas rápidas (importados desde global_constants.py)
+    TEST_SYMBOLS_LIST: List[str] = TEST_SYMBOLS
     
     # Configuración de trading bot para testing
     TEST_MIN_CONFIDENCE: float = 70.0
@@ -1440,7 +1475,7 @@ class TestingConfig:
 
 # Configuración rápida para desarrollo y testing
 DEV_CONFIG = {
-    'symbols': ['BTCUSDT', 'ETHUSDT', 'ADAUSDT'],  # Solo 3 símbolos para testing
+    'symbols': TEST_SYMBOLS,  # Usa símbolos centralizados para testing
     'analysis_interval': 300,  # Análisis cada 5 minutos para testing
     'min_confidence': 60.0,  # Umbral más bajo para testing
     'paper_balance': 1000.0,  # Balance menor para testing
@@ -2042,10 +2077,8 @@ class TradingBotOptimizedConfig:
     """🎯 Configuración optimizada del TradingBot que elimina valores hardcodeados"""
     
     # === SÍMBOLOS POR DEFECTO OPTIMIZADOS (ATRIBUTO DE CLASE) ===
-    DEFAULT_SYMBOLS = [
-        'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 
-        'LINKUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
-    ]
+    # Importados desde global_constants.py para centralización
+    DEFAULT_SYMBOLS = SYMBOLS
     
     # === TIMEFRAMES DE ANÁLISIS (ATRIBUTO DE CLASE) ===
     ANALYSIS_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h']
@@ -2126,11 +2159,8 @@ class TradingBotOptimizedConfig:
     EVENT_QUEUE_MAX_SIZE: int = 1000
     EVENT_PROCESSING_TIMEOUT_SECONDS: int = 1
     
-    # Field para instancia
-    symbols: List[str] = field(default_factory=lambda: [
-        'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 
-        'LINKUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
-    ])
+    # Field para instancia - usa símbolos centralizados
+    symbols: List[str] = field(default_factory=lambda: SYMBOLS.copy())
     
     # === CONFIGURACIÓN DE ESTRATEGIAS OPTIMIZADA ===
     STRATEGY_WEIGHTS: Dict[str, float] = field(default_factory=lambda: {
@@ -2334,11 +2364,8 @@ class TradingBotOptimizedConfig:
         return self.get_optimized_config('balanced')
 
 
-# Agregar atributos de clase después de la definición
-TradingBotOptimizedConfig.DEFAULT_SYMBOLS = [
-    'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 
-    'LINKUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
-]
+# Agregar atributos de clase después de la definición - usa símbolos centralizados
+TradingBotOptimizedConfig.DEFAULT_SYMBOLS = SYMBOLS
 
 TradingBotOptimizedConfig.ANALYSIS_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h']
 
@@ -2492,7 +2519,7 @@ def validate_system_configuration() -> Dict[str, Any]:
             validation_results['warnings'].append("No se pudo importar enhanced_strategies_config")
             
         try:
-            from .market_validator_config import get_market_validator_config
+            from .market_validator_config import get_market_analyzer_config
             modular_imports['market_validator'] = True
         except ImportError:
             validation_results['warnings'].append("No se pudo importar market_validator_config")
@@ -2504,7 +2531,7 @@ def validate_system_configuration() -> Dict[str, Any]:
             validation_results['warnings'].append("No se pudo importar paper_trader_config")
             
         try:
-            from .position_adjuster_config import get_adjuster_config
+            from .position_adjuster_config import get_position_adjuster_config
             modular_imports['position_adjuster'] = True
         except ImportError:
             validation_results['warnings'].append("No se pudo importar position_adjuster_config")
@@ -2516,7 +2543,7 @@ def validate_system_configuration() -> Dict[str, Any]:
             validation_results['warnings'].append("No se pudo importar position_manager_config")
             
         try:
-            from .position_monitor_config import get_monitor_config
+            from .position_monitor_config import get_position_monitor_config
             modular_imports['position_monitor'] = True
         except ImportError:
             validation_results['warnings'].append("No se pudo importar position_monitor_config")
@@ -2636,6 +2663,30 @@ except Exception as e:
         'daily_reset_minute': 0,
     }
 
+def get_current_profile() -> Dict[str, Any]:
+    """
+    Obtiene la configuración del perfil de trading activo.
+    
+    Returns:
+        Dict[str, Any]: Configuración del perfil actual con todos los parámetros necesarios
+    """
+    try:
+        from .trading_bot_config import get_trading_bot_config
+        
+        # Obtener configuración del perfil actual
+        profile_config = get_trading_bot_config(TRADING_PROFILE)
+        
+        if profile_config:
+            return profile_config
+        else:
+            # Fallback a configuración por defecto
+            return TradingProfiles.PROFILES.get(TRADING_PROFILE, {})
+            
+    except Exception as e:
+        logging.warning(f"Error obteniendo perfil actual: {e}")
+        # Fallback a configuración por defecto
+        return TradingProfiles.PROFILES.get(TRADING_PROFILE, {})
+
 # Exportar funciones y configuraciones principales
 __all__ = [
     'TRADING_PROFILE',
@@ -2649,5 +2700,6 @@ __all__ = [
     'optimized_config',
     'TradingBotOptimizedConfig',
     'validate_system_configuration',
-    'auto_validate_on_startup'
+    'auto_validate_on_startup',
+    'get_current_profile'
 ]

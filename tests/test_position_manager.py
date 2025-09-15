@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 from src.core.position_manager import PositionManager, PositionInfo, PositionUpdate
 from src.config.config import TradingProfiles, RiskManagerConfig
 from src.core.paper_trader import TradeResult
-from database.models import Trade
+from src.database.models import Trade
 
 
 class TestPositionManagerOptimized:

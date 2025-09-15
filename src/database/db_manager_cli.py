@@ -20,9 +20,9 @@ import time
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
-from database.database import DatabaseManager
-from database.migrations import run_migrations, get_migration_status
-from database.models import Trade, Portfolio, Strategy, BacktestResult, TradingSignal
+from .database import DatabaseManager
+from .migrations import run_migrations, get_migration_status
+from .models import Trade, Portfolio, Strategy, BacktestResult, TradingSignal
 from config.cli_config import DatabaseCLIConfig, get_cli_config, get_cli_config_from_env
 from sqlalchemy import text, func
 

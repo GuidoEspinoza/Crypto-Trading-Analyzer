@@ -13,7 +13,7 @@ Constantes incluidas:
 - Límites y umbrales globales
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # ============================================================================
 # 💰 CONFIGURACIÓN FINANCIERA GLOBAL
@@ -32,6 +32,23 @@ USDT_BASE_PRICE: float = 1.0
 
 # Moneda base del sistema
 BASE_CURRENCY: str = "USDT"
+
+# ============================================================================
+# 🪙 SÍMBOLOS DE TRADING CENTRALIZADOS
+# ============================================================================
+
+# Selección basada en alta liquidez, volatilidad y volumen de trading
+SYMBOLS: List[str] = [
+    # Pares principales (máxima liquidez)
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT",
+    # Altcoins de alta capitalización y volumen
+    "ADAUSDT", "XRPUSDT", "LINKUSDT", "DOGEUSDT", "TRXUSDT",
+    # Tokens con alta volatilidad y buen volumen
+    "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "SUIUSDT"
+]
+
+# Símbolos para testing (subconjunto de los principales)
+TEST_SYMBOLS: List[str] = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 # ============================================================================
 # ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
@@ -176,6 +193,10 @@ __all__ = [
     "GLOBAL_INITIAL_BALANCE",
     "USDT_BASE_PRICE", 
     "BASE_CURRENCY",
+    
+    # Símbolos de trading
+    "SYMBOLS",
+    "TEST_SYMBOLS",
     
     # Constantes temporales
     "TIMEZONE",

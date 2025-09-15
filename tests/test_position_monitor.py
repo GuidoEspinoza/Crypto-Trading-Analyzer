@@ -22,7 +22,7 @@ from src.core.position_monitor import PositionMonitor, PositionStatus
 from src.core.position_manager import PositionInfo
 from src.core.enhanced_strategies import TradingSignal
 from src.core.paper_trader import TradeResult
-from database.models import Trade
+from src.database.models import Trade
 from src.config.config import TradingBotConfig, TradingProfiles
 
 

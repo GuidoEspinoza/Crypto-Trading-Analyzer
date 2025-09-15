@@ -34,8 +34,8 @@ from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
 from .position_adjuster import PositionAdjuster
-from database.database import db_manager
-from database.models import Strategy as DBStrategy
+from ..database.database import db_manager
+from ..database.models import Strategy as DBStrategy
 
 # Configurar logging ANTES de la clase
 logging.basicConfig(level=logging.INFO)

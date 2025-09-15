@@ -303,3 +303,47 @@ def get_monitoring_config(profile: str = None) -> Dict[str, Any]:
         "position_timeout": config["position_timeout"],
         "stale_position_threshold": config["stale_position_threshold"]
     }
+
+# ============================================================================
+# 📊 FUNCIONES DE VALIDACIÓN
+# ============================================================================
+
+def validate_position_manager_config(config: Dict[str, Any]) -> bool:
+    """Valida la configuración del Position Manager.
+    
+    Args:
+        config: Configuración a validar
+    
+    Returns:
+        True si la configuración es válida, False en caso contrario
+    """
+    required_keys = [
+        'max_positions', 'max_position_value', 'min_position_value',
+        'default_stop_loss', 'default_take_profit', 'position_check_interval'
+    ]
+    
+    # Verificar que existan las claves requeridas
+    for key in required_keys:
+        if key not in config:
+            return False
+    
+    # Validar rangos de valores
+    if config.get('max_positions', 0) <= 0:
+        return False
+    if config.get('max_position_value', 0) <= config.get('min_position_value', 0):
+        return False
+    if not (0 < config.get('default_stop_loss', 0) < 1):
+        return False
+    if not (0 < config.get('default_take_profit', 0) < 1):
+        return False
+    if config.get('position_check_interval', 0) <= 0:
+        return False
+    
+    return True
+
+# ============================================================================
+# 📊 CONSTANTE DE CONFIGURACIÓN PARA COMPATIBILIDAD
+# ============================================================================
+
+# Constante que expone todos los perfiles para compatibilidad con imports
+POSITION_MANAGER_CONFIG = PositionManagerProfiles.PROFILES

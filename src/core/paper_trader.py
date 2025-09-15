@@ -22,9 +22,9 @@ from src.config.config import (
     USDT_BASE_PRICE
 )
 
-from database.database import db_manager
-from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
-from .enhanced_strategies import TradingSignal
+from ..database.database import db_manager
+from ..database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
+from .enhanced_strategies import TradingSignal, EnhancedSignal
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -302,7 +302,6 @@ class PaperTrader:
                         # Convertir TradingSignal a EnhancedSignal si es necesario
                         if not hasattr(signal, 'market_regime'):
                             # Crear EnhancedSignal temporal para el cálculo
-                            from .enhanced_strategies import EnhancedSignal
                             enhanced_signal = EnhancedSignal(
                                 symbol=signal.symbol,
                                 signal_type=signal.signal_type,

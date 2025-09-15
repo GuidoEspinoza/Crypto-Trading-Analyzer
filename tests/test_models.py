@@ -10,12 +10,19 @@ from datetime import datetime, timedelta
 import tempfile
 import os
 
+# Agregar el directorio raíz al path
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Intentar importar las clases reales
 try:
     from src.database.models import Trade, Portfolio, Strategy, BacktestResult, TradingSignal, Base
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-except ImportError:
+    MODELS_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import models: {e}")
     # Fallback a mocks si no están disponibles
     Trade = Mock
     Portfolio = Mock
@@ -25,6 +32,7 @@ except ImportError:
     Base = Mock
     create_engine = Mock
     sessionmaker = Mock
+    MODELS_AVAILABLE = False
 
 
 class TestTradeModel(unittest.TestCase):
@@ -32,7 +40,7 @@ class TestTradeModel(unittest.TestCase):
     
     def setUp(self):
         """Configuración inicial para tests."""
-        if Trade != Mock:
+        if MODELS_AVAILABLE:
             # Crear base de datos en memoria para tests
             self.engine = create_engine('sqlite:///:memory:')
             Base.metadata.create_all(self.engine)
@@ -43,10 +51,10 @@ class TestTradeModel(unittest.TestCase):
     
     def tearDown(self):
         """Limpieza después de cada test."""
-        if hasattr(self, 'session') and self.session != Mock:
+        if hasattr(self, 'session') and MODELS_AVAILABLE:
             self.session.close()
     
-    @unittest.skipIf(Trade == Mock, "Trade model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Trade model not available")
     def test_trade_creation(self):
         """Test creación básica de trade."""
         trade = Trade(
@@ -71,7 +79,7 @@ class TestTradeModel(unittest.TestCase):
         self.assertIsNone(trade.status)  # Se aplicará "OPEN" por defecto en DB
         self.assertIsNone(trade.is_paper_trade)  # Se aplicará True por defecto en DB
     
-    @unittest.skipIf(Trade == Mock, "Trade model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Trade model not available")
     def test_trade_with_exit(self):
         """Test trade con precio de salida y PnL."""
         trade = Trade(
@@ -96,7 +104,7 @@ class TestTradeModel(unittest.TestCase):
         self.assertEqual(trade.pnl_percentage, 5.0)
         self.assertEqual(trade.status, "CLOSED")
     
-    @unittest.skipIf(Trade == Mock, "Trade model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Trade model not available")
     def test_trade_with_risk_management(self):
         """Test trade con stop loss y take profit."""
         trade = Trade(
@@ -117,7 +125,7 @@ class TestTradeModel(unittest.TestCase):
         self.assertEqual(trade.take_profit, 1.10)
         self.assertEqual(trade.trailing_stop, 0.02)
     
-    @unittest.skipIf(Trade == Mock, "Trade model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Trade model not available")
     def test_trade_persistence(self):
         """Test persistencia en base de datos."""
         trade = Trade(
@@ -141,7 +149,7 @@ class TestTradeModel(unittest.TestCase):
         self.assertEqual(retrieved_trade.strategy_name, "RSI_Divergence")
         self.assertEqual(retrieved_trade.confidence_score, 0.85)
     
-    @unittest.skipIf(Trade == Mock, "Trade model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Trade model not available")
     def test_trade_repr(self):
         """Test representación string del trade."""
         trade = Trade(
@@ -168,7 +176,7 @@ class TestPortfolioModel(unittest.TestCase):
     
     def setUp(self):
         """Configuración inicial para tests."""
-        if Portfolio != Mock:
+        if MODELS_AVAILABLE:
             self.engine = create_engine('sqlite:///:memory:')
             Base.metadata.create_all(self.engine)
             Session = sessionmaker(bind=self.engine)
@@ -178,10 +186,10 @@ class TestPortfolioModel(unittest.TestCase):
     
     def tearDown(self):
         """Limpieza después de cada test."""
-        if hasattr(self, 'session') and self.session != Mock:
+        if hasattr(self, 'session') and MODELS_AVAILABLE:
             self.session.close()
     
-    @unittest.skipIf(Portfolio == Mock, "Portfolio model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Portfolio model not available")
     def test_portfolio_creation(self):
         """Test creación básica de portfolio."""
         portfolio = Portfolio(
@@ -201,7 +209,7 @@ class TestPortfolioModel(unittest.TestCase):
         self.assertEqual(portfolio.current_value, 25000.0)
         self.assertTrue(portfolio.is_paper)
     
-    @unittest.skipIf(Portfolio == Mock, "Portfolio model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Portfolio model not available")
     def test_portfolio_pnl_calculation(self):
         """Test cálculo de PnL no realizado."""
         portfolio = Portfolio(
@@ -218,7 +226,7 @@ class TestPortfolioModel(unittest.TestCase):
         self.assertEqual(portfolio.unrealized_pnl, 2000.0)
         self.assertEqual(portfolio.unrealized_pnl_percentage, 10.0)
     
-    @unittest.skipIf(Portfolio == Mock, "Portfolio model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Portfolio model not available")
     def test_portfolio_persistence(self):
         """Test persistencia en base de datos."""
         portfolio = Portfolio(
@@ -240,7 +248,7 @@ class TestPortfolioModel(unittest.TestCase):
         self.assertEqual(retrieved_portfolio.quantity, 10000.0)
         self.assertFalse(retrieved_portfolio.is_paper)
     
-    @unittest.skipIf(Portfolio == Mock, "Portfolio model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Portfolio model not available")
     def test_portfolio_repr(self):
         """Test representación string del portfolio."""
         portfolio = Portfolio(
@@ -261,7 +269,7 @@ class TestStrategyModel(unittest.TestCase):
     
     def setUp(self):
         """Configuración inicial para tests."""
-        if Strategy != Mock:
+        if MODELS_AVAILABLE:
             self.engine = create_engine('sqlite:///:memory:')
             Base.metadata.create_all(self.engine)
             Session = sessionmaker(bind=self.engine)
@@ -271,10 +279,10 @@ class TestStrategyModel(unittest.TestCase):
     
     def tearDown(self):
         """Limpieza después de cada test."""
-        if hasattr(self, 'session') and self.session != Mock:
+        if hasattr(self, 'session') and MODELS_AVAILABLE:
             self.session.close()
     
-    @unittest.skipIf(Strategy == Mock, "Strategy model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Strategy model not available")
     def test_strategy_creation(self):
         """Test creación básica de estrategia."""
         strategy = Strategy(
@@ -300,7 +308,7 @@ class TestStrategyModel(unittest.TestCase):
         self.assertTrue(strategy.is_active)
         self.assertTrue(strategy.is_paper_only)
     
-    @unittest.skipIf(Strategy == Mock, "Strategy model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Strategy model not available")
     def test_strategy_performance_metrics(self):
         """Test métricas de performance de estrategia."""
         strategy = Strategy(
@@ -325,7 +333,7 @@ class TestStrategyModel(unittest.TestCase):
         self.assertEqual(strategy.max_win, 500.0)
         self.assertEqual(strategy.max_loss, -200.0)
     
-    @unittest.skipIf(Strategy == Mock, "Strategy model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "Strategy model not available")
     def test_strategy_persistence(self):
         """Test persistencia en base de datos."""
         strategy = Strategy(
@@ -352,7 +360,7 @@ class TestBacktestResultModel(unittest.TestCase):
     
     def setUp(self):
         """Configuración inicial para tests."""
-        if BacktestResult != Mock:
+        if MODELS_AVAILABLE:
             self.engine = create_engine('sqlite:///:memory:')
             Base.metadata.create_all(self.engine)
             Session = sessionmaker(bind=self.engine)
@@ -362,10 +370,10 @@ class TestBacktestResultModel(unittest.TestCase):
     
     def tearDown(self):
         """Limpieza después de cada test."""
-        if hasattr(self, 'session') and self.session != Mock:
+        if hasattr(self, 'session') and MODELS_AVAILABLE:
             self.session.close()
     
-    @unittest.skipIf(BacktestResult == Mock, "BacktestResult model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "BacktestResult model not available")
     def test_backtest_result_creation(self):
         """Test creación básica de resultado de backtest."""
         start_date = datetime(2023, 1, 1)
@@ -396,7 +404,7 @@ class TestBacktestResultModel(unittest.TestCase):
         self.assertEqual(backtest.total_return, 2500.0)
         self.assertEqual(backtest.total_return_percentage, 25.0)
     
-    @unittest.skipIf(BacktestResult == Mock, "BacktestResult model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "BacktestResult model not available")
     def test_backtest_trading_metrics(self):
         """Test métricas de trading del backtest."""
         backtest = BacktestResult(
@@ -422,7 +430,7 @@ class TestBacktestResultModel(unittest.TestCase):
         self.assertEqual(backtest.win_rate, 62.22)
         self.assertEqual(backtest.avg_trade_duration_hours, 24.5)
     
-    @unittest.skipIf(BacktestResult == Mock, "BacktestResult model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "BacktestResult model not available")
     def test_backtest_risk_metrics(self):
         """Test métricas de riesgo del backtest."""
         backtest = BacktestResult(
@@ -448,7 +456,7 @@ class TestBacktestResultModel(unittest.TestCase):
         self.assertEqual(backtest.sortino_ratio, 1.78)
         self.assertEqual(backtest.calmar_ratio, 1.25)
     
-    @unittest.skipIf(BacktestResult == Mock, "BacktestResult model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "BacktestResult model not available")
     def test_backtest_persistence(self):
         """Test persistencia en base de datos."""
         backtest = BacktestResult(
@@ -483,7 +491,7 @@ class TestTradingSignalModel(unittest.TestCase):
     
     def setUp(self):
         """Configuración inicial para tests."""
-        if TradingSignal != Mock:
+        if MODELS_AVAILABLE:
             self.engine = create_engine('sqlite:///:memory:')
             Base.metadata.create_all(self.engine)
             Session = sessionmaker(bind=self.engine)
@@ -493,10 +501,10 @@ class TestTradingSignalModel(unittest.TestCase):
     
     def tearDown(self):
         """Limpieza después de cada test."""
-        if hasattr(self, 'session') and self.session != Mock:
+        if hasattr(self, 'session') and MODELS_AVAILABLE:
             self.session.close()
     
-    @unittest.skipIf(TradingSignal == Mock, "TradingSignal model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "TradingSignal model not available")
     def test_trading_signal_creation(self):
         """Test creación básica de señal de trading."""
         signal = TradingSignal(
@@ -520,7 +528,7 @@ class TestTradingSignalModel(unittest.TestCase):
         # Los valores por defecto se aplican al guardar en DB, no al crear el objeto
         self.assertIsNone(signal.action_taken)  # Se aplicará "NONE" por defecto en DB
     
-    @unittest.skipIf(TradingSignal == Mock, "TradingSignal model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "TradingSignal model not available")
     def test_trading_signal_with_indicators(self):
         """Test señal con datos de indicadores."""
         indicators_data = '{"rsi": 25.5, "macd": 0.15, "bb_position": "lower"}'
@@ -543,7 +551,7 @@ class TestTradingSignalModel(unittest.TestCase):
         self.assertEqual(signal.action_taken, "EXECUTED")
         self.assertEqual(signal.trade_id, 123)
     
-    @unittest.skipIf(TradingSignal == Mock, "TradingSignal model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "TradingSignal model not available")
     def test_trading_signal_with_expiration(self):
         """Test señal con fecha de expiración."""
         generated_at = datetime.now()
@@ -562,7 +570,7 @@ class TestTradingSignalModel(unittest.TestCase):
         # Verificar expiración
         self.assertEqual(signal.expires_at, expires_at)
     
-    @unittest.skipIf(TradingSignal == Mock, "TradingSignal model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "TradingSignal model not available")
     def test_trading_signal_persistence(self):
         """Test persistencia en base de datos."""
         signal = TradingSignal(
@@ -588,7 +596,7 @@ class TestTradingSignalModel(unittest.TestCase):
         self.assertEqual(retrieved_signal.signal_type, "HOLD")
         self.assertEqual(retrieved_signal.confidence_score, 0.65)
     
-    @unittest.skipIf(TradingSignal == Mock, "TradingSignal model not available")
+    @unittest.skipIf(not MODELS_AVAILABLE, "TradingSignal model not available")
     def test_trading_signal_repr(self):
         """Test representación string de la señal."""
         signal = TradingSignal(

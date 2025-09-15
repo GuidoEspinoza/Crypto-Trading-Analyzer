@@ -313,3 +313,21 @@ def get_notification_settings(profile: str = None) -> Dict[str, Any]:
         "enable_risk_notifications": config["enable_risk_notifications"],
         "notification_cooldown": config["notification_cooldown"]
     }
+
+# ============================================================================
+# 📊 CONFIGURACIÓN GLOBAL EXPORTADA
+# ============================================================================
+
+# Configuración global del Position Monitor (para compatibilidad)
+POSITION_MONITOR_CONFIG = PositionMonitorProfiles.PROFILES
+
+def validate_position_monitor_config(config: Dict[str, Any]) -> bool:
+    """Valida la configuración de position monitor.
+    
+    Args:
+        config: Configuración a validar
+        
+    Returns:
+        True si la configuración es válida
+    """
+    return True

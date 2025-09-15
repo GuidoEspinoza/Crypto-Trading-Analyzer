@@ -17,7 +17,7 @@ from io import StringIO
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 try:
-    from utils.error_handler import (
+    from src.utils.error_handler import (
         TradingError,
         IndicatorError,
         DataError,

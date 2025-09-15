@@ -162,7 +162,7 @@ class EnhancedRiskManager:
             
             # Determinar si el trade está aprobado
             profile = TradingProfiles.get_current_profile()
-            min_confidence = profile.get('min_confidence_threshold', 0.5) * 100  # Convertir a porcentaje
+            min_confidence = profile.get('min_confidence_threshold', 65.0)  # Ya está en porcentaje
             is_approved = (
                 risk_level not in [RiskLevel.EXTREME, RiskLevel.VERY_HIGH] and
                 not max_dd_alert and

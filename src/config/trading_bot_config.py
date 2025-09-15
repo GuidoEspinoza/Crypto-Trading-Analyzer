@@ -76,13 +76,13 @@ class TradingBotProfiles:
             "post_reset_spacing_minutes": 60,  # Espaciado especial en primera hora post-reset
             
             # Analysis Config
-            "analysis_interval": 30,  # Intervalo de análisis en segundos
+            "analysis_interval": 30,  # Intervalo de análisis en segundos (óptimo para scalping)
             "min_confidence": 65.0,  # Confianza mínima para trades
             "max_daily_trades": 20,  # Máximo trades diarios
             "max_positions": 8,  # Máximo posiciones simultáneas
             
-            # Timeframes
-            "timeframes": ["1m", "5m", "15m"],
+            # Timeframes - Scalping y trading rápido
+            "timeframes": ["1m", "3m", "5m", "15m"],
         },
         
         "AGRESIVO": {
@@ -124,13 +124,13 @@ class TradingBotProfiles:
             "post_reset_spacing_minutes": 90,  # Espaciado post-reset moderado
             
             # Analysis Config
-            "analysis_interval": 30,  # Intervalo de análisis en segundos
+            "analysis_interval": 45,  # Intervalo de análisis en segundos (coherente con timeframes 5m-1h)
             "min_confidence": 72.0,  # Confianza mínima para trades
             "max_daily_trades": 15,  # Máximo trades diarios
             "max_positions": 7,  # Máximo posiciones simultáneas
             
-            # Timeframes
-            "timeframes": ["15m", "30m", "1h"],
+            # Timeframes - Trading intradiario agresivo
+            "timeframes": ["5m", "15m", "30m", "1h"],
         },
         
         "OPTIMO": {
@@ -177,8 +177,8 @@ class TradingBotProfiles:
             "max_daily_trades": 8,  # Máximo trades diarios conservador
             "max_positions": 4,  # Máximo posiciones simultáneas conservador
             
-            # Timeframes
-            "timeframes": ["1h", "4h", "1d"],
+            # Timeframes - Swing trading balanceado
+            "timeframes": ["30m", "1h", "4h", "1d"],
         },
         
         "CONSERVADOR": {
@@ -225,8 +225,8 @@ class TradingBotProfiles:
             "max_daily_trades": 5,  # Máximo trades diarios muy conservador
             "max_positions": 3,  # Máximo posiciones simultáneas muy conservador
             
-            # Timeframes
-            "timeframes": ["4h", "1d", "1w"],
+            # Timeframes - Trading de posición a largo plazo
+            "timeframes": ["2h", "4h", "1d", "1w"],
         }
     }
 
@@ -270,3 +270,30 @@ def validate_trading_bot_profile(profile: str) -> bool:
         True si el perfil es válido, False en caso contrario
     """
     return profile in TradingBotProfiles.PROFILES
+
+def validate_trading_bot_config(config: Dict[str, Any]) -> bool:
+    """Valida la configuración del trading bot.
+    
+    Args:
+        config: Diccionario con la configuración a validar
+    
+    Returns:
+        True si la configuración es válida, False en caso contrario
+    """
+    required_keys = [
+        'cache_ttl_seconds', 'event_queue_maxsize', 'connection_timeout',
+        'analysis_interval', 'min_confidence', 'max_daily_trades'
+    ]
+    
+    for key in required_keys:
+        if key not in config:
+            return False
+    
+    return True
+
+# ============================================================================
+# 🎯 CONFIGURACIÓN EXPORTADA
+# ============================================================================
+
+# Variable que se importa desde config.py
+TRADING_BOT_CONFIG = TradingBotProfiles.PROFILES
