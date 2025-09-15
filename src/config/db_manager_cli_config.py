@@ -12,7 +12,7 @@ from pathlib import Path
 import os
 
 # Importar configuraciones globales
-from .trading_bot_config import GLOBAL_INITIAL_BALANCE
+from .global_constants import GLOBAL_INITIAL_BALANCE
 
 @dataclass
 class CLICleanupConfig:

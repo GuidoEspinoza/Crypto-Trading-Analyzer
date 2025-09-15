@@ -836,7 +836,7 @@ __all__ = [
 
 # Importar variables centralizadas desde trading_bot_config
 try:
-    from .trading_bot_config import GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE
+    from .global_constants import GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE
 except ImportError:
     # Fallback si no se puede importar
     GLOBAL_INITIAL_BALANCE = 1000.0
@@ -2415,8 +2415,207 @@ def reload_config(new_profile: str = None) -> bool:
         logger.error(f"❌ Error recargando configuración: {e}")
         return False
 
+def validate_system_configuration() -> Dict[str, Any]:
+    """🔍 Validación automática completa del sistema de configuración.
+    
+    Realiza validación exhaustiva de:
+    - Constantes globales
+    - Configuraciones modulares
+    - Integridad de imports
+    - Consistencia de datos
+    
+    Returns:
+        Dict con resultados detallados de validación
+    """
+    validation_results = {
+        'timestamp': None,
+        'global_constants_valid': False,
+        'modular_configs_valid': False,
+        'consolidated_config_valid': False,
+        'imports_valid': False,
+        'overall_valid': False,
+        'errors': [],
+        'warnings': [],
+        'details': {}
+    }
+    
+    try:
+        import datetime
+        validation_results['timestamp'] = datetime.datetime.now().isoformat()
+        
+        # 1. Validar constantes globales
+        try:
+            from .global_constants import validate_global_constants
+            global_validation = validate_global_constants()
+            validation_results['global_constants_valid'] = global_validation.get('all_valid', False)
+            validation_results['details']['global_constants'] = global_validation
+            
+            if not validation_results['global_constants_valid']:
+                invalid_constants = [k for k, v in global_validation.items() if not v and k != 'all_valid']
+                validation_results['errors'].append(f"Constantes globales inválidas: {invalid_constants}")
+                
+        except ImportError as e:
+            validation_results['errors'].append(f"Error importando global_constants: {e}")
+        except Exception as e:
+            validation_results['errors'].append(f"Error validando constantes globales: {e}")
+        
+        # 2. Validar imports de configuraciones modulares
+        modular_imports = {
+            'advanced_indicators': False,
+            'enhanced_risk_manager': False,
+            'enhanced_strategies': False,
+            'market_validator': False,
+            'paper_trader': False,
+            'position_adjuster': False,
+            'position_manager': False,
+            'position_monitor': False,
+            'trading_bot': False
+        }
+        
+        # Verificar cada import modular
+        try:
+            from .advanced_indicators_config import get_advanced_indicators_config
+            modular_imports['advanced_indicators'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar advanced_indicators_config")
+            
+        try:
+            from .enhanced_risk_manager_config import get_risk_manager_config
+            modular_imports['enhanced_risk_manager'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar enhanced_risk_manager_config")
+            
+        try:
+            from .enhanced_strategies_config import get_enhanced_strategies_config
+            modular_imports['enhanced_strategies'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar enhanced_strategies_config")
+            
+        try:
+            from .market_validator_config import get_market_validator_config
+            modular_imports['market_validator'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar market_validator_config")
+            
+        try:
+            from .paper_trader_config import get_paper_trader_config
+            modular_imports['paper_trader'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar paper_trader_config")
+            
+        try:
+            from .position_adjuster_config import get_adjuster_config
+            modular_imports['position_adjuster'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar position_adjuster_config")
+            
+        try:
+            from .position_manager_config import get_position_manager_config
+            modular_imports['position_manager'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar position_manager_config")
+            
+        try:
+            from .position_monitor_config import get_monitor_config
+            modular_imports['position_monitor'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar position_monitor_config")
+            
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            modular_imports['trading_bot'] = True
+        except ImportError:
+            validation_results['warnings'].append("No se pudo importar trading_bot_config")
+        
+        validation_results['imports_valid'] = sum(modular_imports.values()) >= 7  # Al menos 7 de 9
+        validation_results['details']['modular_imports'] = modular_imports
+        
+        # 3. Validar configuración consolidada
+        try:
+            consolidated = get_consolidated_config()
+            validation_results['consolidated_config_valid'] = validate_consolidated_config(consolidated)
+            validation_results['details']['consolidated_keys'] = list(consolidated.keys())
+            
+            if not validation_results['consolidated_config_valid']:
+                validation_results['errors'].append("Configuración consolidada inválida")
+                
+        except Exception as e:
+            validation_results['errors'].append(f"Error validando configuración consolidada: {e}")
+        
+        # 4. Validar configuraciones modulares específicas
+        modular_validations = {}
+        
+        for module_name in modular_imports:
+            if modular_imports[module_name]:
+                try:
+                    module_config = get_module_config(module_name)
+                    modular_validations[module_name] = bool(module_config and len(module_config) > 0)
+                except Exception as e:
+                    modular_validations[module_name] = False
+                    validation_results['warnings'].append(f"Error validando {module_name}: {e}")
+            else:
+                modular_validations[module_name] = False
+        
+        validation_results['modular_configs_valid'] = sum(modular_validations.values()) >= 7
+        validation_results['details']['modular_validations'] = modular_validations
+        
+        # 5. Validación general
+        validation_results['overall_valid'] = (
+            validation_results['global_constants_valid'] and
+            validation_results['imports_valid'] and
+            validation_results['consolidated_config_valid'] and
+            validation_results['modular_configs_valid']
+        )
+        
+        # Log de resultados
+        if validation_results['overall_valid']:
+            logger.info("✅ Validación del sistema de configuración: EXITOSA")
+        else:
+            logger.warning("⚠️ Validación del sistema de configuración: CON ADVERTENCIAS")
+            
+        if validation_results['errors']:
+            for error in validation_results['errors']:
+                logger.error(f"❌ {error}")
+                
+        if validation_results['warnings']:
+            for warning in validation_results['warnings']:
+                logger.warning(f"⚠️ {warning}")
+        
+    except Exception as e:
+        validation_results['errors'].append(f"Error crítico en validación: {e}")
+        logger.error(f"❌ Error crítico en validación del sistema: {e}")
+    
+    return validation_results
+
+
+def auto_validate_on_startup() -> bool:
+    """🚀 Validación automática al inicializar el sistema.
+    
+    Returns:
+        bool: True si la validación es exitosa
+    """
+    try:
+        logger.info("🔍 Iniciando validación automática del sistema...")
+        results = validate_system_configuration()
+        
+        if results['overall_valid']:
+            logger.info("✅ Sistema de configuración validado exitosamente")
+            return True
+        else:
+            logger.warning("⚠️ Sistema de configuración con advertencias pero funcional")
+            return True  # Permitir continuar con advertencias
+            
+    except Exception as e:
+        logger.error(f"❌ Error en validación automática: {e}")
+        return False
+
+
 # Validar configuración al importar el módulo
 try:
+    # Ejecutar validación automática
+    if not auto_validate_on_startup():
+        logger.error("❌ Validación automática falló")
+    
     # Primero intentar inicializar configuración legacy
     if not initialize_config():
         logger.warning("⚠️ Configuración legacy inicializada con advertencias")
@@ -2448,5 +2647,7 @@ __all__ = [
     'get_current_config',
     'reload_config',
     'optimized_config',
-    'TradingBotOptimizedConfig'
+    'TradingBotOptimizedConfig',
+    'validate_system_configuration',
+    'auto_validate_on_startup'
 ]

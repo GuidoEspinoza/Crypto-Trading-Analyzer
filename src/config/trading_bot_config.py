@@ -8,6 +8,17 @@ de ejecución.
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 
+# Importar constantes globales centralizadas
+from .global_constants import (
+    GLOBAL_INITIAL_BALANCE,
+    USDT_BASE_PRICE,
+    TIMEZONE,
+    DAILY_RESET_HOUR,
+    DAILY_RESET_MINUTE,
+    RESET_STRATEGIES,
+    ACTIVE_RESET_STRATEGY
+)
+
 # ============================================================================
 # 🎯 SELECTOR DE PERFIL DE TRADING - CAMBIAR AQUÍ
 # ============================================================================
@@ -15,37 +26,8 @@ from typing import List, Dict, Any
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
 TRADING_PROFILE = "AGRESIVO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
-# Balance inicial global para todas las posiciones en USDT
-GLOBAL_INITIAL_BALANCE = 1000.0
-
-# Precio base de USDT (stablecoin)
-USDT_BASE_PRICE = 1.0
-
-# ============================================================================
-# ⏰ CONFIGURACIÓN DE ZONA HORARIA Y RESET DIARIO
-# ============================================================================
-
-# Zona horaria para Chile (CLT/CLST)
-TIMEZONE = "America/Santiago"
-
-# Horario de reset diario optimizado para trading de criptomonedas en Chile
-# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
-# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
-DAILY_RESET_HOUR = 11  # 11:00 AM CLT
-DAILY_RESET_MINUTE = 0  # 11:00 AM exacto
-
-# Configuración alternativa para diferentes estrategias de reset:
-# - CONSERVATIVE: 6:00 AM CLT (antes de mercados globales)
-# - AGGRESSIVE: 11:00 AM CLT (antes del horario óptimo de trading)
-# - OPTIMAL: 6:00 PM CLT (después del horario óptimo de trading)
-RESET_STRATEGIES = {
-    "CONSERVATIVE": {"hour": 6, "minute": 0},   # 6:00 AM CLT
-    "AGGRESSIVE": {"hour": 11, "minute": 0},    # 11:00 AM CLT (RECOMENDADO)
-    "OPTIMAL": {"hour": 18, "minute": 0}        # 6:00 PM CLT
-}
-
-# Estrategia de reset activa (cambiar según perfil de trading)
-ACTIVE_RESET_STRATEGY = "AGGRESSIVE"  # Recomendado para máxima rentabilidad
+# NOTA: Las constantes globales (GLOBAL_INITIAL_BALANCE, TIMEZONE, etc.) 
+# ahora se importan desde global_constants.py para centralizar la configuración
 
 # ============================================================================
 # 📊 CONFIGURACIONES DE TRADING BOT POR PERFIL

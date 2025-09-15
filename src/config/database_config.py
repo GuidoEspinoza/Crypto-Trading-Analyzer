@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 import os
 import logging
-from .trading_bot_config import GLOBAL_INITIAL_BALANCE
+from .global_constants import GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE, BASE_CURRENCY
 
 
 @dataclass
@@ -54,8 +54,8 @@ class PortfolioConfig:
     💼 Configuración del portfolio inicial
     """
     initial_usdt_amount: float = GLOBAL_INITIAL_BALANCE
-    base_currency: str = "USDT"
-    base_price: float = 1.0
+    base_currency: str = BASE_CURRENCY
+    base_price: float = USDT_BASE_PRICE
     auto_initialize: bool = True
     min_quantity_threshold: float = 0.00001  # Filtrar cantidades muy pequeñas
     
