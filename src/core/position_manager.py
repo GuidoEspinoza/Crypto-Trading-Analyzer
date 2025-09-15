@@ -16,7 +16,13 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.config import TradingBotConfig, RiskManagerConfig, TradingProfiles
+from src.config.config import (
+    CONSOLIDATED_CONFIG,
+    get_module_config,
+    TradingBotConfig, 
+    RiskManagerConfig, 
+    TradingProfiles
+)
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -96,9 +102,18 @@ class PositionManager:
         profile = TradingProfiles.get_current_profile()
         self.cache_duration = profile.get('position_check_interval', 30)  # segundos
         
-        # Configuración de trailing stops desde RiskManagerConfig
+        # Configuración de trailing stops desde RiskManagerConfig y perfil
         self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
         self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
+        
+        # Configuraciones dinámicas desde perfil
+        self.seconds_per_day = profile.get('seconds_per_day', 86400)  # Configurable para tests
+        self.atr_estimation_pct = profile.get('atr_estimation_percentage', 2.0) / 100  # 2% como estimación conservadora
+        self.profit_scaling_ratios = {
+            'tp_max_ratio': profile.get('tp_max_ratio', 0.67),  # 2/3 del máximo
+            'tp_mid_ratio': profile.get('tp_mid_ratio', 0.5),   # 1/2 del máximo
+            'tp_min_ratio': profile.get('tp_min_ratio', 0.67)   # 2/3 del mínimo
+        }
         
         # Estadísticas
         self.stats = {
@@ -111,6 +126,58 @@ class PositionManager:
         
         logger.info("📊 Position Manager initialized")
     
+    def invalidate_cache(self, trade_id: Optional[int] = None):
+        """🔄 Invalidar cache de posiciones
+        
+        Args:
+            trade_id: ID específico a invalidar, None para invalidar todo
+        """
+        if trade_id is not None:
+            # Invalidar posición específica
+            if trade_id in self.positions_cache:
+                del self.positions_cache[trade_id]
+                logger.debug(f"🔄 Cache invalidated for position {trade_id}")
+        else:
+            # Invalidar todo el cache
+            self.positions_cache.clear()
+            self.last_cache_update = 0
+            logger.debug("🔄 Full cache invalidated")
+    
+    def is_cache_valid(self) -> bool:
+        """✅ Verificar si el cache es válido
+        
+        Returns:
+            True si el cache es válido
+        """
+        now = time.time()
+        return (now - self.last_cache_update) < self.cache_duration
+    
+    def update_cache_entry(self, position: PositionInfo):
+        """🔄 Actualizar entrada específica del cache
+        
+        Args:
+            position: Información de posición actualizada
+        """
+        self.positions_cache[position.trade_id] = position
+        logger.debug(f"🔄 Cache updated for position {position.trade_id}")
+    
+    def get_cache_stats(self) -> Dict:
+        """📊 Obtener estadísticas del cache
+        
+        Returns:
+            Diccionario con estadísticas del cache
+        """
+        now = time.time()
+        cache_age = now - self.last_cache_update if self.last_cache_update > 0 else 0
+        
+        return {
+            "cache_size": len(self.positions_cache),
+            "cache_age_seconds": cache_age,
+            "cache_valid": self.is_cache_valid(),
+            "cache_duration": self.cache_duration,
+            "last_update": datetime.fromtimestamp(self.last_cache_update).isoformat() if self.last_cache_update > 0 else None
+        }
+    
     def get_active_positions(self, refresh_cache: bool = False) -> List[PositionInfo]:
         """📊 Obtener todas las posiciones activas
         
@@ -120,10 +187,8 @@ class PositionManager:
         Returns:
             Lista de posiciones activas
         """
-        now = time.time()
-        
-        # Verificar cache
-        if not refresh_cache and (now - self.last_cache_update) < self.cache_duration:
+        # Verificar cache usando método optimizado
+        if not refresh_cache and self.is_cache_valid():
             return list(self.positions_cache.values())
         
         # Obtener posiciones frescas de la base de datos
@@ -142,7 +207,7 @@ class PositionManager:
                         positions.append(position_info)
                         self.positions_cache[trade.id] = position_info
                 
-                self.last_cache_update = now
+                self.last_cache_update = time.time()
                 logger.debug(f"📊 Loaded {len(positions)} active positions")
                 
         except Exception as e:
@@ -161,7 +226,7 @@ class PositionManager:
         """
         try:
             # Calcular días mantenida
-            days_held = (datetime.now() - trade.entry_time).total_seconds() / 86400
+            days_held = (datetime.now() - trade.entry_time).total_seconds() / self.seconds_per_day
             
             # Calcular métricas de riesgo/recompensa
             potential_profit = 0
@@ -249,6 +314,9 @@ class PositionManager:
                 
                 # Actualizar trailing stop si aplica
                 self._update_trailing_stop(position)
+                
+                # Actualizar cache con la posición modificada
+                self.update_cache_entry(position)
                 
                 logger.debug(f"💰 Updated position {trade_id}: {old_price:.4f} -> {new_price:.4f}")
                 return True
@@ -395,9 +463,8 @@ class PositionManager:
                 
                 self.stats["total_pnl"] += pnl
                 
-                # Remover del cache
-                if trade_id in self.positions_cache:
-                    del self.positions_cache[trade_id]
+                # Remover del cache usando método optimizado
+                self.invalidate_cache(trade_id)
                 
                 # Obtener balances actuales para el log detallado
                 usdt_balance = self.paper_trader._get_usdt_balance()
@@ -528,23 +595,28 @@ class PositionManager:
             "last_cache_update": datetime.fromtimestamp(self.last_cache_update).isoformat() if self.last_cache_update > 0 else None
         }
     
-    def calculate_atr_trailing_stop(self, symbol: str, current_price: float, trade_type: str, atr_multiplier: float = 2.0) -> Optional[float]:
+    def calculate_atr_trailing_stop(self, symbol: str, current_price: float, trade_type: str, atr_multiplier: Optional[float] = None) -> Optional[float]:
         """📊 Calcular trailing stop dinámico basado en ATR
         
         Args:
             symbol: Símbolo del activo
             current_price: Precio actual
             trade_type: Tipo de trade (BUY/SELL)
-            atr_multiplier: Multiplicador del ATR para el trailing stop
+            atr_multiplier: Multiplicador del ATR para el trailing stop (usa configuración si es None)
             
         Returns:
             Precio del trailing stop o None si hay error
         """
         try:
+            # Usar configuración dinámica si no se especifica multiplicador
+            if atr_multiplier is None:
+                profile = TradingProfiles.get_current_profile()
+                atr_multiplier = profile.get('atr_multiplier', 2.0)
+            
             # Obtener datos históricos para calcular ATR
             # Por ahora usamos un ATR estimado basado en el precio
             # En una implementación completa, se obtendría data histórica real
-            estimated_atr = current_price * 0.02  # 2% como estimación conservadora
+            estimated_atr = current_price * self.atr_estimation_pct
             
             if trade_type == "BUY":
                 # Para posiciones largas, trailing stop debajo del precio

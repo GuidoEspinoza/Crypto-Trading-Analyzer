@@ -10,6 +10,7 @@ import functools
 from typing import Any, Callable, Dict, Optional, Union
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
 # Configurar logger específico para errores
 error_logger = logging.getLogger('trading_errors')
@@ -200,7 +201,7 @@ def validate_numeric_input(value: Any, name: str, min_val: float = None, max_val
     try:
         numeric_value = float(value)
         
-        if pd.isna(numeric_value) or not pd.isfinite(numeric_value):
+        if pd.isna(numeric_value) or not np.isfinite(numeric_value):
             raise ValueError(f"Invalid numeric value for {name}: {value}")
         
         if min_val is not None and numeric_value < min_val:

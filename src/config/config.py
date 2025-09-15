@@ -1,7 +1,7 @@
 """Configuración centralizada para el sistema de trading.
 
-Este archivo contiene todas las configuraciones principales del bot de trading,
-con tres niveles de configuración disponibles:
+Este archivo consolida todas las configuraciones modulares del sistema,
+importando configuraciones específicas de cada módulo:
 
 🚀 RÁPIDA (Ultra-corta): Timeframes de 1m-15m, máxima frecuencia de trades, mayor riesgo
 ⚡ AGRESIVA: Timeframes de 15m-1h, balance entre velocidad y control de riesgo  
@@ -12,39 +12,372 @@ Para cambiar entre configuraciones, simplemente modifica la variable TRADING_PRO
 - "RAPIDO" para estrategia ultra-rápida
 - "AGRESIVO" para estrategia balanceada
 - "OPTIMO" para estrategia conservadora
+
+🔧 ARQUITECTURA MODULAR:
+Cada módulo tiene su propia configuración específica importada desde:
+- advanced_indicators_config.py
+- enhanced_risk_manager_config.py
+- enhanced_strategies_config.py
+- market_validator_config.py
+- paper_trader_config.py
+- position_adjuster_config.py
+- position_manager_config.py
+- position_monitor_config.py
+- trading_bot_config.py
 """
 
 import logging
+import os
 from typing import List, Dict, Any
+from dataclasses import dataclass, field
+
+# Importar todas las configuraciones modulares
+try:
+    from .advanced_indicators_config import (
+        ADVANCED_INDICATORS_CONFIG,
+        get_advanced_indicators_config,
+        validate_advanced_indicators_config
+    )
+    from .enhanced_risk_manager_config import (
+        ENHANCED_RISK_MANAGER_CONFIG,
+        get_risk_manager_config,
+        validate_enhanced_risk_manager_config
+    )
+    from .enhanced_strategies_config import (
+        ENHANCED_STRATEGIES_CONFIG,
+        get_enhanced_strategies_config,
+        validate_enhanced_strategies_config
+    )
+    from .market_validator_config import (
+        MARKET_VALIDATOR_CONFIG,
+        get_market_analyzer_config,
+        validate_market_validator_config
+    )
+    from .paper_trader_config import (
+        PAPER_TRADER_CONFIG,
+        get_paper_trader_config,
+        validate_paper_trader_config
+    )
+    from .position_adjuster_config import (
+        POSITION_ADJUSTER_CONFIG,
+        get_position_adjuster_config,
+        validate_position_adjuster_config
+    )
+    from .position_manager_config import (
+        POSITION_MANAGER_CONFIG,
+        get_position_manager_config,
+        validate_position_manager_config
+    )
+    from .position_monitor_config import (
+        POSITION_MONITOR_CONFIG,
+        get_position_monitor_config,
+        validate_position_monitor_config
+    )
+    from .trading_bot_config import (
+        TRADING_BOT_CONFIG,
+        TRADING_PROFILE as TRADING_PROFILE_FROM_CONFIG,
+        GLOBAL_INITIAL_BALANCE,
+        USDT_BASE_PRICE,
+        TIMEZONE,
+        DAILY_RESET_HOUR,
+        DAILY_RESET_MINUTE,
+        get_trading_bot_config,
+        validate_trading_bot_config
+    )
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"⚠️ No se pudieron importar algunas configuraciones modulares: {e}")
+    # Fallback a configuraciones por defecto si no existen los módulos
+    ADVANCED_INDICATORS_CONFIG = {}
+    ENHANCED_RISK_MANAGER_CONFIG = {}
+    ENHANCED_STRATEGIES_CONFIG = {}
+    MARKET_VALIDATOR_CONFIG = {}
+    PAPER_TRADER_CONFIG = {}
+    POSITION_ADJUSTER_CONFIG = {}
+    POSITION_MANAGER_CONFIG = {}
+    POSITION_MONITOR_CONFIG = {}
+    TRADING_BOT_CONFIG = {}
+    
+    # Constantes de fallback importadas desde trading_bot_config
+    GLOBAL_INITIAL_BALANCE = 1000.0
+    USDT_BASE_PRICE = 1.0
+    TIMEZONE = 'America/Santiago'
+    DAILY_RESET_HOUR = 11
+    DAILY_RESET_MINUTE = 0
+    
+    # Funciones de fallback
+    def get_trading_bot_config(profile: str = None):
+        """Función de fallback para get_trading_bot_config"""
+        return {
+            'global_initial_balance': GLOBAL_INITIAL_BALANCE,
+            'usdt_base_price': USDT_BASE_PRICE,
+            'timezone': TIMEZONE,
+            'daily_reset_hour': DAILY_RESET_HOUR,
+            'daily_reset_minute': DAILY_RESET_MINUTE
+        }
+    
+    def get_risk_manager_config(profile: str = None):
+        """Función de fallback para get_risk_manager_config"""
+        return {}
+    
+    def get_enhanced_strategies_config(profile: str = None):
+        """Función de fallback para get_enhanced_strategies_config"""
+        return {}
+    
+    def validate_trading_bot_config(config):
+        """Función de fallback para validate_trading_bot_config"""
+        return True
+    
+    def validate_enhanced_risk_manager_config(config):
+        """Función de fallback para validate_enhanced_risk_manager_config"""
+        return True
+    
+    def validate_enhanced_strategies_config(config):
+        """Función de fallback para validate_enhanced_strategies_config"""
+        return True
+    
+    def get_advanced_indicators_config(profile: str = None):
+        """Función de fallback para get_advanced_indicators_config"""
+        return {}
+    
+    def get_market_analyzer_config(profile: str = None):
+        """Función de fallback para get_market_analyzer_config"""
+        return {}
+    
+    def get_paper_trader_config(profile: str = None):
+        """Función de fallback para get_paper_trader_config"""
+        return {
+            'min_trade_value': 10.0,
+            'max_position_size': 100.0,
+            'max_total_exposure': 500.0,
+            'paper_min_confidence': 65.0,
+            'max_slippage': 0.001
+        }
+    
+    def get_position_adjuster_config(profile: str = None):
+        """Función de fallback para get_position_adjuster_config"""
+        return {}
+    
+    def get_position_manager_config(profile: str = None):
+        """Función de fallback para get_position_manager_config"""
+        return {}
+    
+    def get_position_monitor_config(profile: str = None):
+        """Función de fallback para get_position_monitor_config"""
+        return {}
+    
+    def validate_advanced_indicators_config(config):
+        """Función de fallback para validate_advanced_indicators_config"""
+        return True
+    
+    def validate_market_validator_config(config):
+        """Función de fallback para validate_market_validator_config"""
+        return True
+    
+    def validate_paper_trader_config(config):
+        """Función de fallback para validate_paper_trader_config"""
+        return True
+    
+    def validate_position_adjuster_config(config):
+        """Función de fallback para validate_position_adjuster_config"""
+        return True
+    
+    def validate_position_manager_config(config):
+        """Función de fallback para validate_position_manager_config"""
+        return True
+    
+    def validate_position_monitor_config(config):
+        """Función de fallback para validate_position_monitor_config"""
+        return True
 
 # Configurar logger para validación
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# 🎯 SELECTOR DE PERFIL DE TRADING - CAMBIAR AQUÍ
+# 🎯 SELECTOR DE PERFIL DE TRADING - IMPORTADO DESDE TRADING_BOT_CONFIG
 # ============================================================================
 
-# 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "AGRESIVO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
+# 🔥 PERFIL IMPORTADO DESDE trading_bot_config.py - CAMBIAR ALLÍ
+try:
+    TRADING_PROFILE = TRADING_PROFILE_FROM_CONFIG
+except NameError:
+    # Fallback si no se pudo importar
+    TRADING_PROFILE = "AGRESIVO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
-# Balance inicial global para todas las posiciones en USDT
-GLOBAL_INITIAL_BALANCE = 1000.0
+# ============================================================================
+# 🔧 FUNCIONES DE CONSOLIDACIÓN DE CONFIGURACIONES MODULARES
+# ============================================================================
 
-# Precio base de USDT (stablecoin)
-USDT_BASE_PRICE = 1.0
+def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
+    """🔧 Consolida todas las configuraciones modulares en una configuración unificada.
+    
+    Args:
+        profile: Perfil de trading a usar (RAPIDO, AGRESIVO, OPTIMO, CONSERVADOR)
+        
+    Returns:
+        Dict: Configuración consolidada de todos los módulos
+    """
+    if profile is None:
+        profile = TRADING_PROFILE
+        
+    # Obtener configuración base desde trading_bot_config
+    trading_bot_config = get_trading_bot_config(profile)
+    
+    consolidated = {
+        'profile': profile,
+        'global_initial_balance': trading_bot_config.get('global_initial_balance', GLOBAL_INITIAL_BALANCE),
+        'usdt_base_price': trading_bot_config.get('usdt_base_price', USDT_BASE_PRICE),
+        'timezone': trading_bot_config.get('timezone', TIMEZONE),
+        'daily_reset_hour': trading_bot_config.get('daily_reset_hour', DAILY_RESET_HOUR),
+        'daily_reset_minute': trading_bot_config.get('daily_reset_minute', DAILY_RESET_MINUTE),
+    }
+    
+    # Consolidar configuraciones de cada módulo
+    try:
+        consolidated['advanced_indicators'] = get_advanced_indicators_config(profile)
+    except (NameError, TypeError):
+        consolidated['advanced_indicators'] = ADVANCED_INDICATORS_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['enhanced_risk_manager'] = get_risk_manager_config(profile)
+    except (NameError, TypeError):
+        consolidated['enhanced_risk_manager'] = ENHANCED_RISK_MANAGER_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['enhanced_strategies'] = get_enhanced_strategies_config(profile)
+    except (NameError, TypeError):
+        consolidated['enhanced_strategies'] = ENHANCED_STRATEGIES_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['market_validator'] = get_market_analyzer_config(profile)
+    except (NameError, TypeError):
+        consolidated['market_validator'] = MARKET_VALIDATOR_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['paper_trader'] = get_paper_trader_config(profile)
+    except (NameError, TypeError):
+        consolidated['paper_trader'] = PAPER_TRADER_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['position_adjuster'] = get_position_adjuster_config(profile)
+    except (NameError, TypeError):
+        consolidated['position_adjuster'] = POSITION_ADJUSTER_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['position_manager'] = get_position_manager_config(profile)
+    except (NameError, TypeError):
+        consolidated['position_manager'] = POSITION_MANAGER_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['position_monitor'] = get_position_monitor_config(profile)
+    except (NameError, TypeError):
+        consolidated['position_monitor'] = POSITION_MONITOR_CONFIG.get(profile, {})
+        
+    try:
+        consolidated['trading_bot'] = get_trading_bot_config(profile)
+    except (NameError, TypeError):
+        consolidated['trading_bot'] = TRADING_BOT_CONFIG.get(profile, {})
+    
+    return consolidated
+
+def validate_consolidated_config(config: Dict[str, Any]) -> bool:
+    """🔍 Valida la configuración consolidada de todos los módulos.
+    
+    Args:
+        config: Configuración consolidada a validar
+        
+    Returns:
+        bool: True si la configuración es válida
+    """
+    try:
+        # Validar configuraciones de cada módulo
+        profile = config.get('profile', TRADING_PROFILE)
+        
+        validations = []
+        
+        # Validar cada módulo si tiene función de validación
+        if 'advanced_indicators' in config:
+            try:
+                validations.append(validate_advanced_indicators_config(config['advanced_indicators']))
+            except (NameError, TypeError):
+                validations.append(True)  # Skip si no existe la función
+                
+        if 'enhanced_risk_manager' in config:
+            try:
+                validations.append(validate_enhanced_risk_manager_config(config['enhanced_risk_manager']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'enhanced_strategies' in config:
+            try:
+                validations.append(validate_enhanced_strategies_config(config['enhanced_strategies']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'market_validator' in config:
+            try:
+                validations.append(validate_market_validator_config(config['market_validator']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'paper_trader' in config:
+            try:
+                validations.append(validate_paper_trader_config(config['paper_trader']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'position_adjuster' in config:
+            try:
+                validations.append(validate_position_adjuster_config(config['position_adjuster']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'position_manager' in config:
+            try:
+                validations.append(validate_position_manager_config(config['position_manager']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'position_monitor' in config:
+            try:
+                validations.append(validate_position_monitor_config(config['position_monitor']))
+            except (NameError, TypeError):
+                validations.append(True)
+                
+        if 'trading_bot' in config:
+            try:
+                validations.append(validate_trading_bot_config(config['trading_bot']))
+            except (NameError, TypeError):
+                validations.append(True)
+        
+        return all(validations)
+        
+    except Exception as e:
+        logger.error(f"❌ Error validando configuración consolidada: {e}")
+        return False
+
+def get_module_config(module_name: str, profile: str = None) -> Dict[str, Any]:
+    """🎯 Obtiene la configuración específica de un módulo.
+    
+    Args:
+        module_name: Nombre del módulo (advanced_indicators, enhanced_risk_manager, etc.)
+        profile: Perfil de trading a usar
+        
+    Returns:
+        Dict: Configuración del módulo específico
+    """
+    if profile is None:
+        profile = TRADING_PROFILE
+        
+    consolidated = get_consolidated_config(profile)
+    return consolidated.get(module_name, {})
 
 # ============================================================================
 # ⏰ CONFIGURACIÓN DE ZONA HORARIA Y RESET DIARIO
 # ============================================================================
-
-# Zona horaria para Chile (CLT/CLST)
-TIMEZONE = "America/Santiago"
-
-# Horario de reset diario optimizado para trading de criptomonedas en Chile
-# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
-# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
-DAILY_RESET_HOUR = 11  # 11:00 AM CLT
-DAILY_RESET_MINUTE = 0  # 11:00 AM exacto
+# Nota: Las variables globales básicas (GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE, 
+# TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE) ahora están en trading_bot_config.py
+# y se importan a través de get_trading_bot_config()
 
 # Configuración alternativa para diferentes estrategias de reset:
 # - CONSERVATIVE: 6:00 AM CLT (antes de mercados globales)
@@ -64,706 +397,455 @@ ACTIVE_RESET_STRATEGY = "AGGRESSIVE"  # Recomendado para máxima rentabilidad
 # ============================================================================
 
 class TradingProfiles:
-    """Definición de todos los perfiles de trading disponibles."""
+    """Definición básica de perfiles de trading disponibles.
+    
+    Las configuraciones específicas de cada módulo están en sus archivos correspondientes:
+    - trading_bot_config.py: Configuraciones generales del bot
+    - enhanced_risk_manager_config.py: Gestión de riesgo
+    - paper_trader_config.py: Trading en papel
+    - enhanced_strategies_config.py: Estrategias de trading
+    - position_manager_config.py: Gestión de posiciones
+    - etc.
+    """
     
     PROFILES = {
         "RAPIDO": {
             "name": "🚀 Ultra-Rápido",
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
             "timeframes": ["1m", "5m", "15m"],
-            "analysis_interval": 30,  # Corregido: mínimo 30 segundos
-            "min_confidence": 65.0,  # Aumentado para mejor calidad de señales
-            "max_daily_trades": 20,  # Reducido para mejor selección
-            "max_positions": 8,  # Reducido para mejor control
-            # Circuit Breaker Config - Optimizado
-            "max_consecutive_losses": 7,  # Aumentado para tolerancia
-            "circuit_breaker_cooldown_hours": 1.5,  # Reducido para eficiencia
-            "max_drawdown_threshold": 0.12,  # Corregido: 12% como decimal
-            "gradual_reactivation": True,  # Nueva funcionalidad
-            # Paper Trader Config - Optimizado
-            "max_position_size": 0.8,  # Corregido: 80% como decimal
-            "max_total_exposure": 0.75,  # Corregido: 75% como decimal
-            "min_trade_value": 5.0,  # Reducido para permitir pruebas  # Aumentado para calidad
-            "paper_min_confidence": 60.0,  # Aumentado
-            "max_slippage": 0.10,  # Reducido para mejor ejecución
-            "min_liquidity": 4.0,  # Aumentado para liquidez
-            # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.5,  # Optimizado para mejor control
-            "max_daily_risk": 6.0,  # Reducido para mayor protección
-            "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
-            "correlation_threshold": 0.75,  # Optimizado
-            "min_position_size": 12.0,  # Reducido para flexibilidad
-            "risk_max_position_size": 0.8,  # Corregido: consistente con max_position_size
-            "kelly_fraction": 0.28,  # Optimizado
-            "volatility_adjustment": 1.25,  # Optimizado
-            "atr_multiplier_min": 1.8,  # Optimizado más ajustado
-            "atr_multiplier_max": 2.8,  # Optimizado
-            "atr_default": 1.8,
-            "atr_volatile": 2.8,  # Optimizado
-            "atr_sideways": 1.4,  # Optimizado
-            "trailing_stop_activation": 0.15,  # Corregido: 15% como decimal
-            "breakeven_threshold": 0.6,  # Optimizado
-            "intelligent_trailing": True,  # Nueva funcionalidad
-            "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 2.5,  # TP mínimo optimizado
-            "tp_max_percentage": 5.5,  # TP máximo optimizado
-            "sl_min_percentage": 0.8,  # SL mínimo más ajustado
-            "sl_max_percentage": 2.5,  # SL máximo optimizado
-            "tp_increment_percentage": 1.0,  # Incremento base de TP
-            "max_tp_adjustments": 5,  # Máximo ajustes de TP
-            "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
-            # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 5.0,  # Pérdida máxima diaria
-            "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
-            "min_confidence_threshold": 0.6,  # Confianza mínima para trades
-            "position_size_multiplier": 1.0,  # Multiplicador de tamaño de posición
-            "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad
-            # Strategy Config - Optimizado
-            "default_min_confidence": 52.0,  # Reducido para más oportunidades
-            "default_atr_period": 10,
-            "rsi_min_confidence": 68.0,  # Aumentado para mejor calidad
-            "rsi_oversold": 25,  # Más estricto para mejor calidad
-        "rsi_overbought": 75,  # Más estricto para mejor precisión
-            "rsi_period": 10,
-            "min_volume_ratio": 1.6,  # Aumentado para mejor calidad
-            "min_confluence": 4,  # Aumentado para mejores señales
-            "trend_strength_threshold": 32,  # Optimizado para mejor filtrado
-            "min_atr_ratio": 0.9,  # Optimizado
-            "max_spread_threshold": 0.002,  # Optimizado más estricto
-            "volume_weight": 0.22,  # Nuevo peso para volumen
-            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
-            # Multi-Timeframe Config - Optimizado
-            "mtf_enhanced_confidence": 62.0,  # Optimizado
-            "mtf_min_confidence": 65.0,  # Aumentado para calidad
-            "mtf_min_consensus": 0.65,  # Optimizado
-            "mtf_require_trend_alignment": False,
-            "mtf_min_timeframe_consensus": 2,
-            "mtf_trend_alignment_required": False,
-            "volume_timeframe": "5m",  # Nuevo timeframe para volumen
-            # Ensemble Config - Optimizado
-            "ensemble_min_consensus_threshold": 0.58,  # Optimizado
-            "ensemble_confidence_boost_factor": 1.3,  # Optimizado
-            # Live Trading Config - Optimizado
-            "trading_fees": 0.001,
-            "order_timeout": 25,  # Optimizado más rápido
-            "max_order_retries": 3,  # Aumentado para robustez
-            "order_check_interval": 1.5,  # Optimizado más frecuente
-            "live_first_analysis_delay": 10,  # Optimizado más rápido
-            # Position Adjuster Config - Optimizado
-            "position_monitoring_interval": 30,  # Intervalo de monitoreo en segundos
-            "profit_scaling_threshold": 2.0,  # Umbral para escalado de ganancias (%)
-            "trailing_stop_sl_pct": 0.02,  # SL dinámico para trailing stop (2%)
-            "trailing_stop_tp_pct": 0.05,  # TP dinámico para trailing stop (5%)
-            "profit_protection_sl_pct": 0.01,  # SL para protección de ganancias (1%)
-            "profit_protection_tp_pct": 0.03,  # TP para protección de ganancias (3%)
-            "risk_management_threshold": -1.0,  # Umbral para gestión de riesgo (%)
-            "risk_management_sl_pct": 0.015,  # SL más conservador para pérdidas (1.5%)
-            "risk_management_tp_pct": 0.02,  # TP más conservador para pérdidas (2%)
-            # Enhanced Risk Manager Config
-            "kelly_win_rate": 0.65,  # Tasa de ganancia asumida para Kelly Criterion
-            "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
-            "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 2.0,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 1.0,  # Incremento base de TP (%)
-            # Trading Bot Config
-            "cache_ttl_seconds": 120,  # TTL del cache en segundos (2 min)
-            "event_queue_maxsize": 500,  # Tamaño máximo de la cola de eventos
-            "executor_shutdown_timeout": 20,  # Timeout para shutdown del executor (seg)
-            "thread_join_timeout": 8,  # Timeout para join de threads (seg)
-            "analysis_future_timeout": 20,  # Timeout para análisis paralelo (seg)
-            
-            # Connection and Network Config
-            "connection_timeout": 30,  # Timeout de conexión en segundos
-            "read_timeout": 60,  # Timeout de lectura en segundos
-            "retry_delay": 5,  # Delay entre reintentos en segundos
-            "max_retries": 3,  # Número máximo de reintentos
-            "backoff_factor": 2.0,  # Factor de backoff exponencial
-            
-            # Monitoring and Intervals Config
-            "position_check_interval": 30,  # Intervalo de verificación de posiciones (seg)
-            "market_data_refresh_interval": 60,  # Intervalo de actualización de datos (seg)
-            "health_check_interval": 300,  # Intervalo de health check (seg)
-            "log_rotation_interval": 3600,  # Intervalo de rotación de logs (seg)
-            
-            # Performance and Optimization Config
-            "max_concurrent_requests": 10,  # Máximo de requests concurrentes
-            "request_rate_limit": 100,  # Límite de requests por minuto
-            "memory_threshold_mb": 512,  # Umbral de memoria en MB
-            "cpu_threshold_percent": 80,  # Umbral de CPU en porcentaje
-            
-            # Error Handling Config
-            "error_cooldown_seconds": 60,  # Tiempo de espera tras error (seg)
-            "max_consecutive_errors": 5,  # Máximo errores consecutivos
-            "circuit_breaker_threshold": 10,  # Umbral para circuit breaker
-            "circuit_breaker_timeout": 300,  # Timeout del circuit breaker (seg)
-            
-            # Trade Spacing Config - Para evitar ejecución masiva post-reset
-            "min_time_between_trades_seconds": 30,  # Mínimo 30 segundos entre trades
-            "max_trades_per_hour": 15,  # Máximo 15 trades por hora
-            "post_reset_spacing_minutes": 60  # Espaciado especial en primera hora post-reset
+            "risk_level": "high",
+            "frequency": "ultra_high"
         },
         "AGRESIVO": {
             "name": "⚡ Agresivo",
-            "description": "Timeframes 15m-1h, balance velocidad/control optimizado",
+            "description": "Timeframes 15m-1h, balance entre velocidad y control",
             "timeframes": ["15m", "30m", "1h"],
-            "analysis_interval": 30,  # Corregido: mínimo 30 segundos
-            "min_confidence": 72.0,  # Optimizado para mejor calidad
-            "max_daily_trades": 15,  # Aumentado para más oportunidades
-            "max_positions": 7,  # Aumentado para diversificación
-            # Circuit Breaker Config - Optimizado
-            "max_consecutive_losses": 4,  # Mantenido para tolerancia
-            "circuit_breaker_cooldown_hours": 3,  # Optimizado para recuperación
-            "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
-            "gradual_reactivation": True,  # Nueva funcionalidad
-            # Paper Trader Config - Optimizado
-            "max_position_size": 0.6,  # Corregido: 60% como decimal
-            "max_total_exposure": 0.65,  # Corregido: 65% como decimal
-            "min_trade_value": 5.0,  # Reducido para permitir pruebas
-            "paper_min_confidence": 68.0,  # Aumentado para calidad
-            "max_slippage": 0.06,  # Reducido para mejor ejecución
-            "min_liquidity": 6.0,  # Aumentado para mejor liquidez
-            # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.0,  # Optimizado para control
-            "max_daily_risk": 4.5,  # Reducido para mayor protección
-            "max_drawdown_threshold": 0.08,  # Corregido: 8% como decimal
-            "correlation_threshold": 0.65,  # Optimizado
-            "min_position_size": 8.0,  # Reducido
-            "risk_max_position_size": 0.6,  # Corregido: consistente con max_position_size
-            "kelly_fraction": 0.20,  # Optimizado conservador
-            "volatility_adjustment": 1.10,  # Reducido para estabilidad
-            "atr_multiplier_min": 2.2,  # Optimizado
-            "atr_multiplier_max": 3.8,  # Optimizado
-            "atr_default": 2.5,
-            "atr_volatile": 3.8,  # Optimizado
-            "atr_sideways": 2.2,  # Optimizado
-            "trailing_stop_activation": 0.15,  # Corregido: 15% como decimal
-            "breakeven_threshold": 0.8,  # Optimizado
-            "intelligent_trailing": True,  # Nueva funcionalidad
-            "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
-            "tp_increment_percentage": 1.0,  # Incremento base de TP
-            "max_tp_adjustments": 5,  # Máximo ajustes de TP
-            "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
-            # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 4.0,  # Pérdida máxima diaria (más agresivo)
-            "max_drawdown_threshold": 0.08,  # Corregido: 8% como decimal
-            "min_confidence_threshold": 0.65,  # Confianza mínima para trades
-            "position_size_multiplier": 1.2,  # Multiplicador de tamaño de posición
-            "volatility_adjustment_factor": 1.3,  # Factor de ajuste por volatilidad
-            # Strategy Config - Optimizado
-            "default_min_confidence": 65.0,  # Aumentado
-            "default_atr_period": 14,
-            "rsi_min_confidence": 72.0,  # Aumentado para calidad
-            "rsi_oversold": 25,  # Más estricto para mejor calidad
-            "rsi_overbought": 75,  # Más estricto para mejor precisión
-            "rsi_period": 14,
-            "min_volume_ratio": 1.8,  # Aumentado para calidad
-            "min_confluence": 3,
-            "trend_strength_threshold": 32,  # Optimizado
-            "min_atr_ratio": 1.1,  # Optimizado
-            "max_spread_threshold": 0.0012,  # Optimizado
-            "volume_weight": 0.15,  # Nuevo peso para volumen
-            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
-            # Multi-Timeframe Config - Optimizado
-            "mtf_enhanced_confidence": 68.0,  # Optimizado
-            "mtf_min_confidence": 72.0,  # Aumentado
-            "mtf_min_consensus": 0.68,  # Optimizado
-            "mtf_require_trend_alignment": True,
-            "mtf_min_timeframe_consensus": 2,
-            "mtf_trend_alignment_required": True,
-            "volume_timeframe": "1h",  # Nuevo timeframe para volumen
-            # Ensemble Config - Optimizado
-            "ensemble_min_consensus_threshold": 0.65,  # Optimizado
-            "ensemble_confidence_boost_factor": 1.18,  # Optimizado
-            # Live Trading Config - Optimizado
-            "trading_fees": 0.001,
-            "order_timeout": 40,  # Optimizado
-            "max_order_retries": 3,
-            "order_check_interval": 2,  # Optimizado
-            "live_first_analysis_delay": 25,  # Optimizado
-            # Enhanced Risk Manager Config
-            "kelly_win_rate": 0.68,  # Tasa de ganancia asumida para Kelly Criterion
-            "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
-            "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 2.2,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 1.3,  # Incremento base de TP (%)
-            # Trading Bot Config
-            "cache_ttl_seconds": 150,  # TTL del cache en segundos (2.5 min)
-            "event_queue_maxsize": 600,  # Tamaño máximo de la cola de eventos
-            "executor_shutdown_timeout": 25,  # Timeout para shutdown del executor (seg)
-            "thread_join_timeout": 8,  # Timeout para join de threads (seg)
-            "analysis_future_timeout": 25,  # Timeout para análisis paralelo (seg)
-            
-            # Connection and Network Config
-            "connection_timeout": 25,  # Timeout de conexión más agresivo
-            "read_timeout": 45,  # Timeout de lectura más rápido
-            "retry_delay": 3,  # Delay entre reintentos más corto
-            "max_retries": 5,  # Más reintentos para agresividad
-            "backoff_factor": 1.5,  # Factor de backoff más agresivo
-            
-            # Monitoring and Intervals Config
-            "position_check_interval": 20,  # Verificación más frecuente
-            "market_data_refresh_interval": 45,  # Actualización más frecuente
-            "health_check_interval": 240,  # Health check más frecuente
-            "log_rotation_interval": 3600,  # Rotación de logs estándar
-            
-            # Performance and Optimization Config
-            "max_concurrent_requests": 15,  # Más requests concurrentes
-            "request_rate_limit": 150,  # Mayor límite de requests
-            "memory_threshold_mb": 768,  # Mayor umbral de memoria
-            "cpu_threshold_percent": 85,  # Mayor umbral de CPU
-            
-            # Error Handling Config
-            "error_cooldown_seconds": 45,  # Menor tiempo de espera
-            "max_consecutive_errors": 7,  # Más tolerancia a errores
-            "circuit_breaker_threshold": 12,  # Mayor umbral para circuit breaker
-            "circuit_breaker_timeout": 240,  # Menor timeout del circuit breaker
-            
-            # Trade Spacing Config - Para evitar ejecución masiva post-reset
-            "min_time_between_trades_seconds": 60,  # Mínimo 1 minuto entre trades
-            "max_trades_per_hour": 10,  # Máximo 10 trades por hora
-            "post_reset_spacing_minutes": 90  # Espaciado especial en primera hora y media post-reset
+            "risk_level": "medium_high",
+            "frequency": "high"
         },
         "OPTIMO": {
-            "name": "🎯 Óptimo",
-            "description": "Timeframes 1h-4h, máxima precisión optimizada",
-            "timeframes": ["1h", "2h", "4h"],
-            "analysis_interval": 30,
-            "min_confidence": 80.0,  # Aumentado para máxima calidad
-            "max_daily_trades": 10,  # Aumentado para más oportunidades
-            "max_positions": 5,  # Aumentado para diversificación
-            # Circuit Breaker Config - Optimizado
-            "max_consecutive_losses": 3,  # Aumentado para tolerancia
-            "circuit_breaker_cooldown_hours": 4,  # Reducido para eficiencia
-            "max_drawdown_threshold": 8.0,  # Mantenido estricto
-            "gradual_reactivation": True,  # Nueva funcionalidad
-            # Paper Trader Config - Optimizado
-            "max_position_size": 1.0,  # Corregido: 100% como decimal (máximo permitido)
-            "max_total_exposure": 0.55,  # Corregido: 55% como decimal
-            "min_trade_value": 30.0,  # Aumentado para calidad
-            "paper_min_confidence": 75.0,  # Aumentado
-            "max_slippage": 0.04,  # Reducido para mejor ejecución
-            "min_liquidity": 10.0,  # Aumentado para liquidez
-            # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 0.7,  # Optimizado para máximo control
-            "max_daily_risk": 3.0,  # Reducido para máxima protección
-            "max_drawdown_threshold": 0.06,  # Corregido: 6% como decimal
-            "correlation_threshold": 0.55,  # Optimizado
-            "min_position_size": 20.0,  # Aumentado para calidad
-            "risk_max_position_size": 1.0,  # Corregido: consistente con max_position_size
-            "kelly_fraction": 0.15,  # Muy conservador para precisión
-            "volatility_adjustment": 0.90,  # Reducido para estabilidad
-            "atr_multiplier_min": 2.2,  # Optimizado
-            "atr_multiplier_max": 3.2,  # Optimizado
-            "atr_default": 2.2,
-            "atr_volatile": 3.2,  # Optimizado
-            "atr_sideways": 2.0,  # Optimizado
-            "trailing_stop_activation": 0.15,  # Corregido: 15% como decimal
-            "breakeven_threshold": 0.6,  # Optimizado
-            "intelligent_trailing": True,  # Nueva funcionalidad
-            "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
-            "tp_increment_percentage": 1.0,  # Incremento base de TP
-            "max_tp_adjustments": 5,  # Máximo ajustes de TP
-            "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
-            # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 3.0,  # Pérdida máxima diaria (óptimo)
-            "max_drawdown_threshold": 0.06,  # Corregido: 6% como decimal
-            "min_confidence_threshold": 0.7,  # Confianza mínima para trades
-            "position_size_multiplier": 1.0,  # Multiplicador de tamaño de posición
-            "volatility_adjustment_factor": 1.1,  # Factor de ajuste por volatilidad
-            # Strategy Config - Optimizado
-            "default_min_confidence": 72.0,  # Aumentado
-            "default_atr_period": 14,
-            "rsi_min_confidence": 82.0,  # Aumentado para máxima calidad
-            "rsi_oversold": 25,  # Más estricto para mejor calidad
-            "rsi_overbought": 75,  # Más estricto para mejor precisión
-            "rsi_period": 14,
-            "min_volume_ratio": 2.2,  # Aumentado para calidad
-            "min_confluence": 4,
-            "trend_strength_threshold": 42,  # Optimizado
-            "min_atr_ratio": 1.3,  # Optimizado
-            "max_spread_threshold": 0.0008,  # Optimizado más estricto
-            "volume_weight": 0.18,  # Nuevo peso para volumen
-            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
-            # Multi-Timeframe Config - Optimizado
-            "mtf_enhanced_confidence": 78.0,  # Optimizado
-            "mtf_min_confidence": 82.0,  # Aumentado para calidad
-            "mtf_min_consensus": 0.78,  # Optimizado
-            "mtf_require_trend_alignment": True,
-            "mtf_min_timeframe_consensus": 3,
-            "mtf_trend_alignment_required": True,
-            "volume_timeframe": "2h",  # Nuevo timeframe para volumen
-            # Ensemble Config - Optimizado
-            "ensemble_min_consensus_threshold": 0.72,  # Optimizado
-            "ensemble_confidence_boost_factor": 1.25,  # Optimizado
-            # Live Trading Config - Optimizado
-            "trading_fees": 0.001,
-            "order_timeout": 50,  # Optimizado
-            "max_order_retries": 3,
-            "order_check_interval": 4,  # Optimizado
-            "live_first_analysis_delay": 15,  # Optimizado
-            # Position Adjuster Config - Optimizado
-            "position_monitoring_interval": 45,  # Intervalo de monitoreo en segundos
-            "profit_scaling_threshold": 2.5,  # Umbral para escalado de ganancias (%)
-            "trailing_stop_sl_pct": 0.025,  # SL dinámico para trailing stop (2.5%)
-            "trailing_stop_tp_pct": 0.06,  # TP dinámico para trailing stop (6%)
-            "profit_protection_sl_pct": 0.012,  # SL para protección de ganancias (1.2%)
-            "profit_protection_tp_pct": 0.035,  # TP para protección de ganancias (3.5%)
-            "risk_management_threshold": -1.2,  # Umbral para gestión de riesgo (%)
-            "risk_management_sl_pct": 0.018,  # SL más conservador para pérdidas (1.8%)
-            "risk_management_tp_pct": 0.025,  # TP más conservador para pérdidas (2.5%)
-            # Enhanced Risk Manager Config
-            "kelly_win_rate": 0.62,  # Tasa de ganancia asumida para Kelly Criterion
-            "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
-            "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 2.5,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 1.2,  # Incremento base de TP (%)
-            # Trading Bot Config
-            "cache_ttl_seconds": 180,  # TTL del cache en segundos (3 min)
-            "event_queue_maxsize": 800,  # Tamaño máximo de la cola de eventos
-            "executor_shutdown_timeout": 30,  # Timeout para shutdown del executor (seg)
-            "thread_join_timeout": 10,  # Timeout para join de threads (seg)
-            "analysis_future_timeout": 30,  # Timeout para análisis paralelo (seg)
-            
-            # Connection and Network Config
-            "connection_timeout": 35,  # Timeout de conexión balanceado
-            "read_timeout": 70,  # Timeout de lectura balanceado
-            "retry_delay": 7,  # Delay entre reintentos balanceado
-            "max_retries": 3,  # Reintentos estándar
-            "backoff_factor": 2.0,  # Factor de backoff estándar
-            
-            # Monitoring and Intervals Config
-            "position_check_interval": 40,  # Verificación balanceada
-            "market_data_refresh_interval": 75,  # Actualización balanceada
-            "health_check_interval": 360,  # Health check balanceado
-            "log_rotation_interval": 3600,  # Rotación de logs estándar
-            
-            # Performance and Optimization Config
-            "max_concurrent_requests": 8,  # Requests concurrentes balanceados
-            "request_rate_limit": 80,  # Límite de requests balanceado
-            "memory_threshold_mb": 640,  # Umbral de memoria balanceado
-            "cpu_threshold_percent": 75,  # Umbral de CPU balanceado
-            
-            # Error Handling Config
-            "error_cooldown_seconds": 75,  # Tiempo de espera balanceado
-            "max_consecutive_errors": 4,  # Tolerancia a errores balanceada
-            "circuit_breaker_threshold": 8,  # Umbral balanceado para circuit breaker
-            "circuit_breaker_timeout": 360,  # Timeout balanceado del circuit breaker
-            
-            # Trade Spacing Config - Para evitar ejecución masiva post-reset
-            "min_time_between_trades_seconds": 120,  # Mínimo 2 minutos entre trades
-            "max_trades_per_hour": 6,  # Máximo 6 trades por hora
-            "post_reset_spacing_minutes": 120  # Espaciado especial en primeras 2 horas post-reset
+            "name": "🛡️ Óptimo",
+            "description": "Timeframes 1h-1d, enfoque en calidad y preservación",
+            "timeframes": ["1h", "4h", "1d"],
+            "risk_level": "medium",
+            "frequency": "medium"
         },
         "CONSERVADOR": {
-            "name": "🛡️ Conservador",
-            "description": "Timeframes 4h-1d, máxima preservación de capital",
-            "timeframes": ["4h", "8h", "1d"],  # Timeframes más largos
-            "analysis_interval": 45,  # Análisis menos frecuente
-            "min_confidence": 85.0,  # Aumentado para máxima seguridad
-            "max_daily_trades": 6,  # Aumentado ligeramente para oportunidades
-            "max_positions": 3,  # Aumentado para diversificación mínima
-            # Circuit Breaker Config - Ultra conservador
-            "max_consecutive_losses": 2,  # Muy estricto
-            "circuit_breaker_cooldown_hours": 8,  # Cooldown largo
-            "max_drawdown_threshold": 5.0,  # Muy estricto
-            "gradual_reactivation": True,  # Nueva funcionalidad
-            # Paper Trader Config - Conservador
-            "max_position_size": 0.4,  # Corregido: 40% como decimal
-            "max_total_exposure": 0.35,  # Corregido: 35% como decimal
-            "min_trade_value": 50.0,  # Alto para calidad
-            "paper_min_confidence": 80.0,  # Muy alto
-            "max_slippage": 0.03,  # Muy estricto
-            "min_liquidity": 15.0,  # Muy alto
-            # Risk Manager Config - Ultra conservador
-            "max_risk_per_trade": 0.4,  # Extremadamente bajo
-            "max_daily_risk": 1.5,  # Muy limitado para máxima protección
-            "max_drawdown_threshold": 0.05,  # Corregido: 5% como decimal (mínimo permitido)
-            "correlation_threshold": 0.4,  # Muy estricto
-            "min_position_size": 30.0,  # Alto para calidad
-            "risk_max_position_size": 0.4,  # Corregido: consistente con max_position_size
-            "kelly_fraction": 0.08,  # Extremadamente conservador
-            "volatility_adjustment": 0.75,  # Muy reducido para estabilidad
-            "atr_multiplier_min": 3.5,  # Stops más amplios
-            "atr_multiplier_max": 5.5,  # Stops muy amplios
-            "atr_default": 3.5,
-            "atr_volatile": 5.5,  # Muy amplio
-            "atr_sideways": 3.0,  # Amplio
-            "trailing_stop_activation": 0.20,  # Corregido: 20% como decimal
-            "breakeven_threshold": 1.0,  # Más conservador
-            "intelligent_trailing": True,  # Nueva funcionalidad
-            "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
-            "tp_increment_percentage": 0.8,  # Incremento conservador de TP
-            "max_tp_adjustments": 3,  # Menos ajustes para conservador
-            "tp_confidence_threshold": 0.8,  # Umbral más alto para conservador
-            # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 2.0,  # Pérdida máxima diaria (conservador)
-            "max_drawdown_threshold": 0.05,  # Corregido: 5% como decimal (mínimo permitido)
-            "min_confidence_threshold": 0.75,  # Confianza mínima para trades
-            "position_size_multiplier": 0.8,  # Multiplicador de tamaño de posición
-            "volatility_adjustment_factor": 1.0,  # Factor de ajuste por volatilidad
-            # Strategy Config - Ultra conservador
-            "default_min_confidence": 78.0,  # Muy alto
-            "default_atr_period": 21,  # Período más largo
-            "rsi_min_confidence": 88.0,  # Extremadamente alto
-            "rsi_oversold": 25,  # Más estricto para mejor calidad
-            "rsi_overbought": 75,  # Más estricto para mejor precisión
-            "rsi_period": 21,  # Período más largo
-            "min_volume_ratio": 2.5,  # Alto para calidad
-            "min_confluence": 5,  # Muy alto
-            "trend_strength_threshold": 50,  # Alto
-            "min_atr_ratio": 1.5,  # Alto
-            "max_spread_threshold": 0.0005,  # Muy estricto
-            "volume_weight": 0.25,  # Peso alto para volumen
-            "confluence_threshold": 0.75,  # Umbral más estricto para mejor calidad
-            # Multi-Timeframe Config - Ultra conservador
-            "mtf_enhanced_confidence": 82.0,  # Muy alto
-            "mtf_min_confidence": 88.0,  # Extremadamente alto
-            "mtf_min_consensus": 0.85,  # Muy alto
-            "mtf_require_trend_alignment": True,
-            "mtf_min_timeframe_consensus": 3,
-            "mtf_trend_alignment_required": True,
-            "volume_timeframe": "4h",  # Timeframe más largo
-            # Ensemble Config - Ultra conservador
-            "ensemble_min_consensus_threshold": 0.8,  # Muy alto
-            "ensemble_confidence_boost_factor": 1.1,  # Conservador
-            # Live Trading Config - Conservador
-            "trading_fees": 0.001,
-            "order_timeout": 90,  # Más tiempo
-            "max_order_retries": 5,  # Más intentos
-            "order_check_interval": 3,  # Más frecuente
-            "live_first_analysis_delay": 90,  # Más tiempo inicial
-            # Position Adjuster Config - Ultra conservador
-            "position_monitoring_interval": 120,  # Intervalo de monitoreo en segundos (2 min)
-            "profit_scaling_threshold": 3.0,  # Umbral para escalado de ganancias (%)
-            "trailing_stop_sl_pct": 0.015,  # SL dinámico para trailing stop (1.5%)
-            "trailing_stop_tp_pct": 0.04,  # TP dinámico para trailing stop (4%)
-            "profit_protection_sl_pct": 0.008,  # SL para protección de ganancias (0.8%)
-            "profit_protection_tp_pct": 0.025,  # TP para protección de ganancias (2.5%)
-            "risk_management_threshold": -0.8,  # Umbral para gestión de riesgo (%)
-            "risk_management_sl_pct": 0.012,  # SL más conservador para pérdidas (1.2%)
-            "risk_management_tp_pct": 0.018,  # TP más conservador para pérdidas (1.8%)
-            # Enhanced Risk Manager Config
-            "kelly_win_rate": 0.58,  # Tasa de ganancia asumida para Kelly Criterion
-            "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
-            "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 1.8,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 0.8,  # Incremento base de TP (%)
-            # Trading Bot Config
-            "cache_ttl_seconds": 300,  # TTL del cache en segundos (5 min)
-            "event_queue_maxsize": 1200,  # Tamaño máximo de la cola de eventos
-            "executor_shutdown_timeout": 45,  # Timeout para shutdown del executor (seg)
-            "thread_join_timeout": 15,  # Timeout para join de threads (seg)
-            "analysis_future_timeout": 45,  # Timeout para análisis paralelo (seg)
-            
-            # Connection and Network Config
-            "connection_timeout": 45,  # Timeout de conexión conservador
-            "read_timeout": 90,  # Timeout de lectura conservador
-            "retry_delay": 10,  # Delay entre reintentos más largo
-            "max_retries": 2,  # Menos reintentos para conservador
-            "backoff_factor": 3.0,  # Factor de backoff más conservador
-            
-            # Monitoring and Intervals Config
-            "position_check_interval": 60,  # Verificación menos frecuente
-            "market_data_refresh_interval": 120,  # Actualización menos frecuente
-            "health_check_interval": 600,  # Health check menos frecuente
-            "log_rotation_interval": 7200,  # Rotación de logs menos frecuente
-            
-            # Performance and Optimization Config
-            "max_concurrent_requests": 5,  # Menos requests concurrentes
-            "request_rate_limit": 50,  # Menor límite de requests
-            "memory_threshold_mb": 384,  # Menor umbral de memoria
-            "cpu_threshold_percent": 60,  # Menor umbral de CPU
-            
-            # Error Handling Config
-            "error_cooldown_seconds": 120,  # Mayor tiempo de espera
-            "max_consecutive_errors": 2,  # Menor tolerancia a errores
-            "circuit_breaker_threshold": 5,  # Menor umbral para circuit breaker
-            "circuit_breaker_timeout": 600,  # Mayor timeout del circuit breaker
-            
-            # Trade Spacing Config - Para evitar ejecución masiva post-reset
-            "min_time_between_trades_seconds": 300,  # Mínimo 5 minutos entre trades
-            "max_trades_per_hour": 3,  # Máximo 3 trades por hora
-            "post_reset_spacing_minutes": 180  # Espaciado especial en primeras 3 horas post-reset
+            "name": "🔒 Conservador",
+            "description": "Timeframes largos, máxima preservación de capital",
+            "timeframes": ["4h", "1d", "1w"],
+            "risk_level": "low",
+            "frequency": "low"
         }
     }
     
     @classmethod
-    def get_profile(cls, profile_name: str) -> Dict[str, Any]:
-        """Obtiene la configuración del perfil especificado."""
-        if profile_name not in cls.PROFILES:
-            raise ValueError(f"Perfil '{profile_name}' no válido. Opciones: {list(cls.PROFILES.keys())}")
-        return cls.PROFILES[profile_name]
-    
-    @classmethod
     def get_current_profile(cls) -> Dict[str, Any]:
-        """Obtiene el perfil actualmente configurado."""
-        return cls.get_profile(TRADING_PROFILE)
+        """Obtiene la configuración consolidada del perfil activo con valores por defecto."""
+        config = get_consolidated_config(TRADING_PROFILE)
+        
+        # Agregar valores por defecto para compatibilidad
+        defaults = {
+            # Paper Trader defaults
+            "max_position_size": 100.0,
+            "max_total_exposure": 500.0,
+            "min_trade_value": 10.0,
+            "paper_min_confidence": 65.0,
+            "max_slippage": 0.001,
+            "min_liquidity": 1000.0,
+            "trading_fees": 0.001,
+            "order_timeout": 30,
+            "max_order_retries": 3,
+            "order_check_interval": 2.0,
+            
+            # Risk Manager defaults
+            "max_risk_per_trade": 0.02,
+            "max_daily_risk": 0.05,
+            "max_drawdown_threshold": 0.15,
+            "correlation_threshold": 0.7,
+            "min_position_size": 10.0,
+            "risk_max_position_size": 100.0,
+            "kelly_fraction": 0.25,
+            "volatility_adjustment": 1.0,
+            "atr_multiplier_min": 1.5,
+            "atr_multiplier_max": 3.0,
+            "atr_default": 2.0,
+            "atr_volatile": 2.5,
+            "atr_sideways": 1.5,
+            "trailing_stop_activation": 0.02,
+            "breakeven_threshold": 0.01,
+            "tp_min_percentage": 0.01,
+            "tp_max_percentage": 0.05,
+            "sl_min_percentage": 0.01,
+            "sl_max_percentage": 0.03,
+            "tp_increment_percentage": 0.005,
+            "max_tp_adjustments": 3,
+            "tp_confidence_threshold": 75.0,
+            "max_daily_loss_percent": 0.05,
+            "min_confidence_threshold": 65.0,
+            "position_size_multiplier": 1.0,
+            "volatility_adjustment_factor": 1.0,
+            
+            # Strategy defaults
+            "default_min_confidence": 55.0,
+            "default_atr_period": 10,
+            "rsi_min_confidence": 65.0,
+            "rsi_oversold": 35,
+            "rsi_overbought": 65,
+            "rsi_period": 10,
+            "min_volume_ratio": 1.2,
+            "min_confluence": 2,
+            "trend_strength_threshold": 25,
+            "mtf_enhanced_confidence": 60.0,
+            "mtf_min_confidence": 62.0,
+            "mtf_min_consensus": 0.6,
+            "ensemble_min_consensus_threshold": 0.55,
+            "ensemble_confidence_boost_factor": 1.25
+        }
+        
+        # Combinar defaults con configuración específica del perfil
+        # Los valores específicos del perfil tienen prioridad sobre los defaults
+        result = defaults.copy()
+        
+        # Actualizar con configuración específica del paper trader si existe
+        if 'paper_trader' in config and config['paper_trader']:
+            result.update(config['paper_trader'])
+        
+        # Actualizar con otras configuraciones específicas
+        for key, value in config.items():
+            if key not in ['paper_trader', 'enhanced_risk_manager', 'enhanced_strategies', 
+                          'market_validator', 'position_adjuster', 'position_manager', 
+                          'position_monitor', 'trading_bot', 'advanced_indicators']:
+                result[key] = value
+        
+        return result
 
 # ============================================================================
-# CONFIGURACIÓN DEL TRADING BOT PRINCIPAL
+# 🔧 CONFIGURACIÓN CONSOLIDADA FINAL
 # ============================================================================
 
+# Configuración consolidada que importa desde todos los módulos
+CONSOLIDATED_CONFIG = get_consolidated_config(TRADING_PROFILE)
+
+# ============================================================================
+# 📊 CLASES DE CONFIGURACIÓN PARA COMPATIBILIDAD
+# ============================================================================
+
+@dataclass
 class TradingBotConfig:
-    """Configuración principal del bot de trading."""
+    """Configuración del bot de trading para compatibilidad."""
+    profile: str = TRADING_PROFILE
     
-    # Lista de símbolos para analizar - Optimizada para trading
-    # Selección basada en alta liquidez, volatilidad y volumen de trading
-    SYMBOLS: List[str] = [
-        # Pares principales (máxima liquidez)
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT",
-        # Altcoins de alta capitalización y volumen
-        "ADAUSDT", "XRPUSDT", "LINKUSDT", "DOGEUSDT", "TRXUSDT",
-        # Tokens con alta volatilidad y buen volumen
-        "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "SUIUSDT"
-    ]
-
-    # Símbolos para el bot en vivo - Misma lista optimizada
-    SYMBOLS_LIVE_BOT = SYMBOLS
+    def __post_init__(self):
+        """Inicializar configuración desde módulos."""
+        config = get_consolidated_config(self.profile)
+        for key, value in config.items():
+            setattr(self, key, value)
     
-    # 🎯 CONFIGURACIÓN DINÁMICA BASADA EN PERFIL SELECCIONADO
-    @classmethod
-    def get_analysis_interval(cls) -> int:
-        """Intervalo de análisis en minutos según perfil activo."""
-        return TradingProfiles.get_current_profile()["analysis_interval"]
+    def get_analysis_interval(self) -> int:
+        """Obtiene el intervalo de análisis en minutos desde la configuración del perfil."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            # Convertir de segundos a minutos
+            return config.get('analysis_interval', 30) // 60 if config.get('analysis_interval', 30) >= 60 else 1
+        except ImportError:
+            # Fallback si no se puede importar
+            return 5  # 5 minutos por defecto
     
-    @classmethod
-    def get_min_confidence_threshold(cls) -> float:
-        """Umbral mínimo de confianza según perfil activo."""
-        return TradingProfiles.get_current_profile()["min_confidence"]
-    
-    @classmethod
-    def get_max_daily_trades(cls) -> int:
-        """Máximo de trades diarios según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_daily_trades"]
-    
-    @classmethod
-    def get_max_concurrent_positions(cls) -> int:
-        """Máximo de posiciones concurrentes según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_positions"]
-    
-    @classmethod
-    def get_professional_timeframes(cls) -> List[str]:
-        """Timeframes profesionales según perfil activo."""
-        return TradingProfiles.get_current_profile()["timeframes"]
-    
-    # Valor por defecto del portfolio para cálculos cuando no hay datos
-    DEFAULT_PORTFOLIO_VALUE: float = GLOBAL_INITIAL_BALANCE
-    
-    # 🎯 CONFIGURACIÓN DINÁMICA ADICIONAL BASADA EN PERFIL
-    @classmethod
-    def get_primary_timeframe(cls) -> str:
-        """Timeframe principal según perfil activo."""
-        timeframes = cls.get_professional_timeframes()
-        return timeframes[0] if timeframes else "1m"
-    
-    @classmethod
-    def get_confirmation_timeframe(cls) -> str:
-        """Timeframe de confirmación según perfil activo."""
-        timeframes = cls.get_professional_timeframes()
-        return timeframes[1] if len(timeframes) > 1 else timeframes[0]
-    
-    @classmethod
-    def get_trend_timeframe(cls) -> str:
-        """Timeframe de tendencia según perfil activo."""
-        timeframes = cls.get_professional_timeframes()
-        return timeframes[-1] if timeframes else "15m"
-    
-    @classmethod
-    def get_bot_description(cls) -> str:
-        """Descripción del bot según perfil activo."""
-        return TradingProfiles.get_current_profile()["name"]
-    
-    @classmethod
-    def get_live_update_interval(cls) -> int:
-        """Intervalo de actualización para live bot según perfil."""
-        return TradingProfiles.get_current_profile()["analysis_interval"]
-    
-    @classmethod
-    def get_first_analysis_delay(cls) -> int:
-        """Delay para primer análisis según perfil."""
-        # Usar el doble del intervalo de análisis como delay inicial
-        return TradingProfiles.get_current_profile()["analysis_interval"] * 2
+    def get_live_update_interval(self) -> int:
+        """Obtiene el intervalo de actualización en vivo en segundos."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('market_data_refresh_interval', 60)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 60  # 60 segundos por defecto
     
     @classmethod
     def get_monitoring_interval(cls) -> int:
-        """Intervalo de monitoreo de posiciones según perfil."""
-        return TradingProfiles.get_current_profile().get("position_monitoring_interval", 30)
+        """Obtiene el intervalo de monitoreo en segundos."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(TRADING_PROFILE)
+            return config.get('position_check_interval', 30)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 30  # 30 segundos por defecto
     
-    @classmethod
-    def get_cleanup_interval(cls) -> int:
-        """Intervalo de limpieza según perfil."""
-        return TradingProfiles.get_current_profile().get("cleanup_interval", 10)
+    def get_max_concurrent_positions(self) -> int:
+        """Obtiene el número máximo de posiciones concurrentes."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('max_concurrent_positions', 5)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 5  # 5 posiciones por defecto
+    
+    def get_primary_timeframe(self) -> str:
+        """Obtiene el timeframe primario para el análisis."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('primary_timeframe', '1h')
+        except ImportError:
+            # Fallback si no se puede importar
+            return '1h'  # 1 hora por defecto
+    
+    def get_confirmation_timeframe(self) -> str:
+        """Obtiene el timeframe de confirmación para el análisis."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('confirmation_timeframe', '15m')
+        except ImportError:
+            # Fallback si no se puede importar
+            return '15m'  # 15 minutos por defecto
+    
+    def get_trend_timeframe(self) -> str:
+        """Obtiene el timeframe de tendencia para el análisis."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('trend_timeframe', '4h')
+        except ImportError:
+            # Fallback si no se puede importar
+            return '4h'  # 4 horas por defecto
+    
+    def get_min_time_between_trades_seconds(self) -> int:
+        """Obtiene el tiempo mínimo entre trades en segundos."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('min_time_between_trades', 300)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 300  # 5 minutos por defecto
+    
+    def get_max_trades_per_hour(self) -> int:
+        """Obtiene el número máximo de trades por hora."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('max_trades_per_hour', 12)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 12  # 12 trades por hora por defecto
+    
+    def get_post_reset_spacing_minutes(self) -> int:
+        """Obtiene el espaciado post-reset en minutos."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('post_reset_spacing_minutes', 30)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 30  # 30 minutos por defecto
+    
+    def get_max_drawdown_threshold(self) -> float:
+        """Obtiene el umbral máximo de drawdown."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(self.profile)
+            return config.get('max_drawdown_threshold', 0.15)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 0.15  # 15% por defecto
     
     @classmethod
     def get_thread_join_timeout(cls) -> int:
-        """Timeout para join de threads según perfil."""
-        return TradingProfiles.get_current_profile().get("thread_join_timeout", 10)
+        """Obtiene el timeout para join de threads en segundos."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(TRADING_PROFILE)
+            return config.get('thread_join_timeout', 5)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 5  # 5 segundos por defecto
     
     @classmethod
-    def get_executor_shutdown_timeout(cls) -> int:
-        """Timeout para shutdown de executor según perfil."""
-        return TradingProfiles.get_current_profile().get("executor_shutdown_timeout", 30)
+    def get_cleanup_interval(cls) -> int:
+        """Obtiene el intervalo de limpieza en segundos."""
+        try:
+            from .trading_bot_config import get_trading_bot_config
+            config = get_trading_bot_config(TRADING_PROFILE)
+            return config.get('cleanup_interval', 300)
+        except ImportError:
+            # Fallback si no se puede importar
+            return 300  # 5 minutos por defecto
+
+@dataclass
+class RiskManagerConfig:
+    """Configuración del gestor de riesgo para compatibilidad."""
+    profile: str = TRADING_PROFILE
     
-    @classmethod
-    def get_analysis_future_timeout(cls) -> int:
-        """Timeout para futures de análisis según perfil."""
-        return TradingProfiles.get_current_profile().get("analysis_future_timeout", 30)
+    def __post_init__(self):
+        """Inicializar configuración desde módulos."""
+        config = get_module_config('enhanced_risk_manager', self.profile)
+        for key, value in config.items():
+            setattr(self, key, value)
+
+@dataclass  
+class APIConfig:
+    """Configuración de API para compatibilidad."""
+    profile: str = TRADING_PROFILE
     
-    @classmethod
-    def get_max_consecutive_losses(cls) -> int:
-        """Máximo de pérdidas consecutivas antes de activar circuit breaker según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_consecutive_losses"]
+    def __post_init__(self):
+        """Inicializar configuración desde módulos."""
+        config = get_module_config('trading_bot', self.profile)
+        for key, value in config.items():
+            if 'api' in key.lower() or 'connection' in key.lower():
+                setattr(self, key, value)
+
+@dataclass
+class MonitoringConfig:
+    """Configuración de monitoreo para compatibilidad."""
+    profile: str = TRADING_PROFILE
     
-    @classmethod
-    def get_circuit_breaker_cooldown_hours(cls) -> int:
-        """Horas de cooldown después de activar circuit breaker según perfil activo."""
-        return TradingProfiles.get_current_profile()["circuit_breaker_cooldown_hours"]
+    def __post_init__(self):
+        """Inicializar configuración desde módulos."""
+        config = get_module_config('position_monitor', self.profile)
+        for key, value in config.items():
+            setattr(self, key, value)
+# ============================================================================
+# 🔧 FUNCIONES DE UTILIDAD PARA CONFIGURACIÓN
+# ============================================================================
+
+def reload_config():
+    """Recarga la configuración desde los archivos."""
+    global CONSOLIDATED_CONFIG
+    CONSOLIDATED_CONFIG = get_consolidated_config(TRADING_PROFILE)
+
+
+# ============================================================================
+# 🔧 VALIDACIÓN DE CONFIGURACIÓN
+# ============================================================================
+
+def validate_consolidated_config(config: Dict[str, Any]) -> bool:
+    """🔍 Valida la configuración consolidada.
     
-    @classmethod
-    def get_max_drawdown_threshold(cls) -> float:
-        """Umbral máximo de drawdown según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
+    Args:
+        config: Configuración a validar
+        
+    Returns:
+        bool: True si la configuración es válida
+    """
+    try:
+        required_keys = ['profile', 'global_initial_balance', 'usdt_base_price']
+        
+        for key in required_keys:
+            if key not in config:
+                logger.warning(f"⚠️ Clave requerida '{key}' no encontrada en configuración")
+                return False
+                
+        logger.info("✅ Configuración consolidada validada exitosamente")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error validando configuración: {e}")
+        return False
+
+def initialize_modular_config() -> bool:
+    """🚀 Inicializa la configuración modular.
     
-    @classmethod
-    def get_min_time_between_trades_seconds(cls) -> int:
-        """Tiempo mínimo entre trades en segundos según perfil activo."""
-        return TradingProfiles.get_current_profile().get("min_time_between_trades_seconds", 60)
-    
-    @classmethod
-    def get_max_trades_per_hour(cls) -> int:
-        """Máximo número de trades por hora según perfil activo."""
-        return TradingProfiles.get_current_profile().get("max_trades_per_hour", 10)
-    
-    @classmethod
-    def get_post_reset_spacing_minutes(cls) -> int:
-        """Minutos de espaciado especial después del reset diario según perfil activo."""
-        return TradingProfiles.get_current_profile().get("post_reset_spacing_minutes", 90)
+    Returns:
+        bool: True si la inicialización fue exitosa
+    """
+    try:
+        # Importar configuraciones desde módulos específicos
+        from .trading_bot_config import TradingBotConfig
+        from .enhanced_risk_manager_config import EnhancedRiskManagerConfig
+        from .enhanced_strategies_config import EnhancedStrategiesConfig
+        
+        # Inicializar configuración modular
+        global CONSOLIDATED_CONFIG
+        CONSOLIDATED_CONFIG.update({
+            'trading_bot': TradingBotConfig.get_config(),
+            'risk_manager': EnhancedRiskManagerConfig.get_config(),
+            'strategies': EnhancedStrategiesConfig.get_config()
+        })
+        
+        return True
+    except Exception as e:
+        print(f"Error inicializando configuración modular: {e}")
+        return False
+
+
+def get_current_config():
+    """Obtiene la configuración actual consolidada."""
+    return CONSOLIDATED_CONFIG
+
+
+def reload_config():
+    """Recarga la configuración consolidada."""
+    global CONSOLIDATED_CONFIG
+    CONSOLIDATED_CONFIG = get_consolidated_config()
+    return CONSOLIDATED_CONFIG
+
+
+# Funciones de utilidad para configuración
+def validate_consolidated_config():
+    """Valida la configuración consolidada."""
+    required_sections = ['trading_bot', 'risk_manager', 'strategies']
+    for section in required_sections:
+        if section not in CONSOLIDATED_CONFIG:
+            raise ValueError(f"Sección requerida '{section}' no encontrada en configuración")
+    return True
+
+
+# ============================================================================
+# INICIALIZACIÓN Y VALIDACIÓN DE CONFIGURACIÓN
+# ============================================================================
+
+# Intentar inicializar la configuración
+try:
+    # Primero intentar configuración legacy
+    CONSOLIDATED_CONFIG = get_consolidated_config()
+    print("✅ Configuración legacy inicializada correctamente")
+except Exception as e:
+    print(f"⚠️ Error en configuración legacy: {e}")
+    try:
+        # Intentar configuración modular
+        initialize_modular_config()
+        print("✅ Configuración modular inicializada correctamente")
+    except Exception as e2:
+        print(f"❌ Error en configuración modular: {e2}")
+        # Fallback a configuración básica
+        CONSOLIDATED_CONFIG = {
+            'trading_bot': {},
+            'risk_manager': {},
+            'strategies': {}
+        }
+        print("⚠️ Usando configuración básica de fallback")
+
+# Exportar configuraciones principales
+__all__ = [
+    'CONSOLIDATED_CONFIG',
+    'get_current_config',
+    'reload_config',
+    'validate_consolidated_config',
+    'initialize_modular_config'
+]
 
 
 # ============================================================================
 # CONFIGURACIÓN DEL PAPER TRADER
 # ============================================================================
 
+# Importar variables centralizadas desde trading_bot_config
+try:
+    from .trading_bot_config import GLOBAL_INITIAL_BALANCE, USDT_BASE_PRICE
+except ImportError:
+    # Fallback si no se puede importar
+    GLOBAL_INITIAL_BALANCE = 1000.0
+    USDT_BASE_PRICE = 1.0
+
 class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
     
-    # Balance inicial en USDT para simulación
+    # Balance inicial en USDT para simulación (centralizado)
     INITIAL_BALANCE: float = GLOBAL_INITIAL_BALANCE
     
     @classmethod
@@ -806,6 +888,42 @@ class PaperTraderConfig:
     
     # Máximo % del balance disponible para trading (reserva para fees)
     MAX_BALANCE_USAGE: float = 95.0
+    
+    # Configuración adicional para simulación realista
+    @classmethod
+    def get_max_balance_usage(cls) -> float:
+        """Obtiene el porcentaje máximo del balance utilizable."""
+        return cls.MAX_BALANCE_USAGE
+    
+    @classmethod
+    def get_simulation_fees(cls) -> float:
+        """Obtiene las comisiones de simulación según perfil activo."""
+        return TradingProfiles.get_current_profile().get("trading_fees", 0.001)
+    
+    @classmethod
+    def get_order_timeout(cls) -> int:
+        """Obtiene el timeout de órdenes según perfil activo."""
+        return TradingProfiles.get_current_profile().get("order_timeout", 30)
+    
+    @classmethod
+    def get_max_order_retries(cls) -> int:
+        """Obtiene el máximo de reintentos de órdenes según perfil activo."""
+        return TradingProfiles.get_current_profile().get("max_order_retries", 3)
+    
+    @classmethod
+    def get_order_check_interval(cls) -> float:
+        """Obtiene el intervalo de verificación de órdenes según perfil activo."""
+        return TradingProfiles.get_current_profile().get("order_check_interval", 2.0)
+    
+    @classmethod
+    def should_simulate_slippage(cls) -> bool:
+        """Determina si se debe simular slippage para mayor realismo."""
+        return True  # Siempre simular slippage para comportamiento realista
+    
+    @classmethod
+    def should_simulate_partial_fills(cls) -> bool:
+        """Determina si se deben simular fills parciales."""
+        return True  # Simular fills parciales para mayor realismo
 
 
 # ============================================================================
@@ -1322,10 +1440,10 @@ class TestingConfig:
 
 # Configuración rápida para desarrollo y testing
 DEV_CONFIG = {
-    'symbols': TradingBotConfig.SYMBOLS[:3],  # Solo 3 símbolos para testing
-    'analysis_interval': TestingConfig.TEST_ANALYSIS_INTERVAL,  # Análisis cada 5 minutos para testing
+    'symbols': ['BTCUSDT', 'ETHUSDT', 'ADAUSDT'],  # Solo 3 símbolos para testing
+    'analysis_interval': 300,  # Análisis cada 5 minutos para testing
     'min_confidence': 60.0,  # Umbral más bajo para testing
-    'paper_balance': TestingConfig.TEST_PAPER_BALANCE,  # Balance menor para testing
+    'paper_balance': 1000.0,  # Balance menor para testing
 }
 
 # ============================================================================
@@ -1418,6 +1536,82 @@ class APIConfig:
     
     # Data Limits
     DEFAULT_KLINES_LIMIT = 1000
+
+class DataLimitsConfig:
+    """📊 Configuración centralizada de límites de datos históricos"""
+    
+    # Límites por tipo de análisis
+    STRATEGY_ANALYSIS_LIMIT = 100  # Para análisis de estrategias
+    TREND_ANALYSIS_LIMIT = 50      # Para análisis de tendencias
+    QUICK_ANALYSIS_LIMIT = 30      # Para análisis rápidos
+    
+    # Límites por perfil de trading
+    @classmethod
+    def get_strategy_limit(cls) -> int:
+        """Límite de datos para análisis de estrategias según perfil activo."""
+        profile = TradingProfiles.get_current_profile()
+        # Perfiles más rápidos necesitan menos datos históricos
+        if profile.get("name") == "🚀 Ultra-Rápido":
+            return 50
+        elif profile.get("name") == "⚡ Agresivo":
+            return 100
+        else:  # Conservador y Óptimo
+            return 75
+
+class ThresholdConfig:
+    """🎯 Configuración centralizada de umbrales y límites"""
+    
+    # Umbrales de spread y trading
+    MAX_SPREAD_THRESHOLD = 0.002  # Máximo spread permitido (0.2%)
+    MIN_ATR_RATIO = 0.8          # Ratio mínimo ATR
+    
+    # Umbrales de proximidad y breakout
+    PROXIMITY_THRESHOLD = 0.01    # 1% para proximidad a niveles
+    BREAKOUT_THRESHOLD = 0.02     # 2% para confirmación de breakout
+    SIGNIFICANT_BREAKOUT = 0.5    # 50% para breakout significativo
+    
+    # Umbrales de patrones y formaciones
+    PATTERN_SIMILARITY = 0.03     # 3% para similitud de patrones
+    BODY_SIZE_THRESHOLD = 0.1     # 10% para tamaño de cuerpo de vela
+    SHADOW_RATIO = 0.5            # 50% para ratio de sombras
+    
+    # Fallbacks ATR
+    DEFAULT_ATR_FALLBACK = 0.02   # 2% como fallback ATR por defecto
+    
+    @classmethod
+    def get_max_spread_threshold(cls) -> float:
+        """Obtiene el umbral máximo de spread según perfil activo."""
+        profile = TradingProfiles.get_current_profile()
+        # Perfiles más agresivos toleran spreads mayores
+        if profile.get("name") == "🚀 Ultra-Rápido":
+            return cls.MAX_SPREAD_THRESHOLD * 1.5  # 0.003
+        elif profile.get("name") == "⚡ Agresivo":
+            return cls.MAX_SPREAD_THRESHOLD * 1.2  # 0.0024
+        else:  # Conservador y Óptimo
+            return cls.MAX_SPREAD_THRESHOLD  # 0.002
+    
+    @classmethod
+    def get_atr_fallback(cls) -> float:
+        """Obtiene el fallback ATR según perfil activo."""
+        profile = TradingProfiles.get_current_profile()
+        # Perfiles más conservadores usan fallbacks menores
+        if profile.get("name") == "🛡️ Conservador":
+            return cls.DEFAULT_ATR_FALLBACK * 0.75  # 0.015
+        elif profile.get("name") == "⚖️ Óptimo":
+            return cls.DEFAULT_ATR_FALLBACK  # 0.02
+        else:  # Agresivo y Ultra-Rápido
+            return cls.DEFAULT_ATR_FALLBACK * 1.25  # 0.025150
+    
+    @classmethod
+    def get_trend_limit(cls) -> int:
+        """Límite de datos para análisis de tendencias según perfil activo."""
+        profile = TradingProfiles.get_current_profile()
+        if profile.get("name") == "🚀 Ultra-Rápido":
+            return 30
+        elif profile.get("name") == "⚡ Agresivo":
+            return 50
+        else:  # Conservador y Óptimo
+            return 100
     MAX_KLINES_LIMIT = 1500
     MIN_KLINES_LIMIT = 100
     
@@ -1501,14 +1695,6 @@ class TechnicalAnalysisConfig:
     VWAP_DEVIATION_THRESHOLD = 0.02  # 2%
     VOLATILITY_RATIO_THRESHOLD = 1.5
     PRICE_RANGE_TOLERANCE = 0.2  # 20%
-    
-    # Factores de Aproximación
-    APPROXIMATION_FACTORS = {
-        "close": 0.98,
-        "exact": 1.00,
-        "far": 1.02,
-        "very_close": 0.99
-    }
     
     @classmethod
     def get_volume_strength(cls, ratio: float) -> str:
@@ -1667,6 +1853,21 @@ class OscillatorConfig:
         "overbought": 80
     }
     
+    # Umbrales CCI
+    CCI_THRESHOLDS = {
+        "oversold": -100,
+        "overbought": 100
+    }
+    
+    # Umbrales ROC (Rate of Change)
+    ROC_THRESHOLDS = {
+        "strong_positive": 5.0,
+        "moderate_positive": 2.0,
+        "neutral": 0.0,
+        "moderate_negative": -2.0,
+        "strong_negative": -5.0
+    }
+    
     # Umbrales de Señales
     SIGNAL_THRESHOLDS = {
         "strong_buy": -100,
@@ -1696,6 +1897,7 @@ class CalculationConfig:
     # Constantes Matemáticas
     PARABOLIC_SAR_STEP = 0.015
     PARABOLIC_SAR_MAX = 0.2
+    CCI_CONSTANT = 0.015  # Constante para cálculo de CCI
     
     # Períodos de Cálculo
     DEFAULT_PERIODS = {
@@ -1717,6 +1919,14 @@ class CalculationConfig:
         "bollinger_std": 2.0,
         "atr_multiplier": 1.5,
         "volume_multiplier": 1.2
+    }
+    
+    # Factores de Aproximación
+    APPROXIMATION_FACTORS = {
+        "close": 0.98,
+        "exact": 1.00,
+        "far": 1.02,
+        "very_close": 0.99
     }
     
     @classmethod
@@ -1823,9 +2033,420 @@ def initialize_config() -> bool:
     return True
 
 
+# ============================================================================
+# 🔧 CONFIGURACIÓN OPTIMIZADA PARA TRADING BOT
+# ============================================================================
+
+@dataclass
+class TradingBotOptimizedConfig:
+    """🎯 Configuración optimizada del TradingBot que elimina valores hardcodeados"""
+    
+    # === SÍMBOLOS POR DEFECTO OPTIMIZADOS (ATRIBUTO DE CLASE) ===
+    DEFAULT_SYMBOLS = [
+        'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 
+        'LINKUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
+    ]
+    
+    # === TIMEFRAMES DE ANÁLISIS (ATRIBUTO DE CLASE) ===
+    ANALYSIS_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h']
+    
+    # === PESOS DE ESTRATEGIAS (ATRIBUTO DE CLASE) ===
+    STRATEGY_WEIGHTS = {
+        'rsi_strategy': 0.3,
+        'macd_strategy': 0.25,
+        'bollinger_strategy': 0.2,
+        'ema_strategy': 0.15,
+        'volume_strategy': 0.1
+    }
+    
+    # === INTERVALOS Y TIMEFRAMES OPTIMIZADOS ===
+    DEFAULT_ANALYSIS_INTERVAL_MINUTES: int = 5
+    MIN_ANALYSIS_INTERVAL_MINUTES: int = 1
+    MAX_ANALYSIS_INTERVAL_MINUTES: int = 60
+    
+    # Timeframes para análisis multi-timeframe (field para instancia)
+    timeframes: List[str] = field(default_factory=lambda: TradingBotOptimizedConfig.ANALYSIS_TIMEFRAMES.copy())
+    PRIMARY_TIMEFRAME: str = '5m'
+    CONFIRMATION_TIMEFRAMES: List[str] = field(default_factory=lambda: ['15m', '1h'])
+    
+    # === LÍMITES DE TRADING OPTIMIZADOS ===
+    DEFAULT_MAX_DAILY_TRADES: int = 15
+    MIN_DAILY_TRADES: int = 1
+    MAX_DAILY_TRADES: int = 50
+    
+    # === UMBRALES DE CONFIANZA OPTIMIZADOS ===
+    DEFAULT_MIN_CONFIDENCE_THRESHOLD: float = 68.0
+    MIN_CONFIDENCE_THRESHOLD: float = 50.0
+    MAX_CONFIDENCE_THRESHOLD: float = 95.0
+    
+    # === CIRCUIT BREAKER OPTIMIZADO ===
+    DEFAULT_MAX_CONSECUTIVE_LOSSES: int = 3
+    MIN_CONSECUTIVE_LOSSES: int = 2
+    MAX_CONSECUTIVE_LOSSES: int = 10
+    
+    DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS: int = 4
+    MIN_COOLDOWN_HOURS: int = 1
+    MAX_COOLDOWN_HOURS: int = 24
+    
+    # === CACHE Y PERFORMANCE OPTIMIZADOS ===
+    DEFAULT_CACHE_TTL_SECONDS: int = 300  # 5 minutos
+    MIN_CACHE_TTL_SECONDS: int = 60       # 1 minuto
+    MAX_CACHE_TTL_SECONDS: int = 3600     # 1 hora
+    
+    CACHE_CLEANUP_INTERVAL_SECONDS: int = 600  # 10 minutos
+    MAX_CACHE_SIZE: int = 1000
+    
+    # === THREADING Y CONCURRENCIA OPTIMIZADOS ===
+    MAX_WORKER_THREADS: int = 4
+    MIN_WORKER_THREADS: int = 1
+    THREAD_POOL_MAX_WORKERS: int = 4
+    THREAD_TIMEOUT_SECONDS: int = 30
+    
+    # === RESET Y TIMING OPTIMIZADOS ===
+    DAILY_RESET_HOUR: int = 0  # Medianoche UTC
+    POST_RESET_WINDOW_MINUTES: int = 5
+    POST_RESET_WINDOW_HOURS: int = 3  # Ventana post-reset en horas
+    
+    # === THROTTLING OPTIMIZADO ===
+    MIN_TIME_BETWEEN_TRADES_SECONDS: int = 60  # 1 minuto
+    MIN_TIME_BETWEEN_SAME_SYMBOL_MINUTES: int = 15
+    
+    # === REACTIVACIÓN GRADUAL OPTIMIZADA ===
+    GRADUAL_REACTIVATION_STEPS: int = 3
+    REACTIVATION_SUCCESS_THRESHOLD: int = 2
+    REACTIVATION_STEP_DURATION_HOURS: int = 2
+    REACTIVATION_PHASE_2_TRADES: int = 3
+    REACTIVATION_PHASE_3_TRADES: int = 5
+    
+    # === MONITOREO DE POSICIONES OPTIMIZADO ===
+    POSITION_CHECK_INTERVAL_SECONDS: int = 30
+    POSITION_ADJUSTMENT_COOLDOWN_MINUTES: int = 5
+    
+    # === EVENTOS Y QUEUE OPTIMIZADOS ===
+    EVENT_QUEUE_MAX_SIZE: int = 1000
+    EVENT_PROCESSING_TIMEOUT_SECONDS: int = 1
+    
+    # Field para instancia
+    symbols: List[str] = field(default_factory=lambda: [
+        'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 
+        'LINKUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
+    ])
+    
+    # === CONFIGURACIÓN DE ESTRATEGIAS OPTIMIZADA ===
+    STRATEGY_WEIGHTS: Dict[str, float] = field(default_factory=lambda: {
+        'rsi_strategy': 0.3,
+        'multi_timeframe_strategy': 0.4,
+        'ensemble_strategy': 0.3
+    })
+    
+    # === CONFIGURACIÓN DE RIESGO OPTIMIZADA ===
+    DEFAULT_RISK_PER_TRADE_PERCENT: float = 2.0
+    MAX_RISK_PER_TRADE_PERCENT: float = 5.0
+    MIN_RISK_PER_TRADE_PERCENT: float = 0.5
+    
+    # === CONFIGURACIÓN DE API OPTIMIZADA ===
+    API_RATE_LIMIT_REQUESTS_PER_MINUTE: int = 1200
+    API_TIMEOUT_SECONDS: int = 10
+    API_RETRY_ATTEMPTS: int = 3
+    API_RETRY_DELAY_SECONDS: int = 1
+    
+    # === LOGGING OPTIMIZADO ===
+    LOG_LEVEL: str = 'INFO'
+    LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    LOG_FILE_MAX_SIZE_MB: int = 10
+    LOG_FILE_BACKUP_COUNT: int = 5
+    
+    @classmethod
+    def get_optimized_config(cls, profile: str = 'balanced') -> Dict:
+        """🎯 Obtener configuración optimizada según perfil
+        
+        Args:
+            profile: Perfil de configuración ('conservative', 'balanced', 'aggressive')
+            
+        Returns:
+            Dict: Configuración optimizada
+        """
+        base_config = {
+            'analysis_interval_minutes': cls.DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+            'max_daily_trades': cls.DEFAULT_MAX_DAILY_TRADES,
+            'min_confidence_threshold': cls.DEFAULT_MIN_CONFIDENCE_THRESHOLD,
+            'max_consecutive_losses': cls.DEFAULT_MAX_CONSECUTIVE_LOSSES,
+            'circuit_breaker_cooldown_hours': cls.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS,
+            'cache_ttl_seconds': cls.DEFAULT_CACHE_TTL_SECONDS,
+            'symbols': cls.DEFAULT_SYMBOLS.copy(),
+            'timeframes': cls.ANALYSIS_TIMEFRAMES.copy(),
+            'strategy_weights': cls.STRATEGY_WEIGHTS.copy()
+        }
+        
+        # Ajustes por perfil
+        if profile == 'conservative':
+            base_config.update({
+                'analysis_interval_minutes': 10,
+                'max_daily_trades': 5,
+                'min_confidence_threshold': 80.0,
+                'max_consecutive_losses': 2,
+                'circuit_breaker_cooldown_hours': 6
+            })
+        elif profile == 'aggressive':
+            base_config.update({
+                'analysis_interval_minutes': 2,
+                'max_daily_trades': 20,
+                'min_confidence_threshold': 60.0,
+                'max_consecutive_losses': 5,
+                'circuit_breaker_cooldown_hours': 2
+            })
+        
+        return base_config
+    
+    @classmethod
+    def validate_config(cls, config: Dict = None) -> Dict:
+        """✅ Validar y ajustar configuración dentro de límites
+        
+        Args:
+            config: Configuración a validar (opcional)
+            
+        Returns:
+            Dict: Configuración validada y ajustada
+        """
+        if config is None:
+            # Validar configuración actual
+            return {
+                'analysis_interval_valid': cls.MIN_ANALYSIS_INTERVAL_MINUTES <= cls.DEFAULT_ANALYSIS_INTERVAL_MINUTES <= cls.MAX_ANALYSIS_INTERVAL_MINUTES,
+                'daily_trades_valid': cls.MIN_DAILY_TRADES <= cls.DEFAULT_MAX_DAILY_TRADES <= cls.MAX_DAILY_TRADES,
+                'confidence_threshold_valid': cls.MIN_CONFIDENCE_THRESHOLD <= cls.DEFAULT_MIN_CONFIDENCE_THRESHOLD <= cls.MAX_CONFIDENCE_THRESHOLD,
+                'consecutive_losses_valid': cls.MIN_CONSECUTIVE_LOSSES <= cls.DEFAULT_MAX_CONSECUTIVE_LOSSES <= cls.MAX_CONSECUTIVE_LOSSES,
+                'cooldown_hours_valid': cls.MIN_COOLDOWN_HOURS <= cls.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS <= cls.MAX_COOLDOWN_HOURS
+            }
+        validated = config.copy()
+        
+        # Validar intervalos
+        if 'analysis_interval_minutes' in validated:
+            validated['analysis_interval_minutes'] = max(
+                cls.MIN_ANALYSIS_INTERVAL_MINUTES,
+                min(cls.MAX_ANALYSIS_INTERVAL_MINUTES, validated['analysis_interval_minutes'])
+            )
+        
+        # Validar trades diarios
+        if 'max_daily_trades' in validated:
+            validated['max_daily_trades'] = max(
+                cls.MIN_DAILY_TRADES,
+                min(cls.MAX_DAILY_TRADES, validated['max_daily_trades'])
+            )
+        
+        # Validar umbral de confianza
+        if 'min_confidence_threshold' in validated:
+            validated['min_confidence_threshold'] = max(
+                cls.MIN_CONFIDENCE_THRESHOLD,
+                min(cls.MAX_CONFIDENCE_THRESHOLD, validated['min_confidence_threshold'])
+            )
+        
+        # Validar circuit breaker
+        if 'max_consecutive_losses' in validated:
+            validated['max_consecutive_losses'] = max(
+                cls.MIN_CONSECUTIVE_LOSSES,
+                min(cls.MAX_CONSECUTIVE_LOSSES, validated['max_consecutive_losses'])
+            )
+        
+        if 'circuit_breaker_cooldown_hours' in validated:
+            validated['circuit_breaker_cooldown_hours'] = max(
+                cls.MIN_COOLDOWN_HOURS,
+                min(cls.MAX_COOLDOWN_HOURS, validated['circuit_breaker_cooldown_hours'])
+            )
+        
+        return validated
+    
+    @classmethod
+    def get_environment_config(cls) -> Dict:
+        """🌍 Obtener configuración desde variables de entorno
+        
+        Returns:
+            Dict: Configuración desde environment variables
+        """
+        env_config = {}
+        
+        # Mapeo de variables de entorno
+        env_mappings = {
+            'TRADING_BOT_ANALYSIS_INTERVAL': ('analysis_interval_minutes', int),
+            'TRADING_BOT_MAX_DAILY_TRADES': ('max_daily_trades', int),
+            'TRADING_BOT_MIN_CONFIDENCE': ('min_confidence_threshold', float),
+            'TRADING_BOT_MAX_LOSSES': ('max_consecutive_losses', int),
+            'TRADING_BOT_COOLDOWN_HOURS': ('circuit_breaker_cooldown_hours', int),
+            'TRADING_BOT_CACHE_TTL': ('cache_ttl_seconds', int),
+            'TRADING_BOT_SYMBOLS': ('symbols', lambda x: x.split(',')),
+            'TRADING_BOT_PROFILE': ('profile', str)
+        }
+        
+        for env_var, (config_key, converter) in env_mappings.items():
+            value = os.getenv(env_var)
+            if value is not None:
+                try:
+                    env_config[config_key] = converter(value)
+                except (ValueError, TypeError):
+                    continue
+        
+        return env_config
+    
+    def get_from_env(self, key: str, converter=None, default=None):
+        """🌍 Obtener valor desde variables de entorno
+        
+        Args:
+            key: Clave de la variable de entorno
+            converter: Función para convertir el valor (opcional)
+            default: Valor por defecto si no existe
+            
+        Returns:
+            Valor desde environment o default
+        """
+        value = os.getenv(key)
+        if value is None:
+            return default
+        
+        if converter is not None:
+            try:
+                return converter(value)
+            except (ValueError, TypeError):
+                return default
+        
+        return value
+    
+    def get_conservative_profile(self) -> Dict:
+        """🛡️ Obtener perfil conservador
+        
+        Returns:
+            Dict: Configuración conservadora
+        """
+        return self.get_optimized_config('conservative')
+    
+    def get_aggressive_profile(self) -> Dict:
+        """🚀 Obtener perfil agresivo
+        
+        Returns:
+            Dict: Configuración agresiva
+        """
+        return self.get_optimized_config('aggressive')
+    
+    def get_balanced_profile(self) -> Dict:
+        """⚖️ Obtener perfil balanceado
+        
+        Returns:
+            Dict: Configuración balanceada
+        """
+        return self.get_optimized_config('balanced')
+
+
+# Agregar atributos de clase después de la definición
+TradingBotOptimizedConfig.DEFAULT_SYMBOLS = [
+    'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 
+    'LINKUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT'
+]
+
+TradingBotOptimizedConfig.ANALYSIS_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h']
+
+TradingBotOptimizedConfig.STRATEGY_WEIGHTS = {
+    'rsi_strategy': 0.3,
+    'macd_strategy': 0.25,
+    'bollinger_strategy': 0.2,
+    'ema_strategy': 0.15,
+    'volume_strategy': 0.1
+}
+
+# Instancia global de configuración optimizada
+optimized_config = TradingBotOptimizedConfig()
+
+# ============================================================================
+# 🚀 CONFIGURACIÓN CONSOLIDADA GLOBAL
+# ============================================================================
+
+# Configuración consolidada global disponible para todo el sistema
+CONSOLIDATED_CONFIG = get_consolidated_config(TRADING_PROFILE)
+
+def initialize_modular_config() -> bool:
+    """🚀 Inicializa y valida todas las configuraciones modulares.
+    
+    Returns:
+        bool: True si la inicialización fue exitosa
+    """
+    try:
+        global CONSOLIDATED_CONFIG
+        
+        # Regenerar configuración consolidada
+        CONSOLIDATED_CONFIG = get_consolidated_config(TRADING_PROFILE)
+        
+        # Validar configuración consolidada
+        if not validate_consolidated_config(CONSOLIDATED_CONFIG):
+            logger.warning("⚠️ Algunas configuraciones modulares tienen advertencias")
+            return False
+            
+        logger.info(f"✅ Configuración modular inicializada exitosamente para perfil: {TRADING_PROFILE}")
+        logger.info(f"📊 Módulos cargados: {list(CONSOLIDATED_CONFIG.keys())}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error inicializando configuración modular: {e}")
+        return False
+
+def get_current_config() -> Dict[str, Any]:
+    """🎯 Obtiene la configuración actual consolidada.
+    
+    Returns:
+        Dict: Configuración consolidada actual
+    """
+    return CONSOLIDATED_CONFIG
+
+def reload_config(new_profile: str = None) -> bool:
+    """🔄 Recarga la configuración con un nuevo perfil.
+    
+    Args:
+        new_profile: Nuevo perfil a cargar (opcional)
+        
+    Returns:
+        bool: True si la recarga fue exitosa
+    """
+    global TRADING_PROFILE, CONSOLIDATED_CONFIG
+    
+    try:
+        if new_profile:
+            TRADING_PROFILE = new_profile
+            
+        return initialize_modular_config()
+        
+    except Exception as e:
+        logger.error(f"❌ Error recargando configuración: {e}")
+        return False
+
 # Validar configuración al importar el módulo
 try:
+    # Primero intentar inicializar configuración legacy
     if not initialize_config():
-        logger.warning("⚠️ Configuración inicializada con advertencias")
+        logger.warning("⚠️ Configuración legacy inicializada con advertencias")
+    
+    # Luego inicializar configuración modular
+    if not initialize_modular_config():
+        logger.warning("⚠️ Configuración modular inicializada con advertencias")
+        
 except Exception as e:
-    logger.error(f"❌ Error al inicializar configuración: {e}")
+    logger.error(f"❌ Error al inicializar configuraciones: {e}")
+    # Fallback a configuración básica
+    CONSOLIDATED_CONFIG = {
+        'profile': TRADING_PROFILE,
+        'global_initial_balance': 1000.0,
+        'usdt_base_price': 1.0,
+        'timezone': 'America/Santiago',
+        'daily_reset_hour': 11,
+        'daily_reset_minute': 0,
+    }
+
+# Exportar funciones y configuraciones principales
+__all__ = [
+    'TRADING_PROFILE',
+    'CONSOLIDATED_CONFIG',
+    'get_consolidated_config',
+    'validate_consolidated_config', 
+    'get_module_config',
+    'initialize_modular_config',
+    'get_current_config',
+    'reload_config',
+    'optimized_config',
+    'TradingBotOptimizedConfig'
+]

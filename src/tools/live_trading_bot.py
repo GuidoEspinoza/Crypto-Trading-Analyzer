@@ -22,67 +22,73 @@ sys.path.append(project_root)
 from src.core.trading_bot import TradingBot
 from src.config.config import TradingBotConfig
 from src.database.database import db_manager
+from src.config.live_trading_bot_config import LiveTradingBotConfig, live_trading_bot_config
 
 # Configurar logging con colores
 class ColoredFormatter(logging.Formatter):
     """Formatter personalizado para agregar colores a los logs"""
     
-    COLORS = {
-        'DEBUG': Fore.CYAN,
-        'INFO': Fore.GREEN,
-        'WARNING': Fore.YELLOW,
-        'ERROR': Fore.RED,
-        'CRITICAL': Fore.MAGENTA + Style.BRIGHT
-    }
+    def __init__(self, config: LiveTradingBotConfig):
+        super().__init__()
+        self.config = config
+        self.COLORS = config.get_logging_config().level_colors
     
     def format(self, record):
         # Aplicar color según el nivel
         color = self.COLORS.get(record.levelname, '')
         record.levelname = f"{color}{record.levelname}{Style.RESET_ALL}"
         
-        # Colorear mensajes específicos
+        # Colorear mensajes específicos usando configuración
         message = record.getMessage()
+        display_config = self.config.get_display_config()
         
-        # Colores para diferentes tipos de procesos
-        if "📊 Analizando" in message:
+        if not display_config.emojis_enabled:
+            # Si los emojis están deshabilitados, removerlos
+            import re
+            message = re.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+', '', message)
+        
+        # Colores para diferentes tipos de procesos usando configuración
+        emoji_map = display_config.emoji_mapping
+        
+        if emoji_map['analyzing'] in message and "Analizando" in message:
             message = f"{Fore.CYAN + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "🔄 INICIANDO CICLO" in message:
+        elif emoji_map['cycle_start'] in message and "INICIANDO CICLO" in message:
             message = f"{Fore.BLUE + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "💰" in message and "Precio actual" in message:
+        elif emoji_map['price_info'] in message and "Precio actual" in message:
             message = f"{Fore.YELLOW + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "📈" in message and "RSI" in message:
+        elif emoji_map['indicators'] in message and "RSI" in message:
             message = f"{Fore.MAGENTA}{message}{Style.RESET_ALL}"
-        elif "🎯 DECISIÓN FINAL" in message:
+        elif emoji_map['decision'] in message and "DECISIÓN FINAL" in message:
             message = f"{Fore.GREEN + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "✅ TRADE EJECUTADO" in message:
+        elif emoji_map['trade_executed'] in message and "TRADE EJECUTADO" in message:
             message = f"{Fore.GREEN + Back.BLACK + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "📋 CONFIGURACIÓN DE ESTRATEGIAS" in message:
+        elif emoji_map['config_strategies'] in message and "CONFIGURACIÓN DE ESTRATEGIAS" in message:
             message = f"{Fore.CYAN + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "💰 CONFIGURACIÓN DEL PAPER TRADER" in message:
+        elif emoji_map['config_paper_trader'] in message and "CONFIGURACIÓN DEL PAPER TRADER" in message:
             message = f"{Fore.YELLOW + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "⚙️ CONFIGURACIÓN DEL BOT" in message:
+        elif emoji_map['config_bot'] in message and "CONFIGURACIÓN DEL BOT" in message:
             message = f"{Fore.BLUE + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif message.strip().startswith("🎯") and ":" in message:
+        elif message.strip().startswith(emoji_map['decision']) and ":" in message:
             message = f"{Fore.CYAN}{message}{Style.RESET_ALL}"
         elif message.strip().startswith("•"):
             message = f"{Fore.WHITE + Style.DIM}{message}{Style.RESET_ALL}"
-        elif "⚠️" in message:
+        elif emoji_map['warning'] in message:
             message = f"{Fore.YELLOW}{message}{Style.RESET_ALL}"
-        elif "❌" in message:
+        elif emoji_map['error'] in message:
             message = f"{Fore.RED}{message}{Style.RESET_ALL}"
-        elif "🚀" in message:
+        elif emoji_map['rocket'] in message:
             message = f"{Fore.BLUE + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "💼 Ejecutando trade" in message:
+        elif emoji_map['trade_executing'] in message and "Ejecutando trade" in message:
             message = f"{Fore.CYAN + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "🔍 Ejecutando estrategia" in message:
+        elif emoji_map['strategy_executing'] in message and "Ejecutando estrategia" in message:
             message = f"{Fore.MAGENTA}{message}{Style.RESET_ALL}"
-        elif "➡️" in message:
+        elif emoji_map['signal_arrow'] in message:
             message = f"{Fore.BLUE}{message}{Style.RESET_ALL}"
-        elif "🔧 AJUSTE DINÁMICO EJECUTADO" in message:
+        elif emoji_map['adjustment'] in message and "AJUSTE DINÁMICO EJECUTADO" in message:
             message = f"{Fore.YELLOW + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "🛡️" in message and "STOP LOSS" in message:
+        elif emoji_map['stop_loss'] in message and "STOP LOSS" in message:
             message = f"{Fore.RED + Style.BRIGHT}{message}{Style.RESET_ALL}"
-        elif "🎯" in message and "TAKE PROFIT" in message:
+        elif emoji_map['take_profit'] in message and "TAKE PROFIT" in message:
             message = f"{Fore.GREEN + Style.BRIGHT}{message}{Style.RESET_ALL}"
         
         record.msg = message
@@ -90,18 +96,18 @@ class ColoredFormatter(logging.Formatter):
 
 # Configurar logger con colores (sin duplicación)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(live_trading_bot_config.get_logging_config().level)
 
 # Limpiar handlers existentes para evitar duplicación
 logger.handlers.clear()
 
 # Aplicar el formatter con colores
 handler = logging.StreamHandler()
-handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+handler.setFormatter(ColoredFormatter(live_trading_bot_config))
 logger.addHandler(handler)
 
 # Evitar que los logs se propaguen al logger raíz
-logger.propagate = False
+logger.propagate = live_trading_bot_config.get_logging_config().propagate
 
 class LiveTradingBot:
     """
@@ -111,6 +117,7 @@ class LiveTradingBot:
     def __init__(self):
         self.config = TradingBotConfig()
         self.trading_bot = TradingBot()
+        self.live_config = live_trading_bot_config
         
         # Configuración del bot
         self.symbols = TradingBotConfig.SYMBOLS_LIVE_BOT
@@ -173,11 +180,13 @@ class LiveTradingBot:
             logger.error(f"❌ Error inicializando estrategias: {e}")
         
         self.last_signals = {}
+        # Inicializar estadísticas de sesión usando configuración
+        session_config = self.live_config.get_session_stats_config()
         self.session_stats = {
             "start_time": datetime.now(),
-            "total_trades": 0,
-            "successful_trades": 0,
-            "total_pnl": 0.0
+            "total_trades": session_config.initial_total_trades,
+            "successful_trades": session_config.initial_successful_trades,
+            "total_pnl": session_config.initial_total_pnl
         }
     
     def get_status(self):
@@ -296,25 +305,28 @@ class LiveTradingBot:
                     try:
                         logger.info(f"🔍 Ejecutando estrategia {strategy_name} para {symbol}")
                         
-                        # Obtener datos de mercado para mostrar indicadores
+                        # Obtener datos de mercado para mostrar indicadores usando configuración
                         try:
-                            df = strategy.get_market_data(symbol, "1h", 50)
+                            ti_config = self.live_config.get_technical_indicators_config()
+                            df = strategy.get_market_data(symbol, ti_config.default_timeframe, ti_config.market_data_limit)
                             if not df.empty:
                                 last_close = df['close'].iloc[-1]
-                                volume_avg = df['volume'].rolling(20).mean().iloc[-1]
+                                volume_avg = df['volume'].rolling(ti_config.volume_rolling_period).mean().iloc[-1]
                                 current_volume = df['volume'].iloc[-1]
                                 
-                                # Calcular algunos indicadores básicos
+                                # Calcular algunos indicadores básicos usando configuración
                                 import pandas_ta as ta
-                                rsi = ta.rsi(df['close'], length=14).iloc[-1]
-                                sma_20 = ta.sma(df['close'], length=20).iloc[-1]
-                                sma_50 = ta.sma(df['close'], length=50).iloc[-1]
+                                rsi = ta.rsi(df['close'], length=ti_config.rsi_period).iloc[-1]
+                                sma_short = ta.sma(df['close'], length=ti_config.sma_short_period).iloc[-1]
+                                sma_long = ta.sma(df['close'], length=ti_config.sma_long_period).iloc[-1]
                                 
-                                logger.info(f"📈 {symbol} - RSI: {rsi:.1f}, SMA20: ${sma_20:.2f}, SMA50: ${sma_50:.2f}")
-                                logger.info(f"📊 {symbol} - Volumen: {current_volume:,.0f} (Promedio: {volume_avg:,.0f})")
+                                emoji_map = self.live_config.get_display_config().emoji_mapping
+                                logger.info(f"{emoji_map['indicators']} {symbol} - RSI: {rsi:.1f}, SMA{ti_config.sma_short_period}: ${sma_short:.2f}, SMA{ti_config.sma_long_period}: ${sma_long:.2f}")
+                                logger.info(f"{emoji_map['analyzing']} {symbol} - Volumen: {current_volume:,.0f} (Promedio: {volume_avg:,.0f})")
                                 
                         except Exception as e:
-                            logger.error(f"❌ Error obteniendo indicadores para {symbol}: {e}")
+                            emoji_map = self.live_config.get_display_config().emoji_mapping
+                            logger.error(f"{emoji_map['error']} Error obteniendo indicadores para {symbol}: {e}")
                         
                         # Ejecutar análisis de la estrategia
                         signal = strategy.analyze(symbol)
@@ -359,10 +371,12 @@ class LiveTradingBot:
             signal_type = signal.signal_type
             price = trade_result.entry_price if hasattr(trade_result, 'entry_price') else signal.current_price
             
-            # Calcular valores para Binance
+            # Calcular valores para Binance usando configuración
+            binance_config = self.live_config.get_binance_adjustments_config()
+            
             if signal_type == "BUY":
                 # Precio ligeramente por debajo para mejor ejecución
-                binance_price = price * 0.9997  # 0.03% por debajo
+                binance_price = price * binance_config.buy_adjustment_factor
                 
                 # Monto en cripto (del trade ejecutado)
                 crypto_amount = trade_result.quantity if hasattr(trade_result, 'quantity') else 0
@@ -389,23 +403,26 @@ class LiveTradingBot:
                     stop_loss_price = price * (1 - sl_max / 100)
                     stop_loss_pct = sl_max
                 
+                emoji_map = self.live_config.get_display_config().emoji_mapping
+                separator = emoji_map['separator']
+                
                 logger.info("")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("📋 CONFIGURACIÓN PARA BINANCE SPOT - ORDEN LÍMITE")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info(f"💰 PRECIO:     {binance_price:,.2f} USDT")
-                logger.info(f"🪙 MONTO:      {crypto_amount:.8f} {symbol.replace('USDT', '')}")
-                logger.info(f"💵 TOTAL:      {total_usdt:.2f} USDT")
+                logger.info(f"{emoji_map['decision']} {separator}")
+                logger.info(f"{emoji_map['config_strategies']} CONFIGURACIÓN PARA BINANCE SPOT - ORDEN LÍMITE")
+                logger.info(f"{emoji_map['decision']} {separator}")
+                logger.info(f"{emoji_map['money']} PRECIO:     {binance_price:,.2f} USDT")
+                logger.info(f"{emoji_map['coin']} MONTO:      {crypto_amount:.8f} {symbol.replace('USDT', '')}")
+                logger.info(f"{emoji_map['money']} TOTAL:      {total_usdt:.2f} USDT")
                 logger.info("")
-                logger.info("🛡️ PROTECCIÓN (TP/SL):")
-                logger.info(f"📈 TAKE PROFIT: {take_profit_price:,.2f} USDT (+{take_profit_pct:.1f}%)")
-                logger.info(f"📉 STOP LOSS:   {stop_loss_price:,.2f} USDT (-{stop_loss_pct:.1f}%)")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info(f"{emoji_map['shield']} PROTECCIÓN (TP/SL):")
+                logger.info(f"{emoji_map['up_trend']} TAKE PROFIT: {take_profit_price:,.2f} USDT (+{take_profit_pct:.1f}%)")
+                logger.info(f"{emoji_map['down_trend']} STOP LOSS:   {stop_loss_price:,.2f} USDT (-{stop_loss_pct:.1f}%)")
+                logger.info(f"{emoji_map['decision']} {separator}")
                 logger.info("")
                 
             elif signal_type == "SELL":
                 # Para ventas
-                binance_price = price * 1.0003  # 0.03% por arriba
+                binance_price = price * binance_config.sell_adjustment_factor
                 
                 # Usar datos del trade ejecutado (no el balance actual que ya es 0)
                 asset_name = symbol.replace('USDT', '')
@@ -431,18 +448,21 @@ class LiveTradingBot:
                     stop_loss_price = price * (1 + sl_max / 100)
                     stop_loss_pct = sl_max
                 
+                emoji_map = self.live_config.get_display_config().emoji_mapping
+                separator = emoji_map['separator']
+                
                 logger.info("")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("📋 CONFIGURACIÓN PARA BINANCE SPOT - VENTA LÍMITE")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info(f"💰 PRECIO:     {binance_price:,.2f} USDT")
-                logger.info(f"🪙 MONTO:      {crypto_balance:.8f} {asset_name}")
-                logger.info(f"💵 TOTAL:      {total_usdt:.2f} USDT")
+                logger.info(f"{emoji_map['decision']} {separator}")
+                logger.info(f"{emoji_map['config_strategies']} CONFIGURACIÓN PARA BINANCE SPOT - VENTA LÍMITE")
+                logger.info(f"{emoji_map['decision']} {separator}")
+                logger.info(f"{emoji_map['money']} PRECIO:     {binance_price:,.2f} USDT")
+                logger.info(f"{emoji_map['coin']} MONTO:      {crypto_balance:.8f} {asset_name}")
+                logger.info(f"{emoji_map['money']} TOTAL:      {total_usdt:.2f} USDT")
                 logger.info("")
-                logger.info("🛡️ PROTECCIÓN (TP/SL):")
-                logger.info(f"📈 TAKE PROFIT: {take_profit_price:,.2f} USDT (-{take_profit_pct:.1f}%)")
-                logger.info(f"📉 STOP LOSS:   {stop_loss_price:,.2f} USDT (+{stop_loss_pct:.1f}%)")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
+                logger.info(f"{emoji_map['shield']} PROTECCIÓN (TP/SL):")
+                logger.info(f"{emoji_map['up_trend']} TAKE PROFIT: {take_profit_price:,.2f} USDT (-{take_profit_pct:.1f}%)")
+                logger.info(f"{emoji_map['down_trend']} STOP LOSS:   {stop_loss_price:,.2f} USDT (+{stop_loss_pct:.1f}%)")
+                logger.info(f"{emoji_map['decision']} {separator}")
                 logger.info("")
                 
         except Exception as e:

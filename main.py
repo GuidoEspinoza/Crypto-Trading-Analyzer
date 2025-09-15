@@ -1,11 +1,10 @@
-"""
-🚀 Universal Trading Analyzer - API Principal
+"""🚀 Universal Trading Analyzer - API Principal
 FastAPI backend para análisis técnico de criptomonedas
 """
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
+from datetime import datetime, timedelta
 import ccxt
 import pandas as pd
 import pandas_ta as ta
@@ -13,6 +12,9 @@ from typing import Dict, List, Optional
 import uvicorn
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
+# Importar configuración centralizada
+from src.config.main_config import config
 
 # Importar nuestros indicadores avanzados
 from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
@@ -54,28 +56,28 @@ def ensure_bot_exists():
         raise HTTPException(status_code=500, detail="Trading bot not initialized")
     return bot
 
-# Crear instancia de FastAPI
+# Crear instancia de FastAPI con configuración centralizada
 app = FastAPI(
-    title="🚀 Universal Trading Analyzer + Trading Bot",
-    description="API para análisis técnico de criptomonedas en tiempo real + Trading Bot automático",
-    version="4.0.0",  # ¡Actualizada con Trading Bot!
-    docs_url="/docs",
-    redoc_url="/redoc"
+    title=config.api.title,
+    description=config.api.description,
+    version=config.api.version,
+    docs_url=config.api.docs_url,
+    redoc_url=config.api.redoc_url
 )
 
-# Configurar CORS para permitir requests desde el frontend
+# Configurar CORS con configuración centralizada
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.cors.allow_origins,
+    allow_credentials=config.cors.allow_credentials,
+    allow_methods=config.cors.allow_methods,
+    allow_headers=config.cors.allow_headers,
 )
 
-# Inicializar exchange (Binance público, sin API keys)
-exchange = ccxt.binance({
-    'sandbox': False,
-    'enableRateLimit': True,
+# Inicializar exchange con configuración centralizada
+exchange = getattr(ccxt, config.exchange.exchange_name)({
+    'sandbox': config.exchange.sandbox,
+    'enableRateLimit': config.exchange.enable_rate_limit,
 })
 
 # Modelos Pydantic para requests
@@ -144,7 +146,7 @@ async def health_check():
     """
     try:
         # Verificar conexión a exchange
-        ticker = exchange.fetch_ticker('BTC/USDT')
+        ticker = exchange.fetch_ticker(config.exchange.default_symbol)
         exchange_status = "connected" if ticker else "disconnected"
         
         # Verificar base de datos
@@ -163,10 +165,10 @@ async def health_check():
                 "database": db_status,
                 "trading_bot": bot_status
             },
-            "version": "4.0.0"
+            "version": config.api.version
         }
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+        raise HTTPException(status_code=config.error.service_unavailable_code, detail=f"Service unhealthy: {str(e)}")
 
 # 🤖 **TRADING BOT**
 
@@ -190,7 +192,7 @@ async def get_bot_status():
                 "win_rate": (status.successful_trades / max(1, status.total_trades_executed)) * 100,
                 "current_portfolio_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - 10000) / 10000) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - config.trading_bot.initial_portfolio_value) / config.trading_bot.initial_portfolio_value) * 100,
                 "active_strategies": status.active_strategies,
                 "last_analysis_time": status.last_analysis_time.isoformat(),
                 "next_analysis_time": status.next_analysis_time.isoformat()
@@ -222,10 +224,10 @@ async def start_trading_bot():
             "message": "🚀 Trading bot started successfully!",
             "bot_status": {
                 "is_running": True,
-                "analysis_interval": getattr(bot, 'analysis_interval', 60),
+                "analysis_interval": getattr(bot, 'analysis_interval', config.trading_bot.analysis_interval_minutes),
                 "strategies": list(getattr(bot, 'strategies', {}).keys()),
-                "symbols": getattr(bot, 'symbols', []),
-                "min_confidence": getattr(bot, 'min_confidence_threshold', 0.7)
+                "symbols": getattr(bot, 'symbols', config.trading_bot.default_symbols),
+                "min_confidence": getattr(bot, 'min_confidence_threshold', config.trading_bot.min_confidence_threshold)
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -289,11 +291,11 @@ async def get_bot_configuration():
         return {
             "status": "success",
             "configuration": {
-                "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
-                "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
-                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 0.7),
-                "enable_trading": getattr(bot, 'enable_trading', False),
-                "symbols": getattr(bot, 'symbols', []),
+                "analysis_interval_minutes": getattr(bot, 'analysis_interval', config.trading_bot.analysis_interval_minutes),
+                "max_daily_trades": getattr(bot, 'max_daily_trades', config.trading_bot.max_daily_trades),
+                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', config.trading_bot.min_confidence_threshold),
+                "enable_trading": getattr(bot, 'enable_trading', config.trading_bot.enable_trading),
+                "symbols": getattr(bot, 'symbols', config.trading_bot.default_symbols),
                 "strategies": list(getattr(bot, 'strategies', {}).keys())
             },
             "current_stats": {
@@ -316,7 +318,7 @@ async def update_bot_configuration(config: BotConfigUpdate):
         config_dict = {k: v for k, v in config.dict().items() if v is not None}
         
         if not config_dict:
-            raise HTTPException(status_code=400, detail="No configuration parameters provided")
+            raise HTTPException(status_code=config.error.bad_request_code, detail="No configuration parameters provided")
         
         bot = ensure_bot_exists()
         if hasattr(bot, 'update_configuration'):
@@ -332,11 +334,11 @@ async def update_bot_configuration(config: BotConfigUpdate):
             "message": "⚙️ Bot configuration updated successfully",
             "updated_config": config_dict,
             "current_config": {
-                "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
-                "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
-                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 0.7),
-                "enable_trading": getattr(bot, 'enable_trading', False),
-                "symbols": getattr(bot, 'symbols', [])
+                "analysis_interval_minutes": getattr(bot, 'analysis_interval', config.trading_bot.analysis_interval_minutes),
+                "max_daily_trades": getattr(bot, 'max_daily_trades', config.trading_bot.max_daily_trades),
+                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', config.trading_bot.min_confidence_threshold),
+                "enable_trading": getattr(bot, 'enable_trading', config.trading_bot.enable_trading),
+                "symbols": getattr(bot, 'symbols', config.trading_bot.default_symbols)
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -353,9 +355,9 @@ async def get_trading_mode():
         # En el futuro, esto se leerá de la configuración del bot
         return {
             "status": "success",
-            "trading_mode": "paper",
+            "trading_mode": config.trading_mode.default_mode,
             "description": "Paper trading mode - Virtual trading with simulated funds",
-            "live_trading_available": False,
+            "live_trading_available": config.trading_mode.live_trading_enabled,
             "warning": "Live trading is not yet implemented. All trades are simulated.",
             "timestamp": datetime.now().isoformat()
         }
@@ -368,22 +370,22 @@ async def update_trading_mode(mode_config: TradingModeUpdate):
     🔄 Cambiar modo de trading (paper/live)
     """
     try:
-        if mode_config.trading_mode not in ["paper", "live"]:
+        if mode_config.trading_mode not in config.trading_mode.available_modes:
             raise HTTPException(
-                status_code=400, 
-                detail="Invalid trading mode. Must be 'paper' or 'live'"
+                status_code=config.error.bad_request_code, 
+                detail=f"Invalid trading mode. Must be one of: {', '.join(config.trading_mode.available_modes)}"
             )
         
         if mode_config.trading_mode == "live":
-            if not mode_config.confirm_live_trading:
+            if config.trading_mode.require_confirmation_for_live and not mode_config.confirm_live_trading:
                 raise HTTPException(
-                    status_code=400,
+                    status_code=config.error.bad_request_code,
                     detail="Live trading requires explicit confirmation. Set 'confirm_live_trading' to true."
                 )
             
             # Por ahora, rechazamos el trading en vivo ya que no está implementado
             raise HTTPException(
-                status_code=501,
+                status_code=config.error.not_implemented_code,
                 detail="Live trading is not yet implemented. Currently only paper trading is supported."
             )
         
@@ -391,7 +393,7 @@ async def update_trading_mode(mode_config: TradingModeUpdate):
         return {
             "status": "success",
             "message": "Trading mode confirmed",
-            "trading_mode": "paper",
+            "trading_mode": config.trading_mode.default_mode,
             "description": "Paper trading mode active - All trades are simulated",
             "timestamp": datetime.now().isoformat()
         }
@@ -434,8 +436,8 @@ async def get_trading_capabilities():
                     "status": "In development - See ROADMAP_INTEGRACION_BINANCE.md"
                 }
             },
-            "current_mode": "paper",
-            "recommended_mode": "paper",
+            "current_mode": config.trading_mode.default_mode,
+            "recommended_mode": config.trading_mode.default_mode,
             "safety_note": "Always test strategies thoroughly in paper trading before considering live trading",
             "timestamp": datetime.now().isoformat()
         }
@@ -500,31 +502,26 @@ async def emergency_stop_bot():
 async def get_enhanced_strategies():
     """📊 Obtener lista de estrategias mejoradas disponibles"""
     try:
+        strategies_list = []
+        for key, strategy_info in config.strategy.available_strategies.items():
+            strategies_list.append({
+                "name": strategy_info["name"],
+                "description": strategy_info["description"],
+                "features": strategy_info["features"]
+            })
+        
         return {
-            "enhanced_strategies": [
-                {
-                    "name": "ProfessionalRSI",
-                    "description": "RSI profesional con análisis de volumen y tendencia",
-                    "features": ["Volume confirmation", "Trend analysis", "Risk management"]
-                },
-                {
-                    "name": "MultiTimeframe", 
-                    "description": "Análisis multi-timeframe con votación ponderada",
-                    "features": ["1h, 4h, 1d analysis", "Weighted voting", "Confluence scoring"]
-                },
-                {
-                    "name": "Ensemble",
-                    "description": "Estrategia ensemble que combina múltiples señales",
-                    "features": ["Multiple strategies", "Intelligent voting", "Advanced risk management"]
-                }
-            ],
+            "enhanced_strategies": strategies_list,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/enhanced/analyze/{strategy_name}/{symbol}")
-async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timeframe: str = "1h"):
+async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timeframe: str = None):
+    """🔍 Analizar símbolo con estrategia mejorada"""
+    if timeframe is None:
+        timeframe = config.analysis.default_timeframe
     """🔍 Analizar símbolo con estrategia mejorada"""
     try:
         # Crear instancia de la estrategia
@@ -567,8 +564,11 @@ async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timefr
 
 @app.get("/test/strategy/{strategy_name}/{symbol}")
 async def test_strategy_comprehensive(strategy_name: str, symbol: str, 
-                                    timeframe: str = "1h",
+                                    timeframe: str = None,
                                     test_mode: str = "signal_only"):
+    """🧪 Prueba comprehensiva de estrategias con diferentes modos"""
+    if timeframe is None:
+        timeframe = config.analysis.default_timeframe
     """🧪 Prueba comprehensiva de estrategias con diferentes modos"""
     try:
         # Crear estrategia
@@ -658,12 +658,14 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
         raise HTTPException(status_code=500, detail=f"Error en prueba de estrategia: {str(e)}")
 
 @app.get("/enhanced/risk-analysis/{symbol}")
-async def get_enhanced_risk_analysis(symbol: str):
+async def get_enhanced_risk_analysis(symbol: str, timeframe: str = None):
     """🛡️ Análisis de riesgo mejorado"""
+    if timeframe is None:
+        timeframe = config.analysis.default_timeframe
     try:
         # Crear señal de prueba para análisis
         strategy = ProfessionalRSIStrategy()
-        signal = strategy.analyze(symbol, "1h")
+        signal = strategy.analyze(symbol, timeframe)
         
         # Analizar riesgo
         risk_manager = EnhancedRiskManager()
@@ -754,7 +756,7 @@ async def reset_paper_trading():
             return {
                 "status": "success",
                 "message": result["message"],
-                "initial_balance": result["initial_balance"],
+                "initial_balance": config.paper_trading.initial_balance,
                 "timestamp": result["timestamp"]
             }
         else:

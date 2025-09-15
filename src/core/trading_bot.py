@@ -20,7 +20,15 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.config import TradingBotConfig, TradingProfiles, APIConfig
+from src.config.config import (
+    CONSOLIDATED_CONFIG, 
+    get_module_config, 
+    get_current_config,
+    TradingBotConfig, 
+    TradingProfiles, 
+    APIConfig, 
+    optimized_config
+)
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
@@ -71,7 +79,7 @@ class TradingBot:
     @classmethod
     def _get_cache_ttl(cls):
         profile_config = TradingProfiles.get_current_profile()
-        return profile_config.get('cache_ttl_seconds', 180)
+        return profile_config.get('cache_ttl_seconds', optimized_config.DEFAULT_CACHE_TTL_SECONDS)
     
     def __init__(self, analysis_interval_minutes: int = None):
         """
@@ -108,23 +116,23 @@ class TradingBot:
         
         # Sistema de eventos para comunicación con LiveTradingBot
         profile_config = TradingProfiles.get_current_profile()
-        self.event_queue = queue.Queue(maxsize=profile_config.get('event_queue_maxsize', 1000))
+        self.event_queue = queue.Queue(maxsize=profile_config.get('event_queue_maxsize', optimized_config.EVENT_QUEUE_MAX_SIZE))
         self.adjustment_thread = None
         self.trade_event_callback = None  # Callback para eventos de trades
         
         # ThreadPool para procesamiento paralelo
-        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="TradingBot")
+        self.executor = ThreadPoolExecutor(max_workers=optimized_config.THREAD_POOL_MAX_WORKERS, thread_name_prefix="TradingBot")
         
         # Estrategias disponibles (Enhanced)
         self.strategies = {}
         self._initialize_strategies()
         
-        # Símbolos a analizar desde configuración centralizada
-        self.symbols = self.config.SYMBOLS
+        # Símbolos a analizar desde configuración optimizada
+        self.symbols = optimized_config.DEFAULT_SYMBOLS
         
-        # Configuración de trading profesional desde configuración centralizada
-        self.min_confidence_threshold = self.config.get_min_confidence_threshold()
-        self.max_daily_trades = self.config.get_max_daily_trades()
+        # Configuración de trading profesional desde configuración optimizada
+        self.min_confidence_threshold = optimized_config.DEFAULT_MIN_CONFIDENCE_THRESHOLD
+        self.max_daily_trades = optimized_config.DEFAULT_MAX_DAILY_TRADES
         self.max_concurrent_positions = self.config.get_max_concurrent_positions()
         self.enable_trading = True  # Activar/desactivar ejecución de trades
         
@@ -155,8 +163,8 @@ class TradingBot:
         self.consecutive_losses = 0
         self.circuit_breaker_active = False
         self.circuit_breaker_activated_at = None
-        self.max_consecutive_losses = self.config.get_max_consecutive_losses()
-        self.circuit_breaker_cooldown_hours = self.config.get_circuit_breaker_cooldown_hours()
+        self.max_consecutive_losses = optimized_config.DEFAULT_MAX_CONSECUTIVE_LOSSES
+        self.circuit_breaker_cooldown_hours = optimized_config.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS
         
         # Nuevas funcionalidades del circuit breaker
         self.max_drawdown_threshold = self.config.get_max_drawdown_threshold() / 100.0  # Convertir porcentaje a decimal
@@ -562,14 +570,14 @@ class TradingBot:
     
     def _is_in_post_reset_window(self) -> bool:
         """
-        🌅 Verificar si estamos en la ventana post-reset (primeras 3 horas del día)
+        🌅 Verificar si estamos en la ventana post-reset (primeras horas del día)
         
         Returns:
             bool: True si estamos en la ventana post-reset
         """
         current_time = datetime.now()
-        # Considerar las primeras 3 horas del día como ventana post-reset
-        if current_time.hour < 3:
+        # Usar configuración optimizada para las horas post-reset
+        if current_time.hour < optimized_config.POST_RESET_WINDOW_HOURS:
             return True
         return False
     
@@ -904,20 +912,20 @@ class TradingBot:
                 self.logger.info(f"🟡 Iniciando reactivación gradual - Fase 1: {self.reactivation_trades_allowed} trade permitido")
                 
             elif self.reactivation_phase == 1 and self.reactivation_success_count >= 1:
-                # Fase 2: Hasta 3 trades
+                # Fase 2: Hasta trades configurados
                 self.reactivation_phase = 2
-                self.reactivation_trades_allowed = 3
+                self.reactivation_trades_allowed = optimized_config.REACTIVATION_PHASE_2_TRADES
                 self.reactivation_success_count = 0
                 self.logger.info(f"🟡 Reactivación gradual - Fase 2: {self.reactivation_trades_allowed} trades permitidos")
                 
             elif self.reactivation_phase == 2 and self.reactivation_success_count >= 2:
                 # Fase 3: Trading normal pero con límites reducidos
                 self.reactivation_phase = 3
-                self.reactivation_trades_allowed = 5
+                self.reactivation_trades_allowed = optimized_config.REACTIVATION_PHASE_3_TRADES
                 self.reactivation_success_count = 0
                 self.logger.info(f"🟡 Reactivación gradual - Fase 3: {self.reactivation_trades_allowed} trades permitidos")
                 
-            elif self.reactivation_phase == 3 and self.reactivation_success_count >= 3:
+            elif self.reactivation_phase == 3 and self.reactivation_success_count >= optimized_config.REACTIVATION_SUCCESS_THRESHOLD:
                 # Reactivación completa
                 self._complete_reactivation()
                 
@@ -966,7 +974,7 @@ class TradingBot:
             # Verificar si se puede avanzar a la siguiente fase
             if ((self.reactivation_phase == 1 and self.reactivation_success_count >= 1) or
                 (self.reactivation_phase == 2 and self.reactivation_success_count >= 2) or
-                (self.reactivation_phase == 3 and self.reactivation_success_count >= 3)):
+                (self.reactivation_phase == 3 and self.reactivation_success_count >= optimized_config.REACTIVATION_SUCCESS_THRESHOLD)):
                 
                 self._initiate_gradual_reactivation()
     

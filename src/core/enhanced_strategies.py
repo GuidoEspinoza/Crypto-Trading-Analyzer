@@ -18,7 +18,14 @@ from functools import lru_cache
 import hashlib
 import time
 
-from src.config.config import StrategyConfig, CacheConfig, TechnicalAnalysisConfig, ConfluenceConfig
+from src.config.config import (
+    CONSOLIDATED_CONFIG,
+    get_module_config,
+    StrategyConfig, 
+    CacheConfig, 
+    TechnicalAnalysisConfig, 
+    ConfluenceConfig
+)
 
 # Clases base para estrategias de trading
 @dataclass
@@ -45,12 +52,17 @@ class TradingStrategy(ABC):
         self.advanced_indicators = AdvancedIndicators()
     
     @abstractmethod
-    def analyze(self, symbol: str, timeframe: str = "1h") -> TradingSignal:
+    def analyze(self, symbol: str, timeframe: str = None) -> TradingSignal:
         """Analizar símbolo y generar señal"""
         pass
     
-    def get_market_data(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> pd.DataFrame:
+    def get_market_data(self, symbol: str, timeframe: str = None, limit: int = 100) -> pd.DataFrame:
         """Obtener datos de mercado"""
+        # Usar timeframe del perfil activo si no se especifica
+        if timeframe is None:
+            from src.config.config import TradingConfig
+            timeframe = TradingConfig.get_primary_timeframe()
+        
         import ccxt
         exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
@@ -72,9 +84,11 @@ class TradingStrategy(ABC):
             return float(ticker['last']) if ticker['last'] else 0.0
         except Exception as e:
             logging.error(f"Error getting current price for {symbol}: {e}")
-            # Fallback: usar el último precio de los datos históricos
+            # Fallback: usar el último precio de los datos históricos con timeframe primario
             try:
-                df = self.get_market_data(symbol, "1m", limit=1)
+                from src.config.config import TradingConfig
+                primary_timeframe = TradingConfig.get_primary_timeframe()
+                df = self.get_market_data(symbol, primary_timeframe, limit=1)
                 return float(df['close'].iloc[-1]) if not df.empty else 0.0
             except:
                 return 0.0
@@ -100,7 +114,7 @@ class EnhancedSignal(TradingSignal):
     take_profit_price: float = 0.0
     market_regime: str = "NORMAL"  # TRENDING, RANGING, VOLATILE
     confluence_score: int = 0  # Número de indicadores que confirman la señal
-    timeframe: str = "1h"  # Timeframe de la señal
+    timeframe: str = None  # Timeframe de la señal (se asignará dinámicamente)
 
 class EnhancedTradingStrategy(TradingStrategy):
     """Clase base para estrategias mejoradas con optimizaciones de cache"""
@@ -477,7 +491,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=14)
+                atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.get_default_atr_period())
             if atr is None or atr.empty:
                 return "NORMAL"
             
@@ -585,7 +599,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             logger.error(f"Error calculating risk/reward: {str(e)}")
             return 0.0, 0.0, 0.0
     
-    def analyze_with_filters(self, symbol: str, timeframe: str = "1h"):
+    def analyze_with_filters(self, symbol: str, timeframe: str = None):
         """🔍 Analiza con filtros avanzados aplicados"""
         # Importación dinámica de FilteredSignal
         try:
@@ -601,7 +615,8 @@ class EnhancedTradingStrategy(TradingStrategy):
         
         # Aplicar filtros si están habilitados
         if self.signal_filter:
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            from src.config.config import DataLimitsConfig
+            df = self.get_market_data(symbol, timeframe, limit=DataLimitsConfig.get_strategy_limit())
             return self.signal_filter.filter_signal(original_signal, df)
         else:
             # Sin filtros, crear FilteredSignal básico
@@ -635,12 +650,14 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
         
         # Configuración de filtros de calidad (usar fallbacks si no existen métodos)
         self.min_atr_ratio = getattr(self.config, 'MIN_ATR_RATIO', 0.8)
-        self.max_spread_threshold = getattr(self.config, 'MAX_SPREAD_THRESHOLD', 0.002)
+        from src.config.config import ThresholdConfig
+        self.max_spread_threshold = getattr(self.config, 'MAX_SPREAD_THRESHOLD', ThresholdConfig.get_max_spread_threshold())
         
-    def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
+    def analyze(self, symbol: str, timeframe: str = None) -> EnhancedSignal:
         """Análisis RSI profesional con confirmaciones avanzadas"""
         try:
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            from src.config.config import DataLimitsConfig
+            df = self.get_market_data(symbol, timeframe, limit=DataLimitsConfig.get_strategy_limit())
             current_price = self.get_current_price(symbol)
             
             if df.empty or current_price == 0:
@@ -908,14 +925,57 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
         
         # Configuración desde archivo centralizado
         self.config = StrategyConfig.MultiTimeframe()
-        self.timeframes = getattr(self.config, 'TIMEFRAMES', ["1m", "5m", "15m"])
+        # Usar timeframes del perfil activo en lugar de hardcodeados
+        from src.config.config import TradingConfig
+        self.timeframes = TradingConfig.get_professional_timeframes()
         self.min_confidence = self.config.get_min_confidence()
-        self.rsi_config = getattr(self.config, 'RSI_CONFIG', {"1m": {"oversold": 35, "overbought": 65}})
-        self.timeframe_weights = getattr(self.config, 'TIMEFRAME_WEIGHTS', {"1m": 0.5, "5m": 0.3, "15m": 0.2})
+        # Configurar RSI dinámicamente basado en timeframes del perfil
+        self.rsi_config = self._build_dynamic_rsi_config()
+        self.timeframe_weights = self._build_dynamic_weights()
         self.min_timeframe_consensus = getattr(self.config, 'MIN_TIMEFRAME_CONSENSUS', 2)
         self.trend_alignment_required = getattr(self.config, 'TREND_ALIGNMENT_REQUIRED', True)
         
-    def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
+    def _build_dynamic_rsi_config(self) -> Dict[str, Dict[str, int]]:
+        """Construir configuración RSI dinámica basada en timeframes del perfil"""
+        rsi_config = {}
+        for tf in self.timeframes:
+            # Ajustar niveles RSI según el timeframe
+            if 'm' in tf and int(tf.replace('m', '')) <= 5:  # Timeframes muy cortos
+                rsi_config[tf] = {"oversold": 35, "overbought": 65}
+            elif 'm' in tf and int(tf.replace('m', '')) <= 30:  # Timeframes cortos
+                rsi_config[tf] = {"oversold": 30, "overbought": 70}
+            else:  # Timeframes largos (1h+)
+                rsi_config[tf] = {"oversold": 25, "overbought": 75}
+        return rsi_config
+    
+    def _build_dynamic_weights(self) -> Dict[str, float]:
+        """Construir pesos dinámicos basados en timeframes del perfil"""
+        weights = {}
+        num_timeframes = len(self.timeframes)
+        if num_timeframes == 0:
+            return {}
+        
+        # Distribuir pesos: más peso a timeframes intermedios
+        if num_timeframes == 1:
+            weights[self.timeframes[0]] = 1.0
+        elif num_timeframes == 2:
+            weights[self.timeframes[0]] = 0.6  # Timeframe más corto
+            weights[self.timeframes[1]] = 0.4  # Timeframe más largo
+        else:
+            # Para 3 o más timeframes
+            weights[self.timeframes[0]] = 0.5   # Timeframe más corto
+            weights[self.timeframes[-1]] = 0.2  # Timeframe más largo
+            # Distribuir el resto entre timeframes intermedios
+            remaining_weight = 0.3
+            intermediate_count = num_timeframes - 2
+            if intermediate_count > 0:
+                weight_per_intermediate = remaining_weight / intermediate_count
+                for i in range(1, num_timeframes - 1):
+                    weights[self.timeframes[i]] = weight_per_intermediate
+        
+        return weights
+    
+    def analyze(self, symbol: str, timeframe: str = None) -> EnhancedSignal:
         """Análisis multi-timeframe"""
         try:
             signals = {}
@@ -924,7 +984,8 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             # Analizar cada timeframe
             for tf in self.timeframes:
                 try:
-                    df = self.get_market_data(symbol, tf, limit=50)
+                    from src.config.config import DataLimitsConfig
+                    df = self.get_market_data(symbol, tf, limit=DataLimitsConfig.get_trend_limit())
                     if not df.empty:
                         trends[tf] = self.analyze_trend(df)
                         
@@ -935,10 +996,12 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                         with warnings.catch_warnings():
                             warnings.simplefilter('ignore', FutureWarning)
                             warnings.simplefilter('ignore', UserWarning)
-                            rsi = ta.rsi(close_float, length=14)
+                            rsi = ta.rsi(close_float, length=StrategyConfig.ProfessionalRSI.get_rsi_period())
                         if rsi is not None:
                             rsi_value = rsi.iloc[-1]
-                            rsi_thresholds = self.rsi_config.get(tf, self.rsi_config.get("1h", {"oversold": 30, "overbought": 70}))
+                            # Usar configuración por defecto si no existe para este timeframe
+                            default_config = {"oversold": 30, "overbought": 70}
+                            rsi_thresholds = self.rsi_config.get(tf, default_config)
                             if rsi_value <= rsi_thresholds["oversold"]:
                                 signals[tf] = "BUY"
                             elif rsi_value >= rsi_thresholds["overbought"]:
@@ -959,8 +1022,8 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             buy_votes = sum(1 for s in signals.values() if s == "BUY")
             sell_votes = sum(1 for s in signals.values() if s == "SELL")
             
-            # Ponderar por timeframe (mayor peso a timeframes más largos)
-            weights = {"1h": 1, "4h": 2, "1d": 3}
+            # Ponderar por timeframe usando pesos dinámicos del perfil
+            weights = self.timeframe_weights
             weighted_buy = sum(weights.get(tf, 1) for tf, signal in signals.items() if signal == "BUY")
             weighted_sell = sum(weights.get(tf, 1) for tf, signal in signals.items() if signal == "SELL")
             
@@ -991,7 +1054,7 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
                 atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.DEFAULT_ATR_PERIOD)
-            current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
+            current_atr = atr.iloc[-1] if atr is not None else current_price * ThresholdConfig.get_atr_fallback()
             
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(
                 current_price, signal_type, current_atr
@@ -1016,7 +1079,9 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                 },
                 notes=f"Multi-TF: {buy_votes}B/{sell_votes}S votes, Trends: {trends}",
                 volume_confirmation=bool(volume_analysis.get("volume_confirmation", False)),
-                trend_confirmation=str(trends.get("1d", "NEUTRAL")),
+                # Usar el timeframe más largo disponible para confirmación de tendencia
+                longest_tf = self.timeframes[-1] if self.timeframes else list(trends.keys())[-1] if trends else "1h",
+                trend_confirmation=str(trends.get(longest_tf, "NEUTRAL")),
                 risk_reward_ratio=round(float(risk_reward), 2),
                 stop_loss_price=round(float(stop_loss), 2),
                 take_profit_price=round(float(take_profit), 2),
@@ -1064,7 +1129,7 @@ class EnsembleStrategy(EnhancedTradingStrategy):
         self.min_consensus_threshold = self.config.get_min_consensus_threshold()
         self.confidence_boost_factor = self.config.get_confidence_boost_factor()
         
-    def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
+    def analyze(self, symbol: str, timeframe: str = None) -> EnhancedSignal:
         """Análisis ensemble combinando múltiples estrategias"""
         try:
             # Obtener señales de todas las estrategias
@@ -1087,7 +1152,8 @@ class EnsembleStrategy(EnhancedTradingStrategy):
                 signals["Multi_Timeframe"] = None
             
             # Análisis adicional propio
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            from src.config.config import DataLimitsConfig
+            df = self.get_market_data(symbol, timeframe, limit=DataLimitsConfig.get_strategy_limit())
             current_price = self.get_current_price(symbol)
             
             if df.empty or current_price == 0:
@@ -1126,8 +1192,8 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=14)
-            current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
+                atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.get_default_atr_period())
+            current_atr = atr.iloc[-1] if atr is not None else current_price * ThresholdConfig.get_atr_fallback()
             
             # Calcular stop loss y take profit
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(

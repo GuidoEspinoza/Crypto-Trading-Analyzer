@@ -4,7 +4,6 @@ Biblioteca completa de indicadores profesionales para análisis técnico
 """
 
 import pandas as pd
-import pandas as pd
 import pandas_ta as ta
 import numpy as np
 import warnings
@@ -14,7 +13,15 @@ from datetime import datetime
 from functools import lru_cache
 import hashlib
 
-from src.config.config import AdvancedIndicatorsConfig, FibonacciConfig, OscillatorConfig, CalculationConfig
+from src.config.config import (
+    CONSOLIDATED_CONFIG,
+    get_module_config,
+    AdvancedIndicatorsConfig, 
+    FibonacciConfig, 
+    OscillatorConfig, 
+    CalculationConfig, 
+    ThresholdConfig
+)
 from src.utils.advanced_cache import indicator_cache, cached_function
 from src.utils.error_handler import handle_errors
 
@@ -287,13 +294,16 @@ class AdvancedIndicators:
             k_current = AdvancedIndicators.safe_float(k_current, 50.0)
             d_current = AdvancedIndicators.safe_float(d_current, 50.0)
             
-            # Generar señales
-            if k_current <= 20 and d_current <= 20:
+            # Generar señales usando umbrales configurables
+            oversold = OscillatorConfig.STOCHASTIC_THRESHOLDS["oversold"]
+            overbought = OscillatorConfig.STOCHASTIC_THRESHOLDS["overbought"]
+            
+            if k_current <= oversold and d_current <= oversold:
                 signal = "BUY"
-                interpretation = "🟢 Zona de sobrecompra - Posible rebote"
-            elif k_current >= 80 and d_current >= 80:
+                interpretation = f"🟢 Zona de sobreventa ({k_current:.1f} <= {oversold}) - Posible rebote"
+            elif k_current >= overbought and d_current >= overbought:
                 signal = "SELL"
-                interpretation = "🔴 Zona de sobreventa - Posible corrección"
+                interpretation = f"🔴 Zona de sobrecompra ({k_current:.1f} >= {overbought}) - Posible corrección"
             elif k_current > d_current:
                 signal = "BUY"
                 interpretation = "📈 %K cruza por encima de %D - Momentum alcista"
@@ -353,13 +363,16 @@ class AdvancedIndicators:
             
             current_willr = AdvancedIndicators.safe_float(willr.iloc[-1], -50.0)
             
-            # Generar señales (Williams %R se mueve entre -100 y 0)
-            if current_willr <= OscillatorConfig.WILLIAMS_R_THRESHOLDS["oversold"]:
+            # Generar señales usando umbrales configurables (Williams %R se mueve entre -100 y 0)
+            oversold = OscillatorConfig.WILLIAMS_R_THRESHOLDS["oversold"]
+            overbought = OscillatorConfig.WILLIAMS_R_THRESHOLDS["overbought"]
+            
+            if current_willr <= oversold:
                 signal = "BUY"
-                interpretation = f"🟢 Zona de sobrecompra ({OscillatorConfig.WILLIAMS_R_THRESHOLDS['oversold']} a -100) - Posible rebote"
-            elif current_willr >= -20:
+                interpretation = f"🟢 Zona de sobreventa ({current_willr:.1f} <= {oversold}) - Posible rebote"
+            elif current_willr >= overbought:
                 signal = "SELL"
-                interpretation = "🔴 Zona de sobreventa (-20 a 0) - Posible corrección"
+                interpretation = f"🔴 Zona de sobrecompra ({current_willr:.1f} >= {overbought}) - Posible corrección"
             else:
                 signal = "HOLD"
                 interpretation = "⚪ Rango medio - Sin señal clara"
@@ -565,7 +578,7 @@ class AdvancedIndicators:
     
     @classmethod
     @handle_errors()
-    def bollinger_bands(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = '1h', 
+    def bollinger_bands(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None, 
                        period: int = None, std_dev: float = None) -> Dict:
         """
         📊 Calcular Bandas de Bollinger con análisis avanzado y cache optimizado
@@ -661,7 +674,7 @@ class AdvancedIndicators:
         return result
     
     @classmethod
-    def vwap(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = '1h') -> Dict:
+    def vwap(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None) -> Dict:
         """
         📊 Calcular Volume Weighted Average Price (VWAP) (optimizado con cache)
         
@@ -864,19 +877,24 @@ class AdvancedIndicators:
             
             current_mfi = AdvancedIndicators.safe_float(mfi.iloc[-1], 50.0)
             
-            # Generar señales
-            if current_mfi <= 20:
+            # Generar señales usando umbrales configurables de OscillatorConfig
+            oversold_extreme = OscillatorConfig.RSI_THRESHOLDS["oversold_extreme"]  # 20
+            oversold = OscillatorConfig.RSI_THRESHOLDS["oversold"]  # 30
+            overbought = OscillatorConfig.RSI_THRESHOLDS["overbought"]  # 70
+            overbought_extreme = OscillatorConfig.RSI_THRESHOLDS["overbought_extreme"]  # 80
+            
+            if current_mfi <= oversold_extreme:
                 signal = "BUY"
-                interpretation = "🟢 MFI oversold (<20) - Posible rebote"
-            elif current_mfi >= 80:
-                signal = "SELL"
-                interpretation = "🔴 MFI overbought (>80) - Posible corrección"
-            elif current_mfi < 40:
+                interpretation = f"🟢 MFI oversold extremo ({current_mfi:.1f} <= {oversold_extreme}) - Fuerte señal de compra"
+            elif current_mfi <= oversold:
                 signal = "BUY"
-                interpretation = "📈 MFI bajo - Presión de compra"
-            elif current_mfi > 60:
+                interpretation = f"📈 MFI oversold ({current_mfi:.1f} <= {oversold}) - Presión de compra"
+            elif current_mfi >= overbought_extreme:
                 signal = "SELL"
-                interpretation = "📉 MFI alto - Presión de venta"
+                interpretation = f"🔴 MFI overbought extremo ({current_mfi:.1f} >= {overbought_extreme}) - Fuerte señal de venta"
+            elif current_mfi >= overbought:
+                signal = "SELL"
+                interpretation = f"📉 MFI overbought ({current_mfi:.1f} >= {overbought}) - Presión de venta"
             else:
                 signal = "HOLD"
                 interpretation = "⚪ MFI neutral"
@@ -1021,7 +1039,7 @@ class AdvancedIndicators:
             }
     
     @classmethod
-    def enhanced_rsi(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = '1h', period: int = None) -> Dict:
+    def enhanced_rsi(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None, period: int = None) -> Dict:
         """
         📊 RSI Mejorado con análisis de divergencias (optimizado con cache)
         
@@ -1187,26 +1205,31 @@ class AdvancedIndicators:
             # Calcular z-score del ROC actual
             roc_zscore = (current_roc - roc_avg) / roc_std if roc_std > 0 else 0
             
-            # Generar señales basadas en ROC
-            if current_roc > 5.0:
+            # Generar señales usando umbrales configurables de OscillatorConfig
+            strong_positive = OscillatorConfig.ROC_THRESHOLDS["strong_positive"]  # 5.0
+            moderate_positive = OscillatorConfig.ROC_THRESHOLDS["moderate_positive"]  # 2.0
+            moderate_negative = OscillatorConfig.ROC_THRESHOLDS["moderate_negative"]  # -2.0
+            strong_negative = OscillatorConfig.ROC_THRESHOLDS["strong_negative"]  # -5.0
+            
+            if current_roc >= strong_positive:
                 signal = "STRONG_BUY"
-                interpretation = "🟢 ROC muy positivo - Fuerte momentum alcista"
-            elif current_roc > 2.0:
+                interpretation = f"🟢 ROC muy positivo ({current_roc:.2f} >= {strong_positive}) - Fuerte momentum alcista"
+            elif current_roc >= moderate_positive:
                 signal = "BUY"
-                interpretation = "📈 ROC positivo - Momentum alcista"
-            elif current_roc < -5.0:
+                interpretation = f"📈 ROC positivo ({current_roc:.2f} >= {moderate_positive}) - Momentum alcista"
+            elif current_roc <= strong_negative:
                 signal = "STRONG_SELL"
-                interpretation = "🔴 ROC muy negativo - Fuerte momentum bajista"
-            elif current_roc < -2.0:
+                interpretation = f"🔴 ROC muy negativo ({current_roc:.2f} <= {strong_negative}) - Fuerte momentum bajista"
+            elif current_roc <= moderate_negative:
                 signal = "SELL"
-                interpretation = "📉 ROC negativo - Momentum bajista"
+                interpretation = f"📉 ROC negativo ({current_roc:.2f} <= {moderate_negative}) - Momentum bajista"
             elif abs(roc_zscore) > 2.0:
                 if current_roc > 0:
                     signal = "BUY"
-                    interpretation = "🟢 ROC anormalmente alto - Momentum excepcional"
+                    interpretation = f"🟢 ROC anormalmente alto (z-score: {roc_zscore:.2f}) - Momentum excepcional"
                 else:
                     signal = "SELL"
-                    interpretation = "🔴 ROC anormalmente bajo - Momentum negativo excepcional"
+                    interpretation = f"🔴 ROC anormalmente bajo (z-score: {roc_zscore:.2f}) - Momentum negativo excepcional"
             else:
                 signal = "HOLD"
                 interpretation = "⚪ ROC neutral - Sin momentum claro"
@@ -1289,7 +1312,7 @@ class AdvancedIndicators:
             elif current_price < val:
                 signal = "BUY"
                 interpretation = "🟢 Precio por debajo del Value Area Low - Zona de compra"
-            elif abs(current_price - poc_price) / poc_price < 0.01:  # Cerca del POC (1%)
+            elif abs(current_price - poc_price) / poc_price < ThresholdConfig.PROXIMITY_THRESHOLD:  # Cerca del POC
                 signal = "HOLD"
                 interpretation = "⚪ Precio cerca del Point of Control - Zona de equilibrio"
             elif current_price > poc_price:
@@ -1392,10 +1415,10 @@ class AdvancedIndicators:
             signal = "HOLD"
             interpretation = "⚪ Precio en rango normal"
             
-            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < 0.02:
+            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < ThresholdConfig.BREAKOUT_THRESHOLD:
                 signal = "SELL"
                 interpretation = "🔴 Precio cerca de resistencia - Posible rechazo"
-            elif nearest_support and abs(current_price - nearest_support) / current_price < 0.02:
+            elif nearest_support and abs(current_price - nearest_support) / current_price < ThresholdConfig.BREAKOUT_THRESHOLD:
                 signal = "BUY"
                 interpretation = "🟢 Precio cerca de soporte - Posible rebote"
             
