@@ -178,6 +178,13 @@ def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
                 'max_position_size': 0.8,  # 80% del balance
                 'min_trade_value': 10.0
             },
+            # Alias para compatibilidad con tests
+            'enhanced_risk_manager': {
+                'max_risk_per_trade': 0.02,
+                'max_daily_risk': 0.05
+            },
+            'advanced_indicators': {},
+            'enhanced_strategies': {},
             'config_version': '2.0-fallback',
             'validation_status': 'emergency_fallback'
         }

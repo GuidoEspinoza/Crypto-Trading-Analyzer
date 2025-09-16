@@ -413,6 +413,11 @@ class ConfigManager:
                 'position_adjuster': profile_config.position_adjuster,
                 'market_validator': profile_config.market_validator,
                 
+                # Alias para compatibilidad con tests (nombres completos)
+                'enhanced_risk_manager': profile_config.risk_manager,
+                'advanced_indicators': profile_config.indicators,
+                'enhanced_strategies': profile_config.strategies,
+                
                 # Metadatos
                 'config_version': '2.0',
                 'last_updated': 'auto-generated',

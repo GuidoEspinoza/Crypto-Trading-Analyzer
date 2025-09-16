@@ -19,6 +19,7 @@ import hashlib
 import time
 
 from src.config.config_manager import ConfigManager
+from src.config.config import TechnicalAnalysisConfig, StrategyConfig
 
 # Configuración centralizada
 try:
@@ -26,6 +27,11 @@ try:
     config = config_manager.get_consolidated_config()
     if config is None:
         config = {}
+    
+    # Importar constantes de confianza desde StrategyConfig.Base
+    BASE_CONFIDENCE = StrategyConfig.Base.BASE_CONFIDENCE
+    HOLD_CONFIDENCE = StrategyConfig.Base.HOLD_CONFIDENCE
+    
 except Exception as e:
     # Configuración de fallback en caso de error
     config = {
@@ -54,6 +60,11 @@ except Exception as e:
             'breakout_threshold': 0.02
         }
     }
+    
+    # Constantes de fallback
+    BASE_CONFIDENCE = 50.0
+    HOLD_CONFIDENCE = 45.0
+    ENHANCED_CONFIDENCE = 60.0
 
 # Clases base para estrategias de trading
 @dataclass
@@ -89,7 +100,7 @@ class TradingStrategy(ABC):
         if timeframe is None:
             from src.config.config import TradingBotConfig
             trading_config = TradingBotConfig()
-            timeframe = trading_config["get_primary_timeframe"]()
+            timeframe = trading_config.get_primary_timeframe()
         
         import ccxt
         exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
@@ -116,7 +127,7 @@ class TradingStrategy(ABC):
             try:
                 from src.config.config import TradingBotConfig
                 trading_config = TradingBotConfig()
-                primary_timeframe = trading_config["get_primary_timeframe"]()
+                primary_timeframe = trading_config.get_primary_timeframe()
                 df = self.get_market_data(symbol, primary_timeframe, limit=1)
                 return float(df['close'].iloc[-1]) if not df.empty else 0.0
             except:
@@ -463,8 +474,8 @@ class EnhancedTradingStrategy(TradingStrategy):
             
             # Cálculos optimizados de EMA
             close_series = df['close']
-            ema_20 = ta.ema(close_series, length=TechnicalAnalysisConfig.EMA_PERIODS.fast)
-            ema_50 = ta.ema(close_series, length=TechnicalAnalysisConfig.EMA_PERIODS.slow)
+            ema_20 = ta.ema(close_series, length=TechnicalAnalysisConfig.EMA_PERIODS["fast"])
+            ema_50 = ta.ema(close_series, length=TechnicalAnalysisConfig.EMA_PERIODS["slow"])
             
             if ema_20 is None or ema_50 is None:
                 return "NEUTRAL"
@@ -488,9 +499,9 @@ class EnhancedTradingStrategy(TradingStrategy):
                 adx_value = 25
             
             # Determinar tendencia
-            if current_ema_20 > current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS.strong_trend:
-                result = "BULLISH"
-            elif current_ema_20 < current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS.strong_trend:
+            if current_ema_20 > current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS["strong_trend"]:
+                result = "UPTREND"
+            elif current_ema_20 < current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS["strong_trend"]:
                 result = "BEARISH"
             else:
                 result = "NEUTRAL"
@@ -544,7 +555,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             
             if volatility_ratio > TechnicalAnalysisConfig.VOLATILITY_RATIO_THRESHOLD:
                 result = "VOLATILE"
-            elif abs(current_price - (df['high'].rolling(TechnicalAnalysisConfig.VOLUME_PERIODS.medium).max().iloc[-1] + df['low'].rolling(TechnicalAnalysisConfig.VOLUME_PERIODS.medium).min().iloc[-1]) / 2) < price_range * TechnicalAnalysisConfig.PRICE_RANGE_TOLERANCE:
+            elif abs(current_price - (df['high'].rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["medium"]).max().iloc[-1] + df['low'].rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["medium"]).min().iloc[-1]) / 2) < price_range * TechnicalAnalysisConfig.PRICE_RANGE_TOLERANCE:
                 result = "RANGING"
             else:
                 result = "TRENDING"
@@ -752,7 +763,7 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             # === LÓGICA DE SEÑALES CON CONFLUENCIA AVANZADA ===
             confluence_score = 0
             signal_type = "HOLD"
-            confidence = self.config["BASE_CONFIDENCE"]  # Usar configuración centralizada
+            confidence = BASE_CONFIDENCE  # Usar constante centralizada
             notes = []
             
             # === ANÁLISIS RSI MEJORADO ===
@@ -970,7 +981,7 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
         # Usar timeframes del perfil activo en lugar de hardcodeados
         from src.config.config import TradingBotConfig
         config = TradingBotConfig()
-        self.timeframes = config["get_professional_timeframes"]()
+        self.timeframes = config.get_professional_timeframes()
         self.min_confidence = self.config.get("min_confidence", 0.7)
         # Configurar RSI dinámicamente basado en timeframes del perfil
         self.rsi_config = self._build_dynamic_rsi_config()
@@ -1078,13 +1089,13 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             
             if weighted_buy > weighted_sell and buy_votes >= 2:
                 signal_type = "BUY"
-                confidence = self.config["ENHANCED_CONFIDENCE"] + (weighted_buy * 5)
+                confidence = ENHANCED_CONFIDENCE + (weighted_buy * 5)
             elif weighted_sell > weighted_buy and sell_votes >= 2:
                 signal_type = "SELL"
-                confidence = self.config["ENHANCED_CONFIDENCE"] + (weighted_sell * 5)
+                confidence = ENHANCED_CONFIDENCE + (weighted_sell * 5)
             else:
                 signal_type = "HOLD"
-                confidence = self.config["HOLD_CONFIDENCE"]
+                confidence = HOLD_CONFIDENCE
             
             # Análisis de volumen y otros factores
             volume_analysis = self.analyze_volume(df_main) if not df_main.empty else {"volume_confirmation": False}
@@ -1376,16 +1387,16 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             if total_score == 0:
                 consensus = 0.5
                 signal_type = "HOLD"
-                confidence = self.config["HOLD_CONFIDENCE"]
+                confidence = HOLD_CONFIDENCE
             else:
                 consensus = max(buy_score, sell_score) / total_score
                 
                 if buy_score > sell_score and consensus >= self.min_consensus_threshold:
                     signal_type = "BUY"
-                    confidence = min(95, self.config["BASE_CONFIDENCE"] + (buy_score * 40))
+                    confidence = min(95, BASE_CONFIDENCE + (buy_score * 40))
                 elif sell_score > buy_score and consensus >= self.min_consensus_threshold:
                     signal_type = "SELL"
-                    confidence = min(95, self.config["BASE_CONFIDENCE"] + (sell_score * 40))
+                    confidence = min(95, BASE_CONFIDENCE + (sell_score * 40))
                 else:
                     signal_type = "HOLD"
                     from src.config.config_manager import ConfigManager
