@@ -22,6 +22,7 @@ import weakref
 # Importar todos nuestros componentes
 from src.config.config_manager import ConfigManager
 from src.config.config import optimized_config
+from src.config.global_constants import GLOBAL_INITIAL_BALANCE
 
 # Obtener configuración centralizada
 try:
@@ -135,6 +136,7 @@ class TradingBot:
         self.max_daily_trades = config.get("trading_bot", {}).get("max_daily_trades", optimized_config.DEFAULT_MAX_DAILY_TRADES)
         self.max_concurrent_positions = config.get("trading_bot", {}).get("max_concurrent_positions", optimized_config.DEFAULT_MAX_CONCURRENT_POSITIONS)
         self.enable_trading = True  # Activar/desactivar ejecución de trades
+        self.profile = config.get("trading_bot", {}).get("profile", "balanced")  # Perfil de trading
         
         # Configuración de timeframes profesional desde configuración centralizada
         self.primary_timeframe = config.get("timeframes", {}).get("primary", "15m")
@@ -340,19 +342,23 @@ class TradingBot:
         # Detener sistema de ajuste de posiciones
         self.position_adjuster.stop_monitoring()
         
-        # Limpiar ThreadPoolExecutor
+        # Limpiar ThreadPoolExecutor con timeout reducido
         if hasattr(self, 'executor') and self.executor:
-            timeout = self.config.get("trading_bot", {}).get("executor_shutdown_timeout", 30)
-            self.executor.shutdown(wait=True, timeout=timeout)
-            self.logger.info("🧹 ThreadPoolExecutor cleaned up")
+            self.executor.shutdown(wait=False)  # No esperar, terminar inmediatamente
+            self.logger.info("🧹 ThreadPoolExecutor shutdown initiated")
+        
+        # Timeouts reducidos para threads
+        fast_timeout = 2  # Reducido de 10 a 2 segundos
         
         if self.analysis_thread and self.analysis_thread.is_alive():
-            timeout = self.config.get("trading_bot", {}).get("thread_join_timeout", 10)
-            self.analysis_thread.join(timeout=timeout)
+            self.analysis_thread.join(timeout=fast_timeout)
+            if self.analysis_thread.is_alive():
+                self.logger.warning("⚠️ Analysis thread did not stop within timeout")
             
         if self.adjustment_thread and self.adjustment_thread.is_alive():
-            timeout = self.config.get("trading_bot", {}).get("thread_join_timeout", 10)
-            self.adjustment_thread.join(timeout=timeout)
+            self.adjustment_thread.join(timeout=fast_timeout)
+            if self.adjustment_thread.is_alive():
+                self.logger.warning("⚠️ Adjustment thread did not stop within timeout")
         
         # Limpiar cache si es necesario
         self._cleanup_cache()
@@ -622,7 +628,7 @@ class TradingBot:
         
         # Obtener valor actual del portfolio
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-        portfolio_value = portfolio_summary.get("total_value", self.config["DEFAULT_PORTFOLIO_VALUE"])
+        portfolio_value = portfolio_summary.get("total_value", GLOBAL_INITIAL_BALANCE)
         
         self.logger.info(f"💼 Current portfolio value: ${portfolio_value:,.2f}")
         
@@ -1080,7 +1086,7 @@ class TradingBot:
             "portfolio": {
                 "current_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - self.config["DEFAULT_PORTFOLIO_VALUE"]) / self.config["DEFAULT_PORTFOLIO_VALUE"]) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - GLOBAL_INITIAL_BALANCE) / GLOBAL_INITIAL_BALANCE) * 100,
                 "assets": portfolio_summary.get("assets", [])
             },
             "strategies": {
@@ -1164,6 +1170,11 @@ class TradingBot:
                 self.symbols = config["symbols"]
                 self.logger.info(f"⚙️ Symbols updated: {', '.join(self.symbols)}")
             
+            if "profile" in config:
+                # Actualizar perfil de configuración
+                self.profile = config["profile"]
+                self.logger.info(f"⚙️ Trading profile updated to: {self.profile}")
+            
         except Exception as e:
             self.logger.error(f"❌ Error updating configuration: {e}")
     
@@ -1193,29 +1204,44 @@ class TradingBot:
     
     def emergency_stop(self):
         """
-        🚨 Parada de emergencia (cierra todas las posiciones)
+        🚨 Parada de emergencia inmediata (cierra todas las posiciones)
         """
         self.logger.warning("🚨 EMERGENCY STOP INITIATED")
         
         try:
-            # Detener el bot
-            self.stop()
+            # Parada inmediata sin esperar threads
+            self.is_running = False
+            self.stop_event.set()
+            schedule.clear()
             
-            # Obtener posiciones abiertas
-            open_positions = self.paper_trader.get_open_positions()
+            # Detener monitoreo inmediatamente
+            self.position_monitor.stop_monitoring()
+            self.position_adjuster.stop_monitoring()
             
-            if open_positions:
-                self.logger.warning(f"🚨 Closing {len(open_positions)} open positions...")
+            # Terminar executor sin esperar
+            if hasattr(self, 'executor') and self.executor:
+                self.executor.shutdown(wait=False)
+            
+            # Obtener posiciones abiertas rápidamente
+            try:
+                open_positions = self.paper_trader.get_open_positions()
                 
-                # Aquí podrías implementar lógica para cerrar posiciones automáticamente
-                # Por ahora solo loggeamos
-                for position in open_positions:
-                    self.logger.warning(f"   📊 Open position: {position['symbol']} - ${position['entry_value']:.2f}")
+                if open_positions:
+                    self.logger.warning(f"🚨 {len(open_positions)} open positions detected")
+                    # Log solo el resumen para ser más rápido
+                    total_value = sum(pos.get('entry_value', 0) for pos in open_positions)
+                    self.logger.warning(f"   📊 Total open value: ${total_value:.2f}")
+                else:
+                    self.logger.info("✅ No open positions to close")
+            except Exception as pos_error:
+                self.logger.error(f"⚠️ Could not check positions: {pos_error}")
             
-            self.logger.warning("🚨 Emergency stop completed")
+            self.logger.warning("🚨 Emergency stop completed immediately")
             
         except Exception as e:
             self.logger.error(f"❌ Error during emergency stop: {e}")
+            # Asegurar que el bot se detenga incluso si hay errores
+            self.is_running = False
     
     def test_connection(self) -> bool:
         """🔌 Probar conexión con la API de Binance
