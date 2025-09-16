@@ -14,13 +14,20 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    PaperTraderConfig, 
-    TradingBotConfig, 
-    USDT_BASE_PRICE
-)
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'paper_trader': {'max_slippage': 0.001, 'simulation_fees': 0.001},
+        'trading': {'usdt_base_price': 1.0}
+    }
 
 from ..database.database import db_manager
 from ..database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
@@ -32,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # 📊 CONFIGURACIÓN DEL PAPER TRADER PROFESIONAL
 # ===============================================
-# Todos los parámetros se obtienen desde config.py para centralizar la configuración
+# Todos los parámetros se obtienen desde config["py"] para centralizar la configuración
 # Los valores hardcodeados han sido eliminados para evitar inconsistencias
 
 @dataclass
@@ -58,6 +65,31 @@ class PaperTrader:
     - Cálculo de P&L en tiempo real
     """
     
+    def _get_config_value(self, key_path, default_value=None):
+        """
+        Helper para acceso seguro a valores de configuración
+        
+        Args:
+            key_path: Ruta de la clave (ej: "paper_trader.max_position_size")
+            default_value: Valor por defecto si no se encuentra la clave
+            
+        Returns:
+            Valor de configuración o valor por defecto
+        """
+        try:
+            keys = key_path.split('.')
+            value = config
+            for key in keys:
+                if isinstance(value, dict):
+                    value = value.get(key)
+                else:
+                    return default_value
+                if value is None:
+                    return default_value
+            return value
+        except (KeyError, AttributeError, TypeError):
+            return default_value
+    
     def __init__(self, initial_balance: float = None):
         """
         Inicializar Paper Trader
@@ -66,14 +98,12 @@ class PaperTrader:
             initial_balance: Balance inicial en USDT (opcional, usa config si no se especifica)
         """
         # Configuración del paper trader desde archivo centralizado
-        self.config = PaperTraderConfig()
-        self.trading_bot_config = TradingBotConfig()
-        self.initial_balance = initial_balance if initial_balance is not None else self.config.INITIAL_BALANCE
-        self.max_position_size = self.config.get_max_position_size()
-        self.max_total_exposure = self.config.get_max_total_exposure()
-        self.min_trade_value = self.config.get_min_trade_value()
-        self.max_balance_usage = self.config.MAX_BALANCE_USAGE
-        self.min_confidence_threshold = self.config.get_min_confidence_threshold()
+        self.initial_balance = initial_balance if initial_balance is not None else self._get_config_value("global_initial_balance", 1000.0)
+        self.max_position_size = self._get_config_value("paper_trader.max_position_size", 0.8)  # 80% del balance
+        self.max_total_exposure = self._get_config_value("paper_trader.max_total_exposure", 50000.0)
+        self.min_trade_value = self._get_config_value("paper_trader.min_trade_value", 10.0)
+        self.max_balance_usage = self._get_config_value("paper_trader.max_balance_usage", 0.8)  # Default 80%
+        self.min_confidence_threshold = self._get_config_value("paper_trader.paper_min_confidence", 70.0)
         
         # Configurar logging
         logging.basicConfig(level=logging.INFO)
@@ -261,7 +291,7 @@ class PaperTrader:
                 # Calcular cantidad a comprar
                 usdt_balance = self._get_usdt_balance()
                 max_trade_value = usdt_balance * self.max_position_size  # Ya está en decimal desde config
-                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage / 100.0))  # Límite configurable para fees
+                trade_value = min(max_trade_value, usdt_balance * self.max_balance_usage)  # Límite configurable para fees
                 
                 if trade_value < self.min_trade_value:
                     return TradeResult(
@@ -280,7 +310,7 @@ class PaperTrader:
                 quantity = trade_value / execution_price
                 
                 # Simular comisiones de trading
-                trading_fee = trade_value * PaperTraderConfig.get_simulation_fees()
+                trading_fee = trade_value * config.get("paper_trader", {}).get("simulation_fees", 0.001)
                 net_trade_value = trade_value + trading_fee  # Costo total incluyendo fees
                 
                 # Obtener TP/SL de la señal o calcularlos automáticamente
@@ -315,7 +345,7 @@ class PaperTrader:
                                 stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
                                 take_profit_price=getattr(signal, 'take_profit_price', 0.0),
                                 market_regime='NORMAL',
-                                timeframe=self.trading_bot_config.get_primary_timeframe()
+                                timeframe="1h"  # Valor por defecto
                             )
                         else:
                             enhanced_signal = signal
@@ -366,7 +396,7 @@ class PaperTrader:
                     entry_value=trade_value,
                     status="OPEN",
                     is_paper_trade=True,
-                    timeframe=self.trading_bot_config.get_primary_timeframe(),
+                    timeframe="1h",  # Valor por defecto
                     confidence_score=signal.confidence_score,
                     notes=f"{signal.notes} | Fee: ${trading_fee:.4f} | Slippage: {((execution_price - signal.price) / signal.price * 100):.3f}%",
                     stop_loss=stop_loss_price,
@@ -426,6 +456,7 @@ class PaperTrader:
             float: Precio de ejecución con slippage simulado
         """
         import random
+        from ..config.config import PaperTraderConfig
         
         # Obtener slippage máximo desde configuración
         max_slippage = PaperTraderConfig.get_max_slippage()
@@ -466,6 +497,7 @@ class PaperTrader:
         Returns:
             float: Fee calculado
         """
+        from ..config.config import PaperTraderConfig
         base_fee = PaperTraderConfig.get_simulation_fees()
         
         # Simular fees ligeramente variables (como en exchanges reales)
@@ -507,7 +539,7 @@ class PaperTrader:
                 sale_value = quantity * execution_price
                 
                 # Simular comisiones de trading para venta
-                trading_fee = sale_value * PaperTraderConfig.get_simulation_fees()
+                trading_fee = sale_value * config.get("paper_trader", {}).get("simulation_fees", 0.001)
                 net_sale_value = sale_value - trading_fee  # Valor neto después de fees
                 
                 # Buscar trades abiertos para cerrar
@@ -542,7 +574,7 @@ class PaperTrader:
                     pnl=0.0,  # Para trades de venta directa
                     status="CLOSED",
                     is_paper_trade=True,
-                    timeframe=self.trading_bot_config.get_primary_timeframe(),
+                    timeframe="1h",  # Valor por defecto
                     confidence_score=signal.confidence_score,
                     notes=f"{signal.notes} | Fee: ${trading_fee:.4f} | Slippage: {((execution_price - signal.price) / signal.price * 100):.3f}%",
                     exit_time=datetime.now()
@@ -631,8 +663,8 @@ class PaperTrader:
                     initial_portfolio = Portfolio(
                         symbol="USDT",
                         quantity=self.initial_balance,
-                        avg_price=USDT_BASE_PRICE,
-                    current_price=USDT_BASE_PRICE,
+                        avg_price=config.get("trading", {}).get("usdt_base_price", 1.0),
+                    current_price=config.get("trading", {}).get("usdt_base_price", 1.0),
                         current_value=self.initial_balance,
                         unrealized_pnl=0.0,
                         unrealized_pnl_percentage=0.0,
@@ -691,15 +723,15 @@ class PaperTrader:
         
         if usdt_portfolio:
             usdt_portfolio.quantity += amount
-            usdt_portfolio.current_value = usdt_portfolio.quantity * USDT_BASE_PRICE
+            usdt_portfolio.current_value = usdt_portfolio.quantity * config.get("trading", {}).get("usdt_base_price", 1.0)
             usdt_portfolio.last_updated = datetime.now()
         else:
             # Crear entrada USDT si no existe
             new_usdt = Portfolio(
                 symbol="USDT",
                 quantity=max(0, amount),
-                avg_price=USDT_BASE_PRICE,
-                current_price=USDT_BASE_PRICE,
+                avg_price=config.get("trading", {}).get("usdt_base_price", 1.0),
+                current_price=config.get("trading", {}).get("usdt_base_price", 1.0),
                 current_value=max(0, amount),
                 is_paper=True
             )
@@ -758,7 +790,7 @@ class PaperTrader:
                 symbol=signal.symbol,
                 strategy_name=signal.strategy_name,
                 signal_type=signal.signal_type,
-                timeframe=self.trading_bot_config.get_primary_timeframe(),
+                timeframe="1h",  # Valor por defecto
                 price=signal.price,
                 confidence_score=signal.confidence_score,
                 strength=signal.strength,

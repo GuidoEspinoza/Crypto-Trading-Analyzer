@@ -21,13 +21,17 @@ import weakref
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Importaciones locales
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    TradingBotConfig, 
-    RiskManagerConfig, 
-    TradingProfiles
-)
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {}
 from ..database.database import db_manager
 from ..database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -86,8 +90,6 @@ class PositionMonitor:
         """
         self.price_fetcher = price_fetcher
         self.paper_trader = paper_trader
-        self.config = TradingBotConfig()
-        self.risk_config = RiskManagerConfig()
         
         # Inicializar PositionManager
         self.position_manager = PositionManager(paper_trader)
@@ -108,16 +110,17 @@ class PositionMonitor:
         # Control de trades procesados con optimización de memoria
         self.processed_trades = set()  # Set de trade_ids ya procesados para cierre
         self.failed_close_attempts = defaultdict(int)  # Dict para contar intentos fallidos por trade_id
-        profile = TradingProfiles.get_current_profile()
-        self.max_close_attempts = profile.get('max_close_attempts', 3)  # Máximo número de intentos antes de marcar como procesado
+        # Obtener configuración desde el perfil de trading
+        from ..config.config import PaperTraderConfig
+        self.max_close_attempts = PaperTraderConfig.get_max_close_attempts()  # Máximo número de intentos antes de marcar como procesado
         
         # Configuración de monitoreo optimizada
-        self.monitor_interval = self.config.get_live_update_interval()  # segundos entre checks
-        self.price_cache_duration = profile.get('price_cache_duration', 30)  # segundos de validez del cache
+        self.monitor_interval = config.get("trading_bot", {}).get("live_update_interval", 30)  # segundos entre checks (default 30)
+        self.price_cache_duration = PaperTraderConfig.get_price_cache_duration()  # segundos de validez del cache
         self.cache_cleanup_interval = 300  # 5 minutos
         self._last_cache_cleanup = datetime.now()
-        self.log_interval = profile.get('position_log_interval', 60)  # segundos entre logs de estado
-        self.idle_sleep_multiplier = profile.get('idle_sleep_multiplier', 2)  # multiplicador para sleep cuando no hay posiciones
+        self.log_interval = PaperTraderConfig.get_position_log_interval()  # segundos entre logs de estado
+        self.idle_sleep_multiplier = PaperTraderConfig.get_idle_sleep_multiplier()  # multiplicador para sleep cuando no hay posiciones
         
         # Estadísticas thread-safe del monitor
         self.stats = {
@@ -188,9 +191,7 @@ class PositionMonitor:
         self.stop_event.set()
         
         if self.monitor_thread and self.monitor_thread.is_alive():
-            profile = TradingProfiles.get_current_profile()
-            from src.config.config import TradingBotConfig
-            timeout = TradingBotConfig.get_thread_join_timeout()
+            timeout = config.get("trading_bot", {}).get("thread_join_timeout", 30)
             self.monitor_thread.join(timeout=timeout)
         
         # Cleanup del thread pool
@@ -217,9 +218,7 @@ class PositionMonitor:
         logger.info("📊 Starting position monitoring loop")
         
         cleanup_counter = 0
-        profile = TradingProfiles.get_current_profile()
-        from src.config.config import TradingBotConfig
-        cleanup_interval = TradingBotConfig.get_cleanup_interval()  # Limpiar cada N ciclos
+        cleanup_interval = config.get("trading_bot", {}).get("cleanup_interval", 100)  # Limpiar cada N ciclos
         
         while self.monitoring_active and not self.stop_event.is_set():
             try:
@@ -552,7 +551,7 @@ class PositionMonitor:
                 signal_type="SELL" if status.trade_type == "BUY" else "BUY",
                 price=status.current_price,
                 confidence=100.0,  # Cierre automático = 100% confianza
-                timeframe=TradingBotConfig.get_primary_timeframe(),
+                timeframe=config.get("trading_bot", {}).get("primary_timeframe", "1h"),
                 strategy_name="AUTO_CLOSE",
                 indicators={"reason": status.close_reason},
                 stop_loss=0,  # No necesario para cierre
@@ -645,7 +644,7 @@ class PositionMonitor:
             trade_type = position["trade_type"]
             
             # Configuración de trailing stop desde config
-            trailing_percentage = self.risk_config.trailing_stop_percentage
+            trailing_percentage = self.risk_config["trailing_stop_percentage"]
             
             if trade_type == "BUY":
                 # Para posiciones largas, trailing stop se mueve hacia arriba

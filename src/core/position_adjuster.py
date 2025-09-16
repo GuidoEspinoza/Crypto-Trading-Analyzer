@@ -11,14 +11,19 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    RiskManagerConfig, 
-    TradingProfiles, 
-    TradingBotConfig, 
-    APIConfig
-)
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'api': {'latency_simulation_sleep': 0.1}
+    }
 from src.database.database import db_manager
 
 # Configurar logger
@@ -74,25 +79,27 @@ class PositionAdjuster:
     """
     
     def __init__(self, config=None, simulation_mode=True):
-        self.config = config or RiskManagerConfig()
+        self.config = config  # Almacenar config como atributo para tests
         self.simulation_mode = simulation_mode
         self.adjustment_counts = {}  # Contador de ajustes por posición
-        # Obtener max_adjustments desde configuración del perfil activo
-        risk_config = RiskManagerConfig()
-        self.max_adjustments = risk_config.get_max_tp_adjustments()
+        # Obtener max_adjustments desde configuración centralizada
+        if config and isinstance(config, dict):
+            self.max_adjustments = config.get("risk_manager", {}).get("max_tp_adjustments", 3)
+        else:
+            self.max_adjustments = 3  # Default value
         # Obtener configuración del perfil activo o usar el config proporcionado
         if isinstance(config, dict):
             self.profile = config
         else:
-            self.profile = TradingProfiles.get_current_profile()
+            # Default profile configuration (replaced trading_profiles reference)
+            self.profile = {
+                'position_check_interval': 20,
+                'max_tp_adjustments': 3,
+                'adjustment_threshold': 0.02
+            }
         
         # Configuración de intervalos - usar el valor del perfil específico
-        try:
-            from ..config.trading_bot_config import get_trading_bot_config
-            profile_config = get_trading_bot_config()
-            self.monitoring_interval = profile_config.get('position_check_interval', 20)
-        except ImportError:
-            self.monitoring_interval = 20  # Valor por defecto
+        self.monitoring_interval = config.get("trading_bot", {}).get("position_check_interval", 20)
         self.active_positions = {}
         self.adjustment_history = []
         self.is_running = False
@@ -408,7 +415,6 @@ class PositionAdjuster:
     def _calculate_new_levels_internal(self, position: PositionInfo) -> Tuple[bool, AdjustmentReason, float, float]:
         """🧮 Calcular nuevos niveles de TP/SL"""
         try:
-            risk_config = RiskManagerConfig()
             symbol = position.symbol
             current_price = position.current_price
             entry_price = position.entry_price
@@ -475,11 +481,11 @@ class PositionAdjuster:
             if self.simulation_mode:
                 # Simular cancelación de órdenes OCO existentes
                 logger.info(f"🔄 {symbol}: Simulando cancelación de órdenes OCO existentes")
-                await asyncio.sleep(APIConfig.LATENCY_SIMULATION_SLEEP)  # Simular latencia
+                await asyncio.sleep(config.get("api", {}).get("latency_simulation_sleep", 0.1))  # Simular latencia
                 
                 # Simular creación de nuevas órdenes OCO
                 logger.info(f"🔄 {symbol}: Simulando creación de nuevas órdenes OCO")
-                await asyncio.sleep(APIConfig.LATENCY_SIMULATION_SLEEP)  # Simular latencia
+                await asyncio.sleep(config.get("api", {}).get("latency_simulation_sleep", 0.1))  # Simular latencia
                 
                 # Actualizar en base de datos (simulado)
                 success = self._update_position_levels(symbol, new_tp, new_sl)

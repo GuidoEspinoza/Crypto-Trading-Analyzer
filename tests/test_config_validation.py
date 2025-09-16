@@ -32,7 +32,7 @@ def test_trading_bot_config():
     """
     print("🤖 Probando configuración del trading bot...")
     
-    from src.config.trading_bot_config import get_trading_bot_config
+    from src.config.config import get_trading_bot_config
     
     # Probar cada perfil
     profiles = ["RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"]

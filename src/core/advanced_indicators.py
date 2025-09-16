@@ -13,15 +13,18 @@ from datetime import datetime
 from functools import lru_cache
 import hashlib
 
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    AdvancedIndicatorsConfig, 
-    FibonacciConfig, 
-    OscillatorConfig, 
-    CalculationConfig, 
-    ThresholdConfig
-)
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada
+try:
+    config = ConfigManager().get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'advanced_indicators': {'fibonacci_lookback': 50}
+    }
 from src.utils.advanced_cache import indicator_cache, cached_function
 from src.utils.error_handler import handle_errors
 
@@ -53,6 +56,19 @@ class IchimokuCloud:
 
 class AdvancedIndicators:
     """Clase para calcular indicadores técnicos avanzados con cache optimizado"""
+    
+    @staticmethod
+    def _get_config_value(path: str, default=None):
+        """Helper para acceso seguro a la configuración"""
+        global config
+        try:
+            keys = path.split('.')
+            value = config
+            for key in keys:
+                value = value[key]
+            return value
+        except (KeyError, TypeError, AttributeError):
+            return default
     
     @classmethod
     def _get_cache_key(cls, symbol: str, timeframe: str, indicator_name: str, **kwargs) -> str:
@@ -93,8 +109,8 @@ class AdvancedIndicators:
         except (ValueError, TypeError):
             return default
     
-    @staticmethod
-    def fibonacci_retracement(df: pd.DataFrame, lookback: int = None) -> FibonacciLevels:
+    @classmethod
+    def fibonacci_retracement(cls, df: pd.DataFrame, lookback: int = None) -> FibonacciLevels:
         """
         🔢 Calcular niveles de Fibonacci para retracements
         
@@ -106,7 +122,7 @@ class AdvancedIndicators:
             FibonacciLevels con todos los niveles calculados
         """
         if lookback is None:
-            lookback = AdvancedIndicatorsConfig.FIBONACCI_LOOKBACK
+            lookback = cls._get_config_value("advanced_indicators.fibonacci_lookback", 50)
         
         # Encontrar máximo y mínimo en el período
         recent_data = df.tail(lookback)
@@ -129,18 +145,19 @@ class AdvancedIndicators:
         
         # Calcular niveles de Fibonacci (retracement desde el máximo)
         # RETRACEMENT_LEVELS = [0.236, 0.382, 0.500, 0.618, 0.786]
+        retracement_levels = cls._get_config_value("fibonacci.retracement_levels", [0.236, 0.382, 0.500, 0.618, 0.786])
         return FibonacciLevels(
             level_0=AdvancedIndicators.safe_float(swing_high),
-            level_236=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[0])),  # 0.236
-            level_382=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[1])),  # 0.382
-            level_500=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[2])),  # 0.500
-            level_618=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[3])),  # 0.618
-            level_786=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[4])),  # 0.786
+            level_236=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[0])),  # 0.236
+            level_382=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[1])),  # 0.382
+            level_500=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[2])),  # 0.500
+            level_618=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[3])),  # 0.618
+            level_786=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[4])),  # 0.786
             level_100=AdvancedIndicators.safe_float(swing_low)
         )
     
-    @staticmethod
-    def ichimoku_cloud(df: pd.DataFrame) -> IchimokuCloud:
+    @classmethod
+    def ichimoku_cloud(cls, df: pd.DataFrame) -> IchimokuCloud:
         """
         ☁️ Calcular Ichimoku Cloud completo
         
@@ -186,25 +203,29 @@ class AdvancedIndicators:
         except Exception:
             # Método 2: Calcular manualmente si falla el método automático
             # Tenkan-sen (9 períodos)
-            high_9 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_TENKAN_PERIOD).max()
-            low_9 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_TENKAN_PERIOD).min()
+            tenkan_period = cls._get_config_value("advanced_indicators.ichimoku_tenkan_period", 9)
+            high_9 = df['high'].rolling(window=tenkan_period).max()
+            low_9 = df['low'].rolling(window=tenkan_period).min()
             tenkan_sen = (high_9 + low_9) / 2
             
             # Kijun-sen (26 períodos)
-            high_26 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_KIJUN_PERIOD).max()
-            low_26 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_KIJUN_PERIOD).min()
+            kijun_period = cls._get_config_value("advanced_indicators.ichimoku_kijun_period", 26)
+            high_26 = df['high'].rolling(window=kijun_period).max()
+            low_26 = df['low'].rolling(window=kijun_period).min()
             kijun_sen = (high_26 + low_26) / 2
             
             # Senkou Span A
-            senkou_a = ((tenkan_sen + kijun_sen) / 2).shift(AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
+            ichimoku_shift = cls._get_config_value("advanced_indicators.ichimoku_shift", 26)
+            senkou_a = ((tenkan_sen + kijun_sen) / 2).shift(ichimoku_shift)
             
             # Senkou Span B (52 períodos)
-            high_52 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_SENKOU_B_PERIOD).max()
-            low_52 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_SENKOU_B_PERIOD).min()
-            senkou_b = ((high_52 + low_52) / 2).shift(AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
+            senkou_b_period = cls._get_config_value("advanced_indicators.ichimoku_senkou_b_period", 52)
+            high_52 = df['high'].rolling(window=senkou_b_period).max()
+            low_52 = df['low'].rolling(window=senkou_b_period).min()
+            senkou_b = ((high_52 + low_52) / 2).shift(ichimoku_shift)
             
             # Chikou Span
-            chikou_span = df['close'].shift(-AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
+            chikou_span = df['close'].shift(-ichimoku_shift)
             
             # Obtener valores actuales
             tenkan_sen = tenkan_sen.iloc[-1]
@@ -246,10 +267,10 @@ class AdvancedIndicators:
             price_position=price_position
         )
     
-    @staticmethod
-    def stochastic_oscillator(df: pd.DataFrame, k_period: int = None, d_period: int = None) -> Dict:
+    @classmethod
+    def stochastic_oscillator(cls, df: pd.DataFrame, k_period: int = None, d_period: int = None) -> Dict:
         """
-        📊 Calcular Oscilador Estocástico
+        📊 Calcular Oscilador Estocástico (%K y %D)
         
         Args:
             df: DataFrame con datos OHLCV
@@ -260,9 +281,9 @@ class AdvancedIndicators:
             Diccionario con valores y señales del estocástico
         """
         if k_period is None:
-            k_period = AdvancedIndicatorsConfig.STOCHASTIC_K_PERIOD
+            k_period = cls._get_config_value("advanced_indicators.stochastic_k_period", 14)
         if d_period is None:
-            d_period = AdvancedIndicatorsConfig.STOCHASTIC_D_PERIOD
+            d_period = cls._get_config_value("advanced_indicators.stochastic_d_period", 3)
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -295,8 +316,8 @@ class AdvancedIndicators:
             d_current = AdvancedIndicators.safe_float(d_current, 50.0)
             
             # Generar señales usando umbrales configurables
-            oversold = OscillatorConfig.STOCHASTIC_THRESHOLDS["oversold"]
-            overbought = OscillatorConfig.STOCHASTIC_THRESHOLDS["overbought"]
+            oversold = cls._get_config_value("oscillator.stochastic_thresholds.oversold", 20)
+            overbought = cls._get_config_value("oscillator.stochastic_thresholds.overbought", 80)
             
             if k_current <= oversold and d_current <= oversold:
                 signal = "BUY"
@@ -329,8 +350,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando estocástico: {str(e)}"
             }
     
-    @staticmethod
-    def williams_percent_r(df: pd.DataFrame, period: int = None) -> Dict:
+    @classmethod
+    def williams_percent_r(cls, df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Williams %R
         
@@ -342,7 +363,7 @@ class AdvancedIndicators:
             Diccionario con valores y señales de Williams %R
         """
         if period is None:
-            period = AdvancedIndicatorsConfig.WILLIAMS_R_PERIOD
+            period = cls._get_config_value("advanced_indicators.williams_r_period", 14)
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -364,8 +385,8 @@ class AdvancedIndicators:
             current_willr = AdvancedIndicators.safe_float(willr.iloc[-1], -50.0)
             
             # Generar señales usando umbrales configurables (Williams %R se mueve entre -100 y 0)
-            oversold = OscillatorConfig.WILLIAMS_R_THRESHOLDS["oversold"]
-            overbought = OscillatorConfig.WILLIAMS_R_THRESHOLDS["overbought"]
+            oversold = cls._get_config_value("oscillator.williams_r_thresholds.oversold", -80)
+            overbought = cls._get_config_value("oscillator.williams_r_thresholds.overbought", -20)
             
             if current_willr <= oversold:
                 signal = "BUY"
@@ -446,8 +467,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando AO: {str(e)}"
             }
     
-    @staticmethod
-    def commodity_channel_index(df: pd.DataFrame, period: int = None) -> Dict:
+    @classmethod
+    def commodity_channel_index(cls, df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Commodity Channel Index (CCI)
         
@@ -459,7 +480,7 @@ class AdvancedIndicators:
             Diccionario con valores y señales del CCI
         """
         if period is None:
-            period = AdvancedIndicatorsConfig.CCI_PERIOD
+            period = cls._get_config_value("advanced_indicators.cci_period", 20)
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -477,17 +498,21 @@ class AdvancedIndicators:
                 typical_price = (df['high'] + df['low'] + df['close']) / 3
                 sma_tp = typical_price.rolling(window=period).mean()
                 mad = typical_price.rolling(window=period).apply(lambda x: np.mean(np.abs(x - x.mean())))
-                cci = (typical_price - sma_tp) / (CalculationConfig.CCI_CONSTANT * mad)
+                cci_constant = cls._get_config_value("calculation.cci_constant", 0.015)
+                cci = (typical_price - sma_tp) / (cci_constant * mad)
             
             current_cci = AdvancedIndicators.safe_float(cci.iloc[-1], 0.0)
             
             # Generar señales basadas en niveles del CCI
-            if current_cci > OscillatorConfig.CCI_THRESHOLDS["overbought"]:
+            overbought = cls._get_config_value("oscillator.cci_thresholds.overbought", 100)
+            oversold = cls._get_config_value("oscillator.cci_thresholds.oversold", -100)
+            
+            if current_cci > overbought:
                 signal = "SELL"
-                interpretation = f"🔴 CCI > +{OscillatorConfig.CCI_THRESHOLDS['overbought']} - Sobrecomprado, posible corrección"
-            elif current_cci < OscillatorConfig.CCI_THRESHOLDS["oversold"]:
+                interpretation = f"🔴 CCI > +{overbought} - Sobrecomprado, posible corrección"
+            elif current_cci < oversold:
                 signal = "BUY"
-                interpretation = f"🟢 CCI < {OscillatorConfig.CCI_THRESHOLDS['oversold']} - Sobrevendido, posible rebote"
+                interpretation = f"🟢 CCI < {oversold} - Sobrevendido, posible rebote"
             elif current_cci > 0:
                 signal = "BUY"
                 interpretation = "📈 CCI positivo - Tendencia alcista"
@@ -508,8 +533,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando CCI: {str(e)}"
             }
     
-    @staticmethod
-    def parabolic_sar(df: pd.DataFrame) -> Dict:
+    @classmethod
+    def parabolic_sar(cls, df: pd.DataFrame) -> Dict:
         """
         🎯 Calcular Parabolic SAR
         
@@ -538,10 +563,13 @@ class AdvancedIndicators:
                 low_20 = df['low'].rolling(window=20).min().iloc[-1]
                 
                 # SAR aproximado basado en tendencia reciente
+                close_factor = cls._get_config_value("calculation.approximation_factors.close", 0.98)
+                far_factor = cls._get_config_value("calculation.approximation_factors.far", 1.02)
+                
                 if current_price > (high_20 + low_20) / 2:
-                    current_psar = low_20 * CalculationConfig.APPROXIMATION_FACTORS["close"]  # Tendencia alcista
+                    current_psar = low_20 * close_factor  # Tendencia alcista
                 else:
-                    current_psar = high_20 * CalculationConfig.APPROXIMATION_FACTORS["far"]  # Tendencia bajista
+                    current_psar = high_20 * far_factor  # Tendencia bajista
             else:
                 # Usar pandas-ta
                 if isinstance(psar, pd.DataFrame):
@@ -550,7 +578,8 @@ class AdvancedIndicators:
                     current_psar = psar.iloc[-1]
             
             current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
-            current_psar = AdvancedIndicators.safe_float(current_psar, current_price * CalculationConfig.APPROXIMATION_FACTORS["very_close"])
+            very_close_factor = cls._get_config_value("calculation.approximation_factors.very_close", 0.995)
+            current_psar = AdvancedIndicators.safe_float(current_psar, current_price * very_close_factor)
             
             # El Parabolic SAR da señales de cambio de tendencia
             if current_price > current_psar:
@@ -594,9 +623,9 @@ class AdvancedIndicators:
             Diccionario con bandas y señales
         """
         if period is None:
-            period = AdvancedIndicatorsConfig.BOLLINGER_PERIOD
+            period = cls._get_config_value("advanced_indicators.bollinger_period", 20)
         if std_dev is None:
-            std_dev = AdvancedIndicatorsConfig.BOLLINGER_STD_DEV
+            std_dev = cls._get_config_value("advanced_indicators.bollinger_std_dev", 2.0)
             
         # Verificar cache avanzado
         params = {'period': period, 'std_dev': std_dev}
@@ -822,8 +851,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando OBV: {str(e)}"
             }
     
-    @staticmethod
-    def money_flow_index(df: pd.DataFrame, period: int = None) -> Dict:
+    @classmethod
+    def money_flow_index(cls, df: pd.DataFrame, period: int = None) -> Dict:
         """
         💰 Calcular Money Flow Index (MFI)
         
@@ -835,7 +864,7 @@ class AdvancedIndicators:
             Diccionario con valores y señales del MFI
         """
         if period is None:
-            period = AdvancedIndicatorsConfig.MFI_PERIOD
+            period = cls._get_config_value("advanced_indicators.mfi_period", 14)
             
         try:
             # Crear una copia del DataFrame con tipos explícitos para evitar warnings de dtype
@@ -878,10 +907,10 @@ class AdvancedIndicators:
             current_mfi = AdvancedIndicators.safe_float(mfi.iloc[-1], 50.0)
             
             # Generar señales usando umbrales configurables de OscillatorConfig
-            oversold_extreme = OscillatorConfig.RSI_THRESHOLDS["oversold_extreme"]  # 20
-            oversold = OscillatorConfig.RSI_THRESHOLDS["oversold"]  # 30
-            overbought = OscillatorConfig.RSI_THRESHOLDS["overbought"]  # 70
-            overbought_extreme = OscillatorConfig.RSI_THRESHOLDS["overbought_extreme"]  # 80
+            oversold_extreme = cls._get_config_value("oscillator.rsi_thresholds.oversold_extreme", 20)
+            oversold = cls._get_config_value("oscillator.rsi_thresholds.oversold", 30)
+            overbought = cls._get_config_value("oscillator.rsi_thresholds.overbought", 70)
+            overbought_extreme = cls._get_config_value("oscillator.rsi_thresholds.overbought_extreme", 80)
             
             if current_mfi <= oversold_extreme:
                 signal = "BUY"
@@ -912,8 +941,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando MFI: {str(e)}"
             }
     
-    @staticmethod
-    def average_true_range(df: pd.DataFrame, period: int = None) -> Dict:
+    @classmethod
+    def average_true_range(cls, df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Average True Range (ATR) - Medida de volatilidad
         
@@ -925,7 +954,7 @@ class AdvancedIndicators:
             Diccionario con ATR y análisis de volatilidad
         """
         if period is None:
-            period = AdvancedIndicatorsConfig.ATR_PERIOD
+            period = cls._get_config_value("advanced_indicators.atr_period", 14)
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -1040,8 +1069,7 @@ class AdvancedIndicators:
     
     @classmethod
     def enhanced_rsi(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None, period: int = None) -> Dict:
-        """
-        📊 RSI Mejorado con análisis de divergencias (optimizado con cache)
+        """🔍 RSI mejorado con análisis de divergencias y niveles dinámicos
         
         Args:
             df: DataFrame con datos OHLCV
@@ -1052,8 +1080,12 @@ class AdvancedIndicators:
         Returns:
             Diccionario con RSI mejorado y análisis
         """
+        global config
         if period is None:
-            period = AdvancedIndicatorsConfig.RSI_PERIOD
+            try:
+                period = config.get("advanced_indicators", {}).get("rsi_period", 14)
+            except (KeyError, AttributeError):
+                period = 14
             
         # Verificar cache
         params = {'period': period}
@@ -1168,8 +1200,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando RSI mejorado: {str(e)}"
             }
     
-    @staticmethod
-    def rate_of_change(df: pd.DataFrame, period: int = None) -> Dict:
+    @classmethod
+    def rate_of_change(cls, df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Rate of Change (ROC) - Indicador de momentum
         
@@ -1181,7 +1213,7 @@ class AdvancedIndicators:
             Diccionario con ROC y análisis de momentum
         """
         if period is None:
-            period = AdvancedIndicatorsConfig.ROC_PERIOD
+            period = cls._get_config_value("advanced_indicators.roc_period", 14)
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -1206,10 +1238,10 @@ class AdvancedIndicators:
             roc_zscore = (current_roc - roc_avg) / roc_std if roc_std > 0 else 0
             
             # Generar señales usando umbrales configurables de OscillatorConfig
-            strong_positive = OscillatorConfig.ROC_THRESHOLDS["strong_positive"]  # 5.0
-            moderate_positive = OscillatorConfig.ROC_THRESHOLDS["moderate_positive"]  # 2.0
-            moderate_negative = OscillatorConfig.ROC_THRESHOLDS["moderate_negative"]  # -2.0
-            strong_negative = OscillatorConfig.ROC_THRESHOLDS["strong_negative"]  # -5.0
+            strong_positive = cls._get_config_value("oscillator.roc_thresholds.strong_positive", 5.0)
+            moderate_positive = cls._get_config_value("oscillator.roc_thresholds.moderate_positive", 2.0)
+            moderate_negative = cls._get_config_value("oscillator.roc_thresholds.moderate_negative", -2.0)
+            strong_negative = cls._get_config_value("oscillator.roc_thresholds.strong_negative", -5.0)
             
             if current_roc >= strong_positive:
                 signal = "STRONG_BUY"
@@ -1251,8 +1283,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando ROC: {str(e)}"
             }
     
-    @staticmethod
-    def volume_profile(df: pd.DataFrame, bins: int = None) -> Dict:
+    @classmethod
+    def volume_profile(cls, df: pd.DataFrame, bins: int = None) -> Dict:
         """
         📊 Calcular Volume Profile - Análisis de distribución de volumen por precio
         
@@ -1264,7 +1296,7 @@ class AdvancedIndicators:
             Diccionario con análisis de volume profile
         """
         if bins is None:
-            bins = AdvancedIndicatorsConfig.VOLUME_PROFILE_BINS
+            bins = cls._get_config_value("advanced_indicators.volume_profile_bins", 20)
             
         try:
             # Calcular precio típico
@@ -1312,7 +1344,7 @@ class AdvancedIndicators:
             elif current_price < val:
                 signal = "BUY"
                 interpretation = "🟢 Precio por debajo del Value Area Low - Zona de compra"
-            elif abs(current_price - poc_price) / poc_price < ThresholdConfig.PROXIMITY_THRESHOLD:  # Cerca del POC
+            elif abs(current_price - poc_price) / poc_price < cls._get_config_value("threshold.proximity_threshold", 0.01):  # Cerca del POC
                 signal = "HOLD"
                 interpretation = "⚪ Precio cerca del Point of Control - Zona de equilibrio"
             elif current_price > poc_price:
@@ -1344,8 +1376,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando Volume Profile: {str(e)}"
             }
     
-    @staticmethod
-    def support_resistance_levels(df: pd.DataFrame, window: int = None, min_touches: int = 2) -> Dict:
+    @classmethod
+    def support_resistance_levels(cls, df: pd.DataFrame, window: int = None, min_touches: int = 2) -> Dict:
         """
         📊 Detectar niveles de soporte y resistencia
         
@@ -1358,7 +1390,7 @@ class AdvancedIndicators:
             Diccionario con niveles de soporte y resistencia
         """
         if window is None:
-            window = AdvancedIndicatorsConfig.SUPPORT_RESISTANCE_WINDOW
+            window = cls._get_config_value("advanced_indicators.support_resistance_window", 20)
             
         try:
             # Detectar máximos y mínimos locales
@@ -1415,10 +1447,10 @@ class AdvancedIndicators:
             signal = "HOLD"
             interpretation = "⚪ Precio en rango normal"
             
-            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < ThresholdConfig.BREAKOUT_THRESHOLD:
+            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < cls._get_config_value("threshold.breakout_threshold", 0.02):
                 signal = "SELL"
                 interpretation = "🔴 Precio cerca de resistencia - Posible rechazo"
-            elif nearest_support and abs(current_price - nearest_support) / current_price < ThresholdConfig.BREAKOUT_THRESHOLD:
+            elif nearest_support and abs(current_price - nearest_support) / current_price < cls._get_config_value("threshold.breakout_threshold", 0.02):
                 signal = "BUY"
                 interpretation = "🟢 Precio cerca de soporte - Posible rebote"
             
@@ -1542,8 +1574,8 @@ class AdvancedIndicators:
                 "patterns": [{"name": "Error", "signal": "NEUTRAL", "description": f"Error detectando patrones: {str(e)}"}]
             }
 
-    @staticmethod
-    def trend_lines_analysis(df: pd.DataFrame, lookback: int = None) -> Dict:
+    @classmethod
+    def trend_lines_analysis(cls, df: pd.DataFrame, lookback: int = None) -> Dict:
         """
         🔍 Detecta líneas de tendencia y breakouts
         
@@ -1555,7 +1587,7 @@ class AdvancedIndicators:
             Diccionario con análisis de líneas de tendencia
         """
         if lookback is None:
-            lookback = AdvancedIndicatorsConfig.TREND_ANALYSIS_LOOKBACK
+            lookback = cls._get_config_value("advanced_indicators.trend_analysis_lookback", 50)
             
         try:
             if len(df) < lookback:
@@ -1639,8 +1671,8 @@ class AdvancedIndicators:
         except Exception as e:
             return {"trend_lines": [], "signal": "HOLD", "interpretation": f"Error: {str(e)}"}
 
-    @staticmethod
-    def chart_patterns_detection(df: pd.DataFrame, window: int = None) -> Dict:
+    @classmethod
+    def chart_patterns_detection(cls, df: pd.DataFrame, window: int = None) -> Dict:
         """
         📈 Detecta patrones de gráficos comunes
         
@@ -1652,7 +1684,7 @@ class AdvancedIndicators:
             Diccionario con patrones detectados
         """
         if window is None:
-            window = AdvancedIndicatorsConfig.CHART_PATTERNS_WINDOW
+            window = cls._get_config_value("advanced_indicators.chart_patterns_window", 20)
             
         try:
             if len(df) < window * 2:

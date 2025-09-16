@@ -44,7 +44,7 @@ class TestPositionManagerOptimized:
         mock_config = Mock()
         mock_config.TRAILING_STOP_ACTIVATION = 2.0  # 2%
         
-        with patch('src.core.position_manager.RiskManagerConfig', return_value=mock_config):
+        with patch('src.config.config.RiskManagerConfig', return_value=mock_config):
             yield mock_config
     
     @pytest.fixture
@@ -71,8 +71,8 @@ class TestPositionManagerOptimized:
     @pytest.fixture
     def position_manager(self, mock_trading_profiles, mock_risk_config, mock_db_session, mock_paper_trader):
         """🔧 Fixture para PositionManager con mocks"""
-        with patch('src.core.position_manager.PaperTrader', return_value=mock_paper_trader):
-            with patch('src.core.position_manager.TradingBotConfig'):
+        with patch('src.core.paper_trader.PaperTrader', return_value=mock_paper_trader):
+            with patch('src.config.config.TradingBotConfig'):
                 manager = PositionManager()
                 return manager
     
@@ -128,8 +128,8 @@ class TestPositionManagerInitialization(TestPositionManagerOptimized):
     
     def test_initialization_with_custom_profile(self, mock_trading_profiles, mock_risk_config, mock_db_session, mock_paper_trader):
         """✅ Test inicialización con perfil personalizado"""
-        with patch('src.core.position_manager.PaperTrader', return_value=mock_paper_trader):
-            with patch('src.core.position_manager.TradingBotConfig'):
+        with patch('src.core.paper_trader.PaperTrader', return_value=mock_paper_trader):
+            with patch('src.config.config.TradingBotConfig'):
                 manager = PositionManager()
                 
                 # Verificar configuraciones dinámicas
@@ -145,9 +145,9 @@ class TestPositionManagerInitialization(TestPositionManagerOptimized):
         """✅ Test inicialización con valores por defecto"""
         # Mock perfil vacío para probar defaults
         with patch.object(TradingProfiles, 'get_current_profile', return_value={}):
-            with patch('src.core.position_manager.PaperTrader', return_value=mock_paper_trader):
-                with patch('src.core.position_manager.TradingBotConfig'):
-                    with patch('src.core.position_manager.RiskManagerConfig') as mock_risk:
+            with patch('src.core.paper_trader.PaperTrader', return_value=mock_paper_trader):
+                with patch('src.config.config.TradingBotConfig'):
+                    with patch('src.config.config.RiskManagerConfig') as mock_risk:
                         mock_risk.return_value.TRAILING_STOP_ACTIVATION = 3.0
                         manager = PositionManager()
                         
@@ -532,8 +532,8 @@ class TestConfigurationDynamic(TestPositionManagerOptimized):
     
     def test_dynamic_configuration_loading(self, mock_trading_profiles, mock_risk_config, mock_db_session, mock_paper_trader):
         """✅ Test carga de configuración dinámica"""
-        with patch('src.core.position_manager.PaperTrader', return_value=mock_paper_trader):
-            with patch('src.core.position_manager.TradingBotConfig'):
+        with patch('src.core.paper_trader.PaperTrader', return_value=mock_paper_trader):
+            with patch('src.config.config.TradingBotConfig'):
                 manager = PositionManager()
                 
                 # Verificar que se cargaron las configuraciones del perfil

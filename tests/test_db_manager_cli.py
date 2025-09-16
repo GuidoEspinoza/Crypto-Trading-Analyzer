@@ -28,9 +28,9 @@ sys.path.insert(0, os.path.join(project_root, 'src'))
 
 # Importar solo las configuraciones que no dependen de otros módulos
 try:
-    from src.config.cli_config import (
+    from src.config.db_manager_cli_config import (
         DatabaseCLIConfig, CLICleanupConfig, CLIBackupConfig,
-        CLIOperationsConfig, CLIPerformanceConfig,
+        CLIOperationConfig, CLIPerformanceConfig,
         get_cli_config, CLI_PROFILES
     )
     CONFIG_AVAILABLE = True
@@ -48,9 +48,9 @@ class TestCLIConfig:
         config = get_cli_config()
         
         assert isinstance(config, DatabaseCLIConfig)
-        assert config.cleanup.default_days == 30
-        assert config.backup.default_dir == "backups/"
-        assert config.operations.recent_signals_timeframe == 24
+        assert config.cleanup.default_cleanup_days == 7  # development profile
+        assert config.backup.default_backup_dir == "backups"
+        assert config.operations.stats_recent_signals_days == 3  # development profile
         assert config.performance.enable_progress_indicators is True
     
     @pytest.mark.skipif(not CONFIG_AVAILABLE, reason="CLI config not available")
@@ -58,34 +58,33 @@ class TestCLIConfig:
         """Test perfil de desarrollo."""
         config = get_cli_config('development')
         
-        assert config.logging.level == 'DEBUG'
-        assert config.performance.show_operation_stats is True
-        assert config.operations.log_level == 'DEBUG'
+        assert config.operations.log_level == 'INFO'
+        assert config.performance.enable_progress_indicators is True
+        assert config.cleanup.default_cleanup_days == 7
     
     @pytest.mark.skipif(not CONFIG_AVAILABLE, reason="CLI config not available")
     def test_production_profile(self):
         """Test perfil de producción."""
         config = get_cli_config('production')
         
-        assert config.logging.level == 'WARNING'
-        assert config.cleanup.default_days == 90
-        assert config.backup.retention_days == 90
+        assert config.operations.log_level == 'INFO'
+        assert config.cleanup.default_cleanup_days == 30
+        assert config.backup.max_backup_files == 20
     
     @pytest.mark.skipif(not CONFIG_AVAILABLE, reason="CLI config not available")
     def test_testing_profile(self):
         """Test perfil de testing."""
         config = get_cli_config('testing')
         
-        assert config.cleanup.default_days == 1
-        assert config.operations.recent_signals_timeframe == 1
-        assert config.backup.retention_days == 1
+        assert config.cleanup.default_cleanup_days == 1
+        assert config.operations.stats_recent_signals_days == 1
+        assert config.backup.max_backup_files == 3
     
     @pytest.mark.skipif(not CONFIG_AVAILABLE, reason="CLI config not available")
     def test_invalid_profile(self):
         """Test manejo de perfil inválido."""
-        config = get_cli_config('invalid_profile')
-        # Debe retornar configuración por defecto
-        assert config.logging.level == 'INFO'
+        with pytest.raises(ValueError, match="Perfil desconocido"):
+            get_cli_config('invalid_profile')
 
 
 class TestCLIUtilities:

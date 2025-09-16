@@ -756,7 +756,7 @@ async def reset_paper_trading():
             return {
                 "status": "success",
                 "message": result["message"],
-                "initial_balance": config.paper_trading.initial_balance,
+                "initial_balance": config.paper_trading.global_initial_balance,
                 "timestamp": result["timestamp"]
             }
         else:

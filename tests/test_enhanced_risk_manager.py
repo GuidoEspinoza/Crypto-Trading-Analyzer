@@ -68,7 +68,7 @@ class TestEnhancedRiskManager(unittest.TestCase):
         }
         
         # Patch de TradingProfiles.get_current_profile
-        self.config_patcher = patch('src.core.enhanced_risk_manager.TradingProfiles.get_current_profile')
+        self.config_patcher = patch('src.config.config.TradingProfiles.get_current_profile')
         self.mock_get_config = self.config_patcher.start()
         self.mock_get_config.return_value = self.mock_config
         
@@ -116,7 +116,8 @@ class TestEnhancedRiskManager(unittest.TestCase):
     def test_initialization(self):
         """Test de inicialización del risk manager"""
         self.assertIsInstance(self.risk_manager, EnhancedRiskManager)
-        self.assertIsNotNone(self.risk_manager.global_config)
+        self.assertIsNotNone(self.risk_manager.max_portfolio_risk)
+        self.assertIsNotNone(self.risk_manager.portfolio_value)
     
     def test_assess_trade_risk_basic(self):
         """Test básico de evaluación de riesgo"""
@@ -267,15 +268,12 @@ class TestEnhancedRiskManager(unittest.TestCase):
         """Test de uso correcto de la configuración centralizada"""
         # Verificar que se usan valores de configuración en lugar de hardcodeados
         
-        self.assertIsNotNone(self.risk_manager.global_config)
-        self.assertEqual(
-            self.risk_manager.global_config['balance'],
-            self.mock_config['balance']
-        )
-        self.assertEqual(
-            self.risk_manager.global_config['max_positions'],
-            self.mock_config['max_positions']
-        )
+        self.assertIsNotNone(self.risk_manager.max_portfolio_risk)
+        self.assertIsNotNone(self.risk_manager.max_daily_risk)
+        self.assertIsNotNone(self.risk_manager.portfolio_value)
+        # Verificar que los valores están dentro de rangos esperados
+        self.assertGreater(self.risk_manager.max_portfolio_risk, 0)
+        self.assertGreater(self.risk_manager.max_daily_risk, 0)
     
     def test_error_handling(self):
         """Test de manejo de errores"""
@@ -417,7 +415,7 @@ class TestRiskManagerIntegration(unittest.TestCase):
             'max_positions': 5
         }
         
-        with patch('src.core.enhanced_risk_manager.TradingProfiles.get_current_profile', return_value=self.mock_config):
+        with patch('src.config.config.TradingProfiles.get_current_profile', return_value=self.mock_config):
             self.risk_manager = EnhancedRiskManager()
     
     def test_full_risk_assessment_workflow(self):

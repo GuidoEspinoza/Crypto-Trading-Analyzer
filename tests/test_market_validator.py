@@ -272,17 +272,21 @@ class TestMarketValidator(unittest.TestCase):
     
     @patch('src.core.market_validator.time.sleep')
     @patch('src.core.market_validator.logger')
-    @patch('src.core.market_validator.APIConfig')
+    @patch('src.core.market_validator.config')
     @patch('requests.get')
-    def test_get_historical_prices_with_retries(self, mock_get, mock_api_config, mock_logger, mock_sleep):
+    def test_get_historical_prices_with_retries(self, mock_get, mock_config, mock_logger, mock_sleep):
         """Test _get_historical_prices con reintentos"""
         symbol = "BTCUSDT"
         hours_back = 24
         
-        # Mock APIConfig
-        mock_api_config.get_binance_url.return_value = "https://api.binance.com/api/v3/klines"
-        mock_api_config.DEFAULT_KLINES_LIMIT = 1000
-        mock_api_config.get_request_config.return_value = {'timeout': 5, 'max_retries': 3, 'retry_delay': 1}
+        # Mock config
+        mock_config.get.side_effect = lambda section, default=None: {
+            'api': {
+                'binance_base_url': 'https://api.binance.com',
+                'default_klines_limit': 1000,
+                'request_timeout': 10
+            }
+        }.get(section, default)
         
         # Simular fallo en primeros intentos
         mock_response_success = Mock()
@@ -387,8 +391,16 @@ class TestMarketValidator(unittest.TestCase):
         self.assertEqual(stats['valid_cache_entries'], 1)
         self.assertIsInstance(stats['cache_hit_ratio'], float)
     
-    def test_validate_configuration(self):
+    @patch('src.core.market_validator.config')
+    def test_validate_configuration(self, mock_config):
         """Test validate_configuration"""
+        # Mock config con configuraciones válidas
+        mock_config.__contains__ = lambda self, key: key in ['api', 'monitoring']
+        mock_config.get.side_effect = lambda section, default=None: {
+            'api': {'binance_base_url': 'https://api.binance.com'},
+            'monitoring': {'default_hours_back': 24}
+        }.get(section, default)
+        
         validation = self.validator.validate_configuration()
         
         self.assertIn('cache_duration_valid', validation)

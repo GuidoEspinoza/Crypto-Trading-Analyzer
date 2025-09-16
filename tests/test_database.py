@@ -21,7 +21,7 @@ from src.config.database_config import (
     get_database_config, DEFAULT_DATABASE_CONFIG, DEVELOPMENT_DATABASE_CONFIG,
     PRODUCTION_DATABASE_CONFIG, TEST_DATABASE_CONFIG
 )
-from src.config.trading_bot_config import GLOBAL_INITIAL_BALANCE
+from src.config.global_constants import GLOBAL_INITIAL_BALANCE
 from src.database.database import DatabaseManager, get_database_manager
 
 

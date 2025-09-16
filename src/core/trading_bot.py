@@ -20,15 +20,18 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.config import (
-    CONSOLIDATED_CONFIG, 
-    get_module_config, 
-    get_current_config,
-    TradingBotConfig, 
-    TradingProfiles, 
-    APIConfig, 
-    optimized_config
-)
+from src.config.config_manager import ConfigManager
+from src.config.config import optimized_config
+
+# Obtener configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {}
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
@@ -78,8 +81,7 @@ class TradingBot:
     # Cache TTL se obtiene de la configuración del perfil
     @classmethod
     def _get_cache_ttl(cls):
-        profile_config = TradingProfiles.get_current_profile()
-        return profile_config.get('cache_ttl_seconds', optimized_config.DEFAULT_CACHE_TTL_SECONDS)
+        return config.get("trading_bot", {}).get("cache_ttl_seconds", 300)
     
     def __init__(self, analysis_interval_minutes: int = None):
         """
@@ -89,9 +91,8 @@ class TradingBot:
             analysis_interval_minutes: Intervalo entre análisis (usa configuración centralizada si no se especifica)
         """
         # Configuración centralizada del bot
-        self.config = TradingBotConfig()
-        
-        self.analysis_interval = analysis_interval_minutes or self.config.get_analysis_interval()
+        self.config = config
+        self.analysis_interval = analysis_interval_minutes or config.get("trading_bot", {}).get("analysis_interval", 15)
         self.is_running = False
         self.start_time = None
         
@@ -110,36 +111,35 @@ class TradingBot:
         
         # Sistema de ajuste de posiciones TP/SL
         self.position_adjuster = PositionAdjuster(
-            config=None,
+            config=config,
             simulation_mode=True
         )
         
         # Sistema de eventos para comunicación con LiveTradingBot
-        profile_config = TradingProfiles.get_current_profile()
-        self.event_queue = queue.Queue(maxsize=profile_config.get('event_queue_maxsize', optimized_config.EVENT_QUEUE_MAX_SIZE))
+        self.event_queue = queue.Queue(maxsize=config.get("trading_bot", {}).get("event_queue_maxsize", 100))
         self.adjustment_thread = None
         self.trade_event_callback = None  # Callback para eventos de trades
         
         # ThreadPool para procesamiento paralelo
-        self.executor = ThreadPoolExecutor(max_workers=optimized_config.THREAD_POOL_MAX_WORKERS, thread_name_prefix="TradingBot")
+        self.executor = ThreadPoolExecutor(max_workers=config.get("trading_bot", {}).get("thread_pool_max_workers", 4), thread_name_prefix="TradingBot")
         
         # Estrategias disponibles (Enhanced)
         self.strategies = {}
         self._initialize_strategies()
         
-        # Símbolos a analizar desde configuración optimizada
-        self.symbols = optimized_config.DEFAULT_SYMBOLS
+        # Símbolos a analizar desde configuración centralizada
+        self.symbols = config.get("trading_bot", {}).get("default_symbols", optimized_config.DEFAULT_SYMBOLS)
         
-        # Configuración de trading profesional desde configuración optimizada
-        self.min_confidence_threshold = optimized_config.DEFAULT_MIN_CONFIDENCE_THRESHOLD
-        self.max_daily_trades = optimized_config.DEFAULT_MAX_DAILY_TRADES
-        self.max_concurrent_positions = self.config.get_max_concurrent_positions()
+        # Configuración de trading profesional desde configuración centralizada
+        self.min_confidence_threshold = config.get("trading_bot", {}).get("min_confidence_threshold", optimized_config.DEFAULT_MIN_CONFIDENCE_THRESHOLD)
+        self.max_daily_trades = config.get("trading_bot", {}).get("max_daily_trades", optimized_config.DEFAULT_MAX_DAILY_TRADES)
+        self.max_concurrent_positions = config.get("trading_bot", {}).get("max_concurrent_positions", optimized_config.DEFAULT_MAX_CONCURRENT_POSITIONS)
         self.enable_trading = True  # Activar/desactivar ejecución de trades
         
         # Configuración de timeframes profesional desde configuración centralizada
-        self.primary_timeframe = self.config.get_primary_timeframe()
-        self.confirmation_timeframe = self.config.get_confirmation_timeframe()
-        self.trend_timeframe = self.config.get_trend_timeframe()
+        self.primary_timeframe = config.get("timeframes", {}).get("primary", "15m")
+        self.confirmation_timeframe = config.get("timeframes", {}).get("confirmation", "5m")
+        self.trend_timeframe = config.get("timeframes", {}).get("trend", "1h")
         
         # Estadísticas
         self.stats = {
@@ -152,9 +152,9 @@ class TradingBot:
         }
         
         # Sistema de throttling/espaciado entre trades
-        self.min_time_between_trades = self.config.get_min_time_between_trades_seconds()
-        self.max_trades_per_hour = self.config.get_max_trades_per_hour()
-        self.post_reset_spacing_minutes = self.config.get_post_reset_spacing_minutes()
+        self.min_time_between_trades = config.get("trading_bot", {}).get("min_time_between_trades_seconds", 300)
+        self.max_trades_per_hour = config.get("trading_bot", {}).get("max_trades_per_hour", 3)
+        self.post_reset_spacing_minutes = config.get("trading_bot", {}).get("post_reset_spacing_minutes", 60)
         self.last_trade_time = None
         self.hourly_trade_count = 0
         self.hourly_trade_reset_time = datetime.now()
@@ -163,11 +163,12 @@ class TradingBot:
         self.consecutive_losses = 0
         self.circuit_breaker_active = False
         self.circuit_breaker_activated_at = None
-        self.max_consecutive_losses = optimized_config.DEFAULT_MAX_CONSECUTIVE_LOSSES
-        self.circuit_breaker_cooldown_hours = optimized_config.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS
+        self.max_consecutive_losses = config.get("trading_bot", {}).get("max_consecutive_losses", optimized_config.DEFAULT_MAX_CONSECUTIVE_LOSSES)
+        self.circuit_breaker_cooldown_hours = config.get("trading_bot", {}).get("circuit_breaker_cooldown_hours", optimized_config.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS)
         
         # Nuevas funcionalidades del circuit breaker
-        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold() / 100.0  # Convertir porcentaje a decimal
+        max_drawdown_threshold = config.get("trading_bot", {}).get("max_drawdown_threshold", 10)
+        self.max_drawdown_threshold = max_drawdown_threshold / 100.0  # Convertir porcentaje a decimal
         self.current_drawdown = 0.0
         self.peak_portfolio_value = 0.0
         self.gradual_reactivation_enabled = True
@@ -312,7 +313,8 @@ class TradingBot:
         self._start_position_adjustment_monitoring()
         
         # Programar primer análisis para evitar bloqueo
-        schedule.every(self.config.get_first_analysis_delay()).seconds.do(self._run_first_analysis).tag('first_analysis')
+        first_analysis_delay = self.config.get("trading_bot", {}).get("first_analysis_delay", 30)
+        schedule.every(first_analysis_delay).seconds.do(self._run_first_analysis).tag('first_analysis')
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
@@ -340,19 +342,16 @@ class TradingBot:
         
         # Limpiar ThreadPoolExecutor
         if hasattr(self, 'executor') and self.executor:
-            profile_config = TradingProfiles.get_current_profile()
-            timeout = self.config.get_executor_shutdown_timeout()
+            timeout = self.config.get("trading_bot", {}).get("executor_shutdown_timeout", 30)
             self.executor.shutdown(wait=True, timeout=timeout)
             self.logger.info("🧹 ThreadPoolExecutor cleaned up")
         
         if self.analysis_thread and self.analysis_thread.is_alive():
-            profile_config = TradingProfiles.get_current_profile()
-            timeout = self.config.get_thread_join_timeout()
+            timeout = self.config.get("trading_bot", {}).get("thread_join_timeout", 10)
             self.analysis_thread.join(timeout=timeout)
             
         if self.adjustment_thread and self.adjustment_thread.is_alive():
-            profile_config = TradingProfiles.get_current_profile()
-            timeout = self.config.get_thread_join_timeout()
+            timeout = self.config.get("trading_bot", {}).get("thread_join_timeout", 10)
             self.adjustment_thread.join(timeout=timeout)
         
         # Limpiar cache si es necesario
@@ -410,10 +409,10 @@ class TradingBot:
         while not self.stop_event.is_set():
             try:
                 schedule.run_pending()
-                time.sleep(APIConfig.SCHEDULER_SLEEP_INTERVAL)
+                time.sleep(config.get("api", {}).get("scheduler_sleep_interval", 1))
             except Exception as e:
                 self.logger.error(f"❌ Error in scheduler: {e}")
-                time.sleep(APIConfig.ERROR_RECOVERY_SLEEP)
+                time.sleep(config.get("api", {}).get("error_recovery_sleep", 5))
     
     def _run_analysis_cycle(self):
         """
@@ -479,8 +478,7 @@ class TradingBot:
                 futures.append(future)
             
             # Recopilar resultados
-            profile_config = TradingProfiles.get_current_profile()
-            timeout = self.config.get_analysis_future_timeout()
+            timeout = self.config.get("trading_bot", {}).get("analysis_future_timeout", 30)
             for future in futures:
                 try:
                     signal = future.result(timeout=timeout)  # Timeout configurable
@@ -624,7 +622,7 @@ class TradingBot:
         
         # Obtener valor actual del portfolio
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-        portfolio_value = portfolio_summary.get("total_value", self.config.DEFAULT_PORTFOLIO_VALUE)
+        portfolio_value = portfolio_summary.get("total_value", self.config["DEFAULT_PORTFOLIO_VALUE"])
         
         self.logger.info(f"💼 Current portfolio value: ${portfolio_value:,.2f}")
         
@@ -714,23 +712,17 @@ class TradingBot:
         📅 Resetear estadísticas diarias según horario optimizado para trading en Chile
         """
         import pytz
-        from ..config.config import (
-            TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE, 
-            RESET_STRATEGIES, ACTIVE_RESET_STRATEGY
-        )
+        # Usar configuración centralizada
+        timezone = config.get("trading_bot", {}).get("timezone", "America/Santiago")
+        reset_config = config.get("trading_bot", {}).get("daily_reset", {"hour": 0, "minute": 0})
         
         # Obtener zona horaria de Chile
-        chile_tz = pytz.timezone(TIMEZONE)
+        chile_tz = pytz.timezone(timezone)
         current_time_chile = datetime.now(chile_tz)
         
         # Obtener configuración de reset activa
-        if ACTIVE_RESET_STRATEGY in RESET_STRATEGIES:
-            reset_config = RESET_STRATEGIES[ACTIVE_RESET_STRATEGY]
-            reset_hour = reset_config["hour"]
-            reset_minute = reset_config["minute"]
-        else:
-            reset_hour = DAILY_RESET_HOUR
-            reset_minute = DAILY_RESET_MINUTE
+        reset_hour = reset_config.get("hour", 0)
+        reset_minute = reset_config.get("minute", 0)
         
         # Crear tiempo de reset para hoy
         reset_time_today = current_time_chile.replace(
@@ -1088,7 +1080,7 @@ class TradingBot:
             "portfolio": {
                 "current_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - self.config.DEFAULT_PORTFOLIO_VALUE) / self.config.DEFAULT_PORTFOLIO_VALUE) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - self.config["DEFAULT_PORTFOLIO_VALUE"]) / self.config["DEFAULT_PORTFOLIO_VALUE"]) * 100,
                 "assets": portfolio_summary.get("assets", [])
             },
             "strategies": {
@@ -1389,4 +1381,3 @@ class TradingBot:
             self.logger.error(f"❌ Error getting events: {e}")
         
         return events
-trading_bot = TradingBot()

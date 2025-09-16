@@ -27,12 +27,11 @@ import time
 from ..database.database import db_manager
 from ..database.models import Trade, Portfolio
 from .position_manager import PositionManager
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    APIConfig, 
-    MonitoringConfig
-)
+from src.config.config_manager import ConfigManager
+
+# Configuración centralizada
+config_manager = ConfigManager()
+config = config_manager.get_consolidated_config()
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -98,13 +97,13 @@ class MarketValidator:
             confidence_threshold: Umbral mínimo de confianza para reportar ejecuciones perdidas
         """
         self.logger = logging.getLogger(__name__)
-        self.binance_base_url = APIConfig.BINANCE_BASE_URL
+        self.binance_base_url = config.get("api", {}).get("binance_base_url", "https://api.binance.com")
         
         # Configuraciones con valores por defecto desde config
-        self.cache_duration = cache_duration or getattr(MonitoringConfig, 'CACHE_DURATION', 300)
-        self.default_timeframe = default_timeframe or getattr(MonitoringConfig, 'DEFAULT_TIMEFRAME', '1m')
-        self.max_retries = max_retries or getattr(APIConfig, 'MAX_RETRIES', 3)
-        self.confidence_threshold = confidence_threshold or getattr(MonitoringConfig, 'CONFIDENCE_THRESHOLD', 0.8)
+        self.cache_duration = cache_duration or config.get("monitoring", {}).get("cache_duration", 300)
+        self.default_timeframe = default_timeframe or config.get("monitoring", {}).get("default_timeframe", "1h")
+        self.max_retries = max_retries or config.get("api", {}).get("max_retries", 3)
+        self.confidence_threshold = confidence_threshold or config.get("monitoring", {}).get("confidence_threshold", 0.8)
         
         # Cache para precios históricos
         self._price_cache = {}
@@ -131,7 +130,7 @@ class MarketValidator:
         """
         # Validar parámetros
         if hours_back is None:
-            hours_back = MonitoringConfig.DEFAULT_HOURS_BACK
+            hours_back = config.get("monitoring", {}).get("default_hours_back", 24)
         
         if hours_back <= 0:
             raise ValueError(f"hours_back debe ser positivo, recibido: {hours_back}")
@@ -330,21 +329,20 @@ class MarketValidator:
             start_time = int((datetime.now() - timedelta(hours=hours_back)).timestamp() * 1000)
             
             # Configurar parámetros de la request
-            url = APIConfig.get_binance_url("klines")
+            url = f"{config.get('api', {}).get('binance_base_url', 'https://api.binance.com')}/api/v3/klines"
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
                 'startTime': start_time,
                 'endTime': end_time,
-                'limit': APIConfig.DEFAULT_KLINES_LIMIT
+                'limit': config.get("api", {}).get("default_klines_limit", 1000)
             }
             
             # Realizar request con reintentos
             price_data = []
             for attempt in range(self.max_retries):
                 try:
-                    request_config = APIConfig.get_request_config()
-                    response = requests.get(url, params=params, timeout=request_config['timeout'])
+                    response = requests.get(url, params=params, timeout=config.get("api", {}).get("request_timeout", 10))
                     response.raise_for_status()
                     
                     klines = response.json()
@@ -428,11 +426,10 @@ class MarketValidator:
         """
         for attempt in range(self.max_retries):
             try:
-                url = APIConfig.get_binance_url("ticker_price")
+                url = f"{config.get('api', {}).get('binance_base_url', 'https://api.binance.com')}/api/v3/ticker/price"
                 params = {'symbol': symbol}
                 
-                request_config = APIConfig.get_request_config()
-                response = requests.get(url, params=params, timeout=request_config['timeout'])
+                response = requests.get(url, params=params, timeout=config.get("api", {}).get("request_timeout", 10))
                 response.raise_for_status()
                 
                 data = response.json()
@@ -503,7 +500,7 @@ class MarketValidator:
             ValueError: Si sort_by no es válido
         """
         if hours_back is None:
-            hours_back = MonitoringConfig.DEFAULT_HOURS_BACK
+            hours_back = config.get("monitoring", {}).get("default_hours_back", 24)
         
         if sort_by not in ["pnl", "time", "symbol", "confidence"]:
             raise ValueError(f"sort_by debe ser 'pnl', 'time', 'symbol' o 'confidence': {sort_by}")
@@ -621,8 +618,8 @@ class MarketValidator:
             'timeframe_valid': self.default_timeframe in ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d'],
             'max_retries_valid': 1 <= self.max_retries <= 10,
             'confidence_threshold_valid': 0.0 <= self.confidence_threshold <= 1.0,
-            'api_config_available': hasattr(APIConfig, 'BINANCE_BASE_URL'),
-            'monitoring_config_available': hasattr(MonitoringConfig, 'DEFAULT_HOURS_BACK')
+            'api_config_available': 'api' in config and 'binance_base_url' in config.get('api', {}),
+            'monitoring_config_available': 'monitoring' in config and 'default_hours_back' in config.get('monitoring', {})
         }
         
         all_valid = all(validation_results.values())

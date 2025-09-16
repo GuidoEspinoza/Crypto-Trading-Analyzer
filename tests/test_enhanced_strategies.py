@@ -21,12 +21,8 @@ from src.core.enhanced_strategies import (
     TradingSignal,
     EnhancedSignal
 )
-from src.config.config import (
-    StrategyConfig,
-    DataLimitsConfig,
-    ThresholdConfig,
-    TradingProfiles
-)
+from src.config.config_manager import ConfigManager
+from src.config.config import TradingProfiles
 
 class TestEnhancedTradingStrategy(unittest.TestCase):
     """Tests para la clase base EnhancedTradingStrategy"""
@@ -242,37 +238,43 @@ class TestConfigurationIntegration(unittest.TestCase):
     
     def test_data_limits_config(self):
         """Test de configuración de límites de datos"""
+        config = ConfigManager().get_consolidated_config()
+        
         # Test límites de estrategia
-        strategy_limit = DataLimitsConfig.get_strategy_limit()
+        strategy_limit = config.get("data_limits", {}).get("strategy_limit", 100)
         self.assertIsInstance(strategy_limit, int)
         self.assertGreater(strategy_limit, 0)
         
         # Test límites de tendencia
-        trend_limit = ThresholdConfig.get_trend_limit()
+        trend_limit = config.get("threshold", {}).get("trend_limit", 100)
         self.assertIsInstance(trend_limit, int)
         self.assertGreater(trend_limit, 0)
     
     def test_threshold_config(self):
         """Test de configuración de umbrales"""
+        config = ConfigManager().get_consolidated_config()
+        
         # Test umbral de spread
-        spread_threshold = ThresholdConfig.get_max_spread_threshold()
+        spread_threshold = config.get("threshold", {}).get("max_spread_threshold", 0.003)
         self.assertIsInstance(spread_threshold, float)
         self.assertGreater(spread_threshold, 0)
         
         # Test fallback ATR
-        atr_fallback = ThresholdConfig.get_atr_fallback()
+        atr_fallback = config.get("threshold", {}).get("atr_fallback", 0.02)
         self.assertIsInstance(atr_fallback, float)
         self.assertGreater(atr_fallback, 0)
     
     def test_strategy_config_integration(self):
         """Test de integración con StrategyConfig"""
+        config = ConfigManager().get_consolidated_config()
+        
         # Test período ATR por defecto
-        atr_period = StrategyConfig.Base.get_default_atr_period()
+        atr_period = config.get("strategy", {}).get("base", {}).get("default_atr_period", 14)
         self.assertIsInstance(atr_period, int)
         self.assertGreater(atr_period, 0)
         
         # Test período RSI
-        rsi_period = StrategyConfig.ProfessionalRSI.get_rsi_period()
+        rsi_period = config.get("strategy", {}).get("professional_rsi", {}).get("rsi_period", 14)
         self.assertIsInstance(rsi_period, int)
         self.assertGreater(rsi_period, 0)
 
@@ -282,9 +284,10 @@ class TestOptimizationsImplemented(unittest.TestCase):
     def test_hardcoded_values_removed(self):
         """Test que verifica que los valores hardcodeados fueron removidos"""
         strategy = ProfessionalRSIStrategy()
+        config = ConfigManager().get_consolidated_config()
         
         # Verificar que usa configuración dinámica para spread
-        expected_threshold = ThresholdConfig.get_max_spread_threshold()
+        expected_threshold = config.get("threshold", {}).get("max_spread_threshold", 0.003)
         # El valor puede variar según el perfil activo, verificar que está en rango válido
         self.assertGreater(strategy.max_spread_threshold, 0.001)  # Mayor que 0.1%
         self.assertLess(strategy.max_spread_threshold, 0.005)     # Menor que 0.5%
@@ -303,15 +306,16 @@ class TestOptimizationsImplemented(unittest.TestCase):
                 mock_profile.return_value = {'name': profile_name}
                 
                 # Test límites de datos
-                strategy_limit = DataLimitsConfig.get_strategy_limit()
-                trend_limit = ThresholdConfig.get_trend_limit()
+                config = ConfigManager().get_consolidated_config()
+                strategy_limit = config.get("data_limits", {}).get("strategy_limit", 100)
+                trend_limit = config.get("threshold", {}).get("trend_limit", 100)
                 
                 self.assertIsInstance(strategy_limit, int)
                 self.assertIsInstance(trend_limit, int)
                 
                 # Test umbrales
-                spread_threshold = ThresholdConfig.get_max_spread_threshold()
-                atr_fallback = ThresholdConfig.get_atr_fallback()
+                spread_threshold = config.get("threshold", {}).get("max_spread_threshold", 0.003)
+                atr_fallback = config.get("threshold", {}).get("atr_fallback", 0.02)
                 
                 self.assertIsInstance(spread_threshold, float)
                 self.assertIsInstance(atr_fallback, float)

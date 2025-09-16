@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from dataclasses import dataclass
 import os
 from dotenv import load_dotenv
+from .global_constants import GLOBAL_INITIAL_BALANCE
 
 # Cargar variables de entorno
 load_dotenv()
@@ -54,7 +55,7 @@ class TradingBotDefaults:
     min_confidence_threshold: float = 0.7
     enable_trading: bool = False
     default_symbols: List[str] = None
-    initial_portfolio_value: float = 10000.0
+    initial_portfolio_value: float = GLOBAL_INITIAL_BALANCE
     
     def __post_init__(self):
         if self.default_symbols is None:
@@ -138,7 +139,7 @@ class StrategyConfig:
 @dataclass
 class PaperTradingConfig:
     """Configuración de paper trading"""
-    initial_balance: float = 10000.0
+    initial_balance: float = GLOBAL_INITIAL_BALANCE
     max_trades_per_day: int = 10
     max_position_percentage: float = 0.1  # 10% del balance máximo por posición
     default_stop_loss: float = 0.02  # 2%

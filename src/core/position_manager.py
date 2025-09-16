@@ -16,13 +16,23 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    TradingBotConfig, 
-    RiskManagerConfig, 
-    TradingProfiles
-)
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada con manejo de errores
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'risk_manager': {'trailing_stop_activation': 5.0},
+        'trading': {'usdt_base_price': 1.0},
+        'paper_trader': {'max_slippage': 0.001, 'simulation_fees': 0.001},
+        'advanced_indicators': {'fibonacci_lookback': 50},
+        'api': {'latency_simulation_sleep': 0.1}
+    }
 from ..database.database import db_manager
 from ..database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -93,27 +103,49 @@ class PositionManager:
             paper_trader: Instancia del paper trader para ejecutar órdenes
         """
         self.paper_trader = paper_trader or PaperTrader()
-        self.config = TradingBotConfig()
-        self.risk_config = RiskManagerConfig()
         
         # Cache de posiciones para optimización
         self.positions_cache = {}
         self.last_cache_update = 0
-        profile = TradingProfiles.get_current_profile()
-        self.cache_duration = profile.get('position_check_interval', 30)  # segundos
         
-        # Configuración de trailing stops desde RiskManagerConfig y perfil
-        self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
-        self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
+        # Obtener configuración del perfil de trading
+        try:
+            from src.config.config import TradingProfiles
+            profile = TradingProfiles.get_current_profile()
+            self.cache_duration = profile.get('position_check_interval', 30)  # segundos
+            self.seconds_per_day = profile.get('seconds_per_day', 86400)  # Configurable para tests
+            self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
+        except Exception as e:
+            logger.warning(f"⚠️ Error loading trading profile, using defaults: {e}")
+            self.cache_duration = 30  # segundos
+            self.seconds_per_day = 86400  # Configurable para tests
+            self.trailing_stop_distance = 1.0 / 100  # Default 1.0% convertir de % a decimal
         
-        # Configuraciones dinámicas desde perfil
-        self.seconds_per_day = profile.get('seconds_per_day', 86400)  # Configurable para tests
-        self.atr_estimation_pct = profile.get('atr_estimation_percentage', 2.0) / 100  # 2% como estimación conservadora
-        self.profit_scaling_ratios = {
-            'tp_max_ratio': profile.get('tp_max_ratio', 0.67),  # 2/3 del máximo
-            'tp_mid_ratio': profile.get('tp_mid_ratio', 0.5),   # 1/2 del máximo
-            'tp_min_ratio': profile.get('tp_min_ratio', 0.67)   # 2/3 del mínimo
-        }
+        # Configuración de trailing stops desde configuración centralizada
+        try:
+            from src.config.config import RiskManagerConfig
+            risk_config = RiskManagerConfig()
+            self.trailing_stop_activation = risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
+        except Exception as e:
+            logger.warning(f"⚠️ Error loading risk config, using default: {e}")
+            self.trailing_stop_activation = config.get("risk_manager", {}).get("trailing_stop_activation", 5.0) / 100  # Convertir de % a decimal
+        
+        # Configuraciones adicionales del perfil
+        try:
+            self.atr_estimation_pct = profile.get('atr_estimation_percentage', 2.0) / 100  # Convertir de % a decimal
+            self.profit_scaling_ratios = {
+                'tp_max_ratio': profile.get('tp_max_ratio', 0.67),  # 2/3 del máximo
+                'tp_mid_ratio': profile.get('tp_mid_ratio', 0.5),   # 1/2 del máximo
+                'tp_min_ratio': profile.get('tp_min_ratio', 0.67)   # 2/3 del mínimo (default value)
+            }
+        except NameError:
+            # Si profile no está definido (error en el try anterior)
+            self.atr_estimation_pct = 2.0 / 100  # 2% como estimación conservadora
+            self.profit_scaling_ratios = {
+                'tp_max_ratio': 0.67,  # 2/3 del máximo
+                'tp_mid_ratio': 0.5,   # 1/2 del máximo
+                'tp_min_ratio': 0.67   # 2/3 del mínimo (default value)
+            }
         
         # Estadísticas
         self.stats = {
@@ -610,8 +642,13 @@ class PositionManager:
         try:
             # Usar configuración dinámica si no se especifica multiplicador
             if atr_multiplier is None:
-                profile = TradingProfiles.get_current_profile()
-                atr_multiplier = profile.get('atr_multiplier', 2.0)
+                # Obtener atr_multiplier del perfil de trading
+                try:
+                    from src.config.config import TradingProfiles
+                    profile = TradingProfiles.get_current_profile()
+                    atr_multiplier = profile.get('atr_multiplier', 2.0)
+                except Exception:
+                    atr_multiplier = 2.0  # Default fallback
             
             # Obtener datos históricos para calcular ATR
             # Por ahora usamos un ATR estimado basado en el precio
@@ -838,8 +875,8 @@ class PositionManager:
             from src.config.config import RiskManagerConfig
             
             # Obtener umbrales dinámicos desde config
-            tp_min = RiskManagerConfig.get_tp_min_percentage()
-            tp_max = RiskManagerConfig.get_tp_max_percentage()
+            tp_min = config.get("risk_manager", {}).get("tp_min_percentage", 2.0)
+            tp_max = config.get("risk_manager", {}).get("tp_max_percentage", 8.0)
             
             # Incremento base del TP (usar mínimo de config)
             tp_increment_pct = tp_min

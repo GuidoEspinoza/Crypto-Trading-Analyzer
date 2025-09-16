@@ -38,10 +38,8 @@ sys.path.insert(0, os.path.join(project_root, 'src'))
 
 from src.core.market_validator import market_validator
 from src.core.position_manager import PositionManager
-from src.config.config import TradingBotConfig, APIConfig
+from src.config.config import TradingBotConfig, APIConfig, TradingProfiles, MonitoringConfig
 from src.core.paper_trader import PaperTrader
-from src.config.config import TradingProfiles
-from src.config.config import TradingBotConfig, APIConfig, MonitoringConfig
 from src.database.database import db_manager
 from src.database.models import Trade
 from src.config.trading_monitor_config import (

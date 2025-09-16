@@ -15,12 +15,20 @@ from enum import Enum
 
 # Importar componentes existentes
 from .enhanced_strategies import EnhancedSignal
-from src.config.config import (
-    CONSOLIDATED_CONFIG,
-    get_module_config,
-    RiskManagerConfig, 
-    TradingProfiles
-)
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'risk_manager': {'max_risk_per_trade': 0.02, 'max_daily_risk': 0.05},
+        'trading': {'usdt_base_price': 1.0}
+    }
 
 logger = logging.getLogger(__name__)
 
@@ -92,32 +100,29 @@ class EnhancedRiskManager:
     """🛡️ Gestor de Riesgo Avanzado"""
     
     def __init__(self):
-        # Configuración de riesgo desde archivo centralizado
-        self.config = RiskManagerConfig()
-        self.global_config = TradingProfiles.get_current_profile()
-        
-        self.max_portfolio_risk = self.config.get_max_risk_per_trade() / 100  # Convertir de % a decimal
-        self.max_daily_risk = self.config.get_max_daily_risk() / 100  # Convertir de % a decimal
-        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold() / 100  # Convertir de % a decimal
-        self.correlation_threshold = self.config.get_correlation_threshold()
+        # Configuración de riesgo desde configuración centralizada
+        self.max_portfolio_risk = config.get("risk_manager", {}).get("max_risk_per_trade", 2.0) / 100  # Convertir de % a decimal
+        self.max_daily_risk = config.get("risk_manager", {}).get("max_daily_risk", 5.0) / 100  # Convertir de % a decimal
+        self.max_drawdown_threshold = config.get("risk_manager", {}).get("max_drawdown_threshold", 10.0) / 100  # Convertir de % a decimal
+        self.correlation_threshold = config.get("risk_manager", {}).get("correlation_threshold", 0.7)
         
         # Position sizing profesional desde configuración centralizada
-        self.min_position_size = self.config.get_min_position_size()
-        self.max_position_size = self.config.get_max_position_size() / 100  # Convertir de % a decimal
-        self.kelly_fraction = self.config.get_kelly_fraction()
+        self.min_position_size = config.get("risk_manager", {}).get("min_position_size", 10.0)
+        self.max_position_size = config.get("risk_manager", {}).get("max_position_size", 20.0) / 100  # Convertir de % a decimal
+        self.kelly_fraction = config.get("risk_manager", {}).get("kelly_fraction", 0.25)
         self.volatility_adjustment = True  # Ajustar tamaño según volatilidad
         
-        # Stop loss dinámico profesional desde configuración centralizada
-        self.atr_multiplier_range = (self.config.get_atr_multiplier_min(), self.config.get_atr_multiplier_max())
-        self.trailing_stop_activation = self.config.get_trailing_stop_activation() / 100  # Convertir de % a decimal
-        self.breakeven_stop_threshold = self.config.get_breakeven_threshold() / 100  # Convertir de % a decimal
+        # Stop loss dinámico profesional con valores por defecto
+        self.atr_multiplier_range = (1.5, 3.0)  # Rango de multiplicadores ATR
+        self.trailing_stop_activation = 0.02  # 2% de ganancia para activar trailing stop
+        self.breakeven_stop_threshold = 0.01  # 1% para mover stop a breakeven
         
-        # Configuración adicional desde configuración global
-        self.min_trailing_distance = self.global_config.get('min_trailing_distance', 0.005)
-        self.max_trailing_distance = self.global_config.get('max_trailing_distance', 0.05)
+        # Configuración adicional con valores por defecto
+        self.min_trailing_distance = 0.005
+        self.max_trailing_distance = 0.05
         
-        # Métricas de portfolio desde configuración centralizada
-        self.portfolio_value = self.config.INITIAL_PORTFOLIO_VALUE
+        # Métricas de portfolio con valor por defecto
+        self.portfolio_value = 1000.0  # Valor inicial del portfolio
         self.current_drawdown = 0.0
         self.max_historical_drawdown = 0.0
         self.daily_pnl = 0.0
@@ -161,8 +166,7 @@ class EnhancedRiskManager:
             max_dd_alert = self.current_drawdown >= self.max_drawdown_threshold
             
             # Determinar si el trade está aprobado
-            profile = TradingProfiles.get_current_profile()
-            min_confidence = profile.get('min_confidence_threshold', 65.0)  # Ya está en porcentaje
+            min_confidence = 65.0  # Umbral mínimo de confianza por defecto
             is_approved = (
                 risk_level not in [RiskLevel.EXTREME, RiskLevel.VERY_HIGH] and
                 not max_dd_alert and
@@ -200,9 +204,8 @@ class EnhancedRiskManager:
                 "confidence_risk": 0.0
             }
             
-            # Riesgo de volatilidad - Obtener desde configuración
-            profile = TradingProfiles.get_current_profile()
-            volatility_factor = profile.get('volatility_adjustment_factor', 1.2)
+            # Riesgo de volatilidad con factor por defecto
+            volatility_factor = 1.2  # Factor de ajuste de volatilidad por defecto
             
             if signal.market_regime == "VOLATILE":
                 risk_factors["volatility_risk"] = min(0.8 * volatility_factor, 1.0)
@@ -260,10 +263,9 @@ class EnhancedRiskManager:
                 fixed_risk_size = self.min_position_size
             
             # Método 2: Kelly Criterion (simplificado)
-            profile = TradingProfiles.get_current_profile()
-            win_rate = profile.get('kelly_win_rate', 0.6)  # Tasa de ganancia desde perfil
+            win_rate = 0.6  # Tasa de ganancia por defecto
             avg_win = signal.risk_reward_ratio if signal.risk_reward_ratio > 0 else 1.5
-            avg_loss = profile.get('kelly_avg_loss', 1.0)  # Pérdida promedio desde perfil
+            avg_loss = 1.0  # Pérdida promedio por defecto
             
             kelly_f = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
             kelly_size = max(0, kelly_f * self.kelly_fraction * self.portfolio_value)
@@ -302,7 +304,7 @@ class EnhancedRiskManager:
                 max_position_size=round(max_position_value, 2),
                 risk_per_trade=round(risk_per_trade, 2),
                 position_value=round(recommended_size, 2),
-                leverage_used=profile.get('default_leverage', 1.0),  # Leverage desde perfil
+                leverage_used=1.0,  # Default leverage (replaced profile reference)
                 risk_level=risk_level,
                 reasoning=reasoning,
                 max_risk_amount=round(risk_per_trade, 2)
@@ -315,7 +317,7 @@ class EnhancedRiskManager:
                 max_position_size=self.portfolio_value * 0.01,
                 risk_per_trade=self.portfolio_value * 0.01,
                 position_value=self.min_position_size,
-                leverage_used=profile.get('default_leverage', 1.0),
+                leverage_used=1.0,  # Default leverage (replaced profile reference)
                 risk_level=RiskLevel.LOW,
                 reasoning="Error in calculation - using minimum size",
                 max_risk_amount=round(self.portfolio_value * 0.01, 2)
@@ -338,20 +340,19 @@ class EnhancedRiskManager:
                     initial_stop = signal.price + (2 * atr_data)
             
             # Configurar trailing stop
-            atr_multiplier = self.config.get_atr_default()  # Multiplicador ATR por defecto
+            atr_multiplier = 2.0  # Multiplicador ATR por defecto
             
             # Ajustar multiplicador según volatilidad
             if signal.market_regime == "VOLATILE":
-                atr_multiplier = self.config.get_atr_volatile()  # Más espacio en mercados volátiles
+                atr_multiplier = 2.5  # Más espacio en mercados volátiles
             elif signal.market_regime == "RANGING":
-                atr_multiplier = self.config.get_atr_sideways()  # Menos espacio en mercados laterales
+                atr_multiplier = 1.5  # Menos espacio en mercados laterales
             
             # Evitar división por cero
             if signal.price > 0:
                 trailing_distance = abs(signal.price - initial_stop) / signal.price * 100
             else:
-                profile = TradingProfiles.get_current_profile()
-                trailing_distance = profile.get('default_trailing_distance', 2.0)  # Valor desde perfil
+                trailing_distance = 2.0  # Distancia de trailing por defecto
             return DynamicStopLoss(
                 initial_stop=round(initial_stop, 2),
                 current_stop=round(initial_stop, 2),
@@ -371,7 +372,7 @@ class EnhancedRiskManager:
                 initial_stop=stop_price,
                 current_stop=stop_price,
                 trailing_stop=stop_price,
-                atr_multiplier=self.config.get_atr_default(),
+                atr_multiplier=2.0,  # Multiplicador ATR por defecto
                 stop_type="FIXED",
                 last_update=datetime.now(),
                 stop_loss_price=stop_price,
@@ -395,13 +396,10 @@ class EnhancedRiskManager:
                     initial_tp = signal.price - (3 * atr_data)  # 3 ATR por debajo para SELL
             
             # Obtener configuración desde perfil activo
-            from src.config.config import RiskManagerConfig
-            risk_config = RiskManagerConfig()
             
-            # Configurar parámetros del trailing TP desde configuración
-            profile = TradingProfiles.get_current_profile()
-            tp_increment_pct = profile.get('tp_increment_base_pct', 1.0)  # Valor base desde perfil
-            confidence_threshold = risk_config.get_tp_confidence_threshold()  # Desde perfil activo
+            # Configurar parámetros del trailing TP con valores por defecto
+            tp_increment_pct = 1.0  # Incremento base por defecto
+            confidence_threshold = 75.0  # Umbral de confianza por defecto
             
             # Ajustar según régimen de mercado
             if signal.market_regime == "TRENDING":
@@ -420,7 +418,7 @@ class EnhancedRiskManager:
                 last_update=datetime.now(),
                 take_profit_price=round(initial_tp, 2),
                 confidence_threshold=confidence_threshold,
-                max_tp_adjustments=risk_config.get_max_tp_adjustments(),
+                max_tp_adjustments=3,  # Default max TP adjustments
                 adjustments_made=0
             )
             
@@ -431,12 +429,12 @@ class EnhancedRiskManager:
                 initial_tp=tp_price,
                 current_tp=tp_price,
                 trailing_tp=tp_price,
-                tp_increment_pct=profile.get('tp_increment_base_pct', 1.0),
+                tp_increment_pct=1.0,  # Default TP increment (replaced profile reference)
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=tp_price,
-                confidence_threshold=risk_config.get_tp_confidence_threshold(),
-                max_tp_adjustments=risk_config.get_max_tp_adjustments(),
+                confidence_threshold=0.7,  # Default confidence threshold
+                max_tp_adjustments=3,  # Default max TP adjustments
                 adjustments_made=0
             )
     
@@ -561,7 +559,6 @@ class EnhancedRiskManager:
     
     def _create_default_risk_assessment(self, signal: EnhancedSignal) -> EnhancedRiskAssessment:
         """Crear evaluación de riesgo por defecto en caso de error"""
-        profile = TradingProfiles.get_current_profile()
         default_stop_price = signal.price * 0.95 if signal.signal_type == "BUY" else signal.price * 1.05
         default_tp_price = signal.price * 1.06 if signal.signal_type == "BUY" else signal.price * 0.94
         default_trailing_distance = abs(signal.price - default_stop_price) / signal.price * 100
@@ -573,7 +570,7 @@ class EnhancedRiskManager:
                 max_position_size=self.portfolio_value * 0.01,
                 risk_per_trade=self.portfolio_value * 0.01,
                 position_value=self.min_position_size,
-                leverage_used=profile.get('default_leverage', 1.0),
+                leverage_used=1.0,  # Apalancamiento por defecto
                 risk_level=RiskLevel.HIGH,
                 reasoning="Error in calculation - using conservative defaults",
                 max_risk_amount=round(self.portfolio_value * 0.01, 2)
@@ -592,12 +589,12 @@ class EnhancedRiskManager:
                 initial_tp=default_tp_price,
                 current_tp=default_tp_price,
                 trailing_tp=default_tp_price,
-                tp_increment_pct=profile.get('tp_increment_base_pct', 1.0),
+                tp_increment_pct=1.0,  # Default TP increment (replaced profile reference)
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=default_tp_price,
-                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold(),
-                max_tp_adjustments=RiskManagerConfig().get_max_tp_adjustments(),
+                confidence_threshold=0.7,  # Default confidence threshold
+                max_tp_adjustments=3,  # Default max TP adjustments
                 adjustments_made=0
             ),
             market_risk_factors={"error": "Could not calculate risk factors"},
@@ -645,12 +642,12 @@ class EnhancedRiskManager:
         """Obtener datos de mercado actuales para análisis avanzado"""
         try:
             # Simular datos de mercado (en implementación real, obtener de exchange)
-            # Usar valores configurables para simulación
-            default_volatility = self.global_config.get('default_market_volatility', 0.02)
-            default_volume_ratio = self.global_config.get('default_volume_ratio', 1.5)
-            default_trend_strength = self.global_config.get('default_trend_strength', 0.7)
-            support_resistance_pct = self.global_config.get('support_resistance_distance_pct', 2.0) / 100
-            default_momentum = self.global_config.get('default_momentum', 0.6)
+            # Usar valores por defecto para simulación
+            default_volatility = 0.02
+            default_volume_ratio = 1.5
+            default_trend_strength = 0.7
+            support_resistance_pct = 2.0 / 100
+            default_momentum = 0.6
             
             return {
                 "volatility": default_volatility,
@@ -681,12 +678,12 @@ class EnhancedRiskManager:
                 if profit_pct >= self.trailing_stop_activation:
                     
                     # Calcular distancia de trailing basada en volatilidad y momentum
-                    base_distance = atr_multiplier * self.global_config.get('trailing_base_distance_pct', 1.0) / 100
+                    base_distance = atr_multiplier * 1.0 / 100  # Distancia base por defecto
                     
-                    # Ajustar distancia según condiciones de mercado
-                    volatility_base = self.global_config.get('volatility_base_threshold', 0.02)
-                    volatility_multiplier = self.global_config.get('volatility_adjustment_multiplier', 10)
-                    momentum_adjustment = self.global_config.get('momentum_adjustment_factor', 0.2)
+                    # Ajustar distancia según condiciones de mercado con valores por defecto
+                    volatility_base = 0.02  # Umbral base de volatilidad
+                    volatility_multiplier = 10  # Multiplicador de ajuste de volatilidad
+                    momentum_adjustment = 0.2  # Factor de ajuste de momentum
                     
                     volatility_adj = 1 + (market_data["volatility"] - volatility_base) * volatility_multiplier
                     momentum_adj = 1 - (market_data["momentum"] - 0.5) * momentum_adjustment
@@ -710,10 +707,10 @@ class EnhancedRiskManager:
                 profit_pct = (entry_price - current_price) / entry_price
                 
                 if profit_pct >= self.trailing_stop_activation:
-                    base_distance = atr_multiplier * self.global_config.get('trailing_base_distance_pct', 1.0) / 100
-                    volatility_base = self.global_config.get('volatility_base_threshold', 0.02)
-                    volatility_multiplier = self.global_config.get('volatility_adjustment_multiplier', 10)
-                    momentum_adjustment = self.global_config.get('momentum_adjustment_factor', 0.2)
+                    base_distance = atr_multiplier * 1.0 / 100
+                    volatility_base = 0.02
+                    volatility_multiplier = 10
+                    momentum_adjustment = 0.2
                     
                     volatility_adj = 1 + (market_data["volatility"] - volatility_base) * volatility_multiplier
                     momentum_adj = 1 - (market_data["momentum"] - 0.5) * momentum_adjustment
@@ -748,10 +745,10 @@ class EnhancedRiskManager:
                 profit_pct = abs(current_price - entry_price) / entry_price
                 
                 # Si la posición está muy en ganancia y el momentum es fuerte
-                pyramid_profit_threshold = self.global_config.get('pyramid_profit_threshold', 5.0) / 100
-                pyramid_momentum_threshold = self.global_config.get('pyramid_momentum_threshold', 0.7)
-                pyramid_trend_threshold = self.global_config.get('pyramid_trend_threshold', 0.6)
-                pyramid_max_additional_pct = self.global_config.get('pyramid_max_additional_pct', 2.0) / 100
+                pyramid_profit_threshold = 5.0 / 100
+                pyramid_momentum_threshold = 0.7
+                pyramid_trend_threshold = 0.6
+                pyramid_max_additional_pct = 2.0 / 100
                 
                 if (profit_pct > pyramid_profit_threshold and
                     market_data["momentum"] > pyramid_momentum_threshold and
@@ -765,7 +762,7 @@ class EnhancedRiskManager:
                         logger.info(f"Pyramid opportunity identified for {position.get('symbol', 'Unknown')}")
                 
                 # Si hay alta volatilidad, considerar reducir exposición
-                high_volatility_threshold = self.global_config.get('high_volatility_threshold', 4.0) / 100
+                high_volatility_threshold = 4.0 / 100
                 if market_data["volatility"] > high_volatility_threshold:
                     position["reduce_exposure_warning"] = True
                     position["reduce_reason"] = f"High volatility ({market_data['volatility']:.3f})"
@@ -808,7 +805,7 @@ class EnhancedRiskManager:
             )
             
             # Solo actualizar si hay ganancias significativas
-            min_profit_for_tp_update = self.global_config.get('min_profit_for_tp_update', 1.5)
+            min_profit_for_tp_update = 1.5
             if current_profit_pct < min_profit_for_tp_update:
                 return updated_tp
             
@@ -821,7 +818,7 @@ class EnhancedRiskManager:
             
             if signal_type == "BUY":
                 # Para BUY: incrementar TP hacia arriba
-                tp_update_profit_threshold = self.global_config.get('tp_update_profit_threshold', 5.0)
+                tp_update_profit_threshold = 5.0
                 if current_profit_pct >= tp_update_profit_threshold:
                     profit_multiplier = 1 + (updated_tp.tp_increment_pct / 100)
                     new_tp = updated_tp.current_tp * profit_multiplier
@@ -838,7 +835,7 @@ class EnhancedRiskManager:
             
             else:  # SELL
                 # Para SELL: decrementar TP hacia abajo
-                tp_update_profit_threshold = self.global_config.get('tp_update_profit_threshold', 5.0)
+                tp_update_profit_threshold = 5.0
                 if current_profit_pct >= tp_update_profit_threshold:
                     profit_multiplier = 1 - (updated_tp.tp_increment_pct / 100)
                     new_tp = updated_tp.current_tp * profit_multiplier
@@ -890,10 +887,10 @@ class EnhancedRiskManager:
                 }
                 position_risks.append(position_risk)
             
-            # Determinar nivel de riesgo general usando configuración
-            very_high_risk_threshold = self.global_config.get('very_high_risk_drawdown_threshold', 10.0) / 100
-            high_risk_threshold = self.global_config.get('high_risk_drawdown_threshold', 5.0) / 100
-            moderate_risk_exposure_threshold = self.global_config.get('moderate_risk_exposure_threshold', 50.0) / 100
+            # Determinar nivel de riesgo general con valores por defecto
+            very_high_risk_threshold = 10.0 / 100
+            high_risk_threshold = 5.0 / 100
+            moderate_risk_exposure_threshold = 50.0 / 100
             
             overall_risk_level = "LOW"
             if self.current_drawdown > very_high_risk_threshold:
@@ -903,9 +900,9 @@ class EnhancedRiskManager:
             elif total_exposure / self.portfolio_value > moderate_risk_exposure_threshold:
                 overall_risk_level = "MODERATE"
             
-            # Generar alertas usando configuración
-            max_positions_alert = self.global_config.get('max_positions_alert_threshold', 5)
-            high_exposure_alert_threshold = self.global_config.get('high_exposure_alert_threshold', 80.0) / 100
+            # Generar alertas con valores por defecto
+            max_positions_alert = 5
+            high_exposure_alert_threshold = 80.0 / 100
             
             alerts = []
             if self.current_drawdown >= self.max_drawdown_threshold:
@@ -915,9 +912,9 @@ class EnhancedRiskManager:
             if total_exposure / self.portfolio_value > high_exposure_alert_threshold:
                 alerts.append("⚠️ Exposición muy alta del portfolio")
             
-            # Recomendaciones usando configuración
-            reduce_exposure_threshold = self.global_config.get('reduce_exposure_drawdown_threshold', 5.0) / 100
-            review_stops_loss_threshold = self.global_config.get('review_stops_loss_threshold', 2.0) / 100
+            # Recomendaciones con valores por defecto
+            reduce_exposure_threshold = 5.0 / 100
+            review_stops_loss_threshold = 2.0 / 100
             
             recommendations = []
             if self.current_drawdown > reduce_exposure_threshold:
