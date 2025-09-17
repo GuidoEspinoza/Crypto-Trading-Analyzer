@@ -205,7 +205,7 @@ Ejemplos de uso:
         mode = 'status'
     
     # Mostrar encabezado con configuración
-    separator = config.display_formats.separator
+    separator = config.display_formats.main_separator
     title_emoji = config.emojis.monitor
     success_emoji = config.emojis.success
     error_emoji = config.emojis.error
@@ -241,7 +241,7 @@ Ejemplos de uso:
 def run_status_check(config: TradingMonitorConfig):
     """📊 Ejecutar verificación de estado general"""
     title_emoji = config.emojis.chart
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     print(f"{title_emoji} VERIFICACIÓN DE ESTADO GENERAL")
     print(separator)
@@ -265,7 +265,7 @@ def run_missed_executions_check(hours: int, summary_only: bool, config: TradingM
     success_emoji = config.emojis.success
     warning_emoji = config.emojis.warning
     target_emoji = config.emojis.target
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     print(f"{search_emoji} VERIFICACIÓN DE EJECUCIONES PERDIDAS")
     print(f"{calendar_emoji} Analizando últimas {hours} horas...")
@@ -297,14 +297,14 @@ def run_detailed_analysis(hours: int, summary_only: bool, config: TradingMonitor
     """📊 Ejecutar análisis detallado completo"""
     chart_emoji = config.emojis.chart
     calendar_emoji = config.emojis.calendar
-    trend_emoji = config.emojis.trend_up
+    trend_emoji = config.emojis.trending_up
     search_emoji = config.emojis.search
     target_emoji = config.emojis.target
     monitor_emoji = config.emojis.monitor
     money_emoji = config.emojis.money
     success_emoji = config.emojis.success
     warning_emoji = config.emojis.warning
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     print(f"{chart_emoji} ANÁLISIS DETALLADO COMPLETO")
     print(f"{calendar_emoji} Período de análisis: {hours} horas")
@@ -353,12 +353,12 @@ def run_detailed_analysis(hours: int, summary_only: bool, config: TradingMonitor
 def show_active_positions_summary(config: TradingMonitorConfig):
     """📊 Mostrar resumen de posiciones activas"""
     chart_emoji = config.emojis.chart
-    trend_emoji = config.emojis.trend_up
+    trend_emoji = config.emojis.trending_up
     money_emoji = config.emojis.money
     error_emoji = config.emojis.error
     success_emoji = config.emojis.success
     warning_emoji = config.emojis.warning
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     try:
         with db_manager.get_db_session() as session:
@@ -428,10 +428,10 @@ def show_active_positions_summary(config: TradingMonitorConfig):
                     if trade.take_profit:
                         if trade.trade_type == "BUY":
                             tp_distance = ((trade.take_profit - current_price) / current_price) * 100
-                            tp_status = config.emojis.trend_up if tp_distance > 0 else success_emoji
+                            tp_status = config.emojis.trending_up if tp_distance > 0 else success_emoji
                         else:
                             tp_distance = ((current_price - trade.take_profit) / current_price) * 100
-                            tp_status = config.emojis.trend_up if tp_distance > 0 else success_emoji
+                            tp_status = config.emojis.trending_up if tp_distance > 0 else success_emoji
                         print(f"      {tp_status} TP Distance: {abs(tp_distance):.{config.precision.percentage_decimals}f}%")
                     
                     if trade.stop_loss:
@@ -477,7 +477,7 @@ def check_active_positions_detailed(config: TradingMonitorConfig):
     error_emoji = config.emojis.error
     warning_emoji = config.emojis.warning
     shield_emoji = config.emojis.shield
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     try:
         with db_manager.get_db_session() as session:
@@ -633,7 +633,7 @@ def check_tp_sl_configuration(config: TradingMonitorConfig):
     target_emoji = config.emojis.target
     success_emoji = config.emojis.success
     error_emoji = config.emojis.error
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     print(f"\n{target_emoji} VERIFICACIÓN DE CONFIGURACIÓN TP/SL")
     print(separator)
@@ -662,7 +662,7 @@ def check_current_prices(config: TradingMonitorConfig):
     money_emoji = config.emojis.money
     success_emoji = config.emojis.success
     error_emoji = config.emojis.error
-    separator = config.display_formats.separator_small
+    separator = config.display_formats.section_separator
     
     print(f"\n{money_emoji} VERIFICACIÓN DE PRECIOS ACTUALES")
     print(separator)
@@ -699,9 +699,9 @@ def check_monitoring_system(config: TradingMonitorConfig):
     chart_emoji = config.emojis.chart
     success_emoji = config.emojis.success
     error_emoji = config.emojis.error
-    trend_up_emoji = config.emojis.trend_up
-    trend_down_emoji = config.emojis.trend_down
-    separator = config.display_formats.separator_small
+    trend_up_emoji = config.emojis.trending_up
+    trend_down_emoji = config.emojis.trending_down
+    separator = config.display_formats.section_separator
     
     print(f"\n{monitor_emoji} VERIFICACIÓN DEL SISTEMA DE MONITOREO")
     print(separator)
@@ -830,7 +830,7 @@ def get_current_price(symbol: str, config: TradingMonitorConfig = None) -> float
             return cached_price
     
     try:
-        url = APIConfig.get_binance_url("ticker_price")
+        url = "https://api.binance.com/api/v3/ticker/price"
         params = {'symbol': symbol}
         
         # Hacer request a la API con timeout configurable

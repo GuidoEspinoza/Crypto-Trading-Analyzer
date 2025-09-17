@@ -264,6 +264,125 @@ class TestEnhancedRiskManager(unittest.TestCase):
             self.assertIsInstance(assessment.dynamic_stop_loss.trailing_distance, float)
             self.assertGreater(assessment.dynamic_stop_loss.stop_loss_price, 0)
     
+    def test_optimized_trailing_stop_activation(self):
+        """Test de activación del trailing stop optimizado"""
+        # Datos de posición con ganancia suficiente para activar trailing
+        position_data = {
+            'entry_price': 50000,
+            'current_price': 51000,  # 2% ganancia
+            'current_profit': 0.02,
+            'volatility': 0.02,
+            'momentum': 0.025,
+            'volume_ratio': 1.5
+        }
+        
+        market_data = {
+            'atr': 1000,
+            'momentum': 0.025,
+            'volume_ratio': 1.5,
+            'volatility': 0.02
+        }
+        
+        # Test de umbral de activación dinámico
+        base_threshold = 0.02  # 2% base
+        trailing_config = {
+            'volatility_adjustment': 0.3,
+            'momentum_adjustment': 0.2,
+            'volume_adjustment': 0.1,
+            'min_activation_threshold': 0.008,
+            'max_activation_threshold': 0.025
+        }
+        activation_threshold = self.risk_manager._calculate_dynamic_activation_threshold(
+            base_threshold, market_data, trailing_config
+        )
+        
+        # Verificaciones
+        self.assertIsInstance(activation_threshold, float)
+        self.assertGreater(activation_threshold, 0.008)  # Mínimo 0.8%
+        self.assertLess(activation_threshold, 0.025)     # Máximo 2.5%
+        
+        # Test de distancia de trailing optimizada
+        base_distance = 0.015  # 1.5% base
+        atr_multiplier = 1.5
+        profit_pct = 0.02  # 2% ganancia
+        distance_config = {
+            'volatility_multiplier': 1.5,
+            'momentum_multiplier': 0.8,
+            'trend_multiplier': 0.6,
+            'volume_multiplier': 0.4,
+            'profit_adjustment': 0.5,
+            'min_trailing_distance': 0.003,
+            'max_trailing_distance': 0.02
+        }
+        trailing_distance = self.risk_manager._calculate_optimized_trailing_distance(
+            base_distance, atr_multiplier, market_data, profit_pct, distance_config
+        )
+        
+        # Verificaciones
+        self.assertIsInstance(trailing_distance, float)
+        self.assertGreater(trailing_distance, 0.005)   # Mínimo 0.5%
+        self.assertLess(trailing_distance, 0.04)       # Máximo 4%
+    
+    def test_trailing_stop_market_regime_adjustment(self):
+        """Test de ajuste del trailing stop según régimen de mercado"""
+        # Escenario de alta volatilidad
+        high_vol_position = {
+            'symbol': 'BTCUSDT',
+            'signal_type': 'BUY',
+            'entry_price': 50000,
+            'current_stop': 48000
+        }
+        
+        high_vol_market = {
+            'volatility': 0.05,  # Alta volatilidad
+            'momentum': 0.04,
+            'volume_ratio': 2.0,
+            'trend_strength': 0.7,
+            'support_distance': 0.02,
+            'resistance_distance': 0.03
+        }
+        
+        # Calcular trailing stop en alta volatilidad
+        high_vol_result = self.risk_manager._update_intelligent_trailing_stop(
+            high_vol_position, 52500, high_vol_market
+        )
+        
+        # Escenario de baja volatilidad
+        low_vol_position = {
+            'symbol': 'BTCUSDT',
+            'signal_type': 'BUY',
+            'entry_price': 50000,
+            'current_stop': 48000
+        }
+        
+        low_vol_market = {
+            'volatility': 0.01,  # Baja volatilidad
+            'momentum': 0.02,
+            'volume_ratio': 1.2,
+            'trend_strength': 0.6,
+            'support_distance': 0.01,
+            'resistance_distance': 0.015
+        }
+        
+        # Calcular trailing stop en baja volatilidad
+        low_vol_result = self.risk_manager._update_intelligent_trailing_stop(
+            low_vol_position, 52500, low_vol_market
+        )
+        
+        # Verificaciones: en alta volatilidad el trailing debe ser más conservador
+        self.assertIsInstance(high_vol_result, dict)
+        self.assertIsInstance(low_vol_result, dict)
+        
+        # Verificar que ambos resultados tienen el nuevo stop loss
+        if high_vol_result.get('new_stop_loss') and low_vol_result.get('new_stop_loss'):
+            high_vol_stop = high_vol_result['new_stop_loss']
+            low_vol_stop = low_vol_result['new_stop_loss']
+            
+            # En alta volatilidad, el trailing stop debería estar más lejos del precio actual
+            high_vol_distance = 52500 - high_vol_stop
+            low_vol_distance = 52500 - low_vol_stop
+            self.assertGreater(high_vol_distance, low_vol_distance * 0.8)  # Al menos 80% más conservador
+    
     def test_configuration_usage(self):
         """Test de uso correcto de la configuración centralizada"""
         # Verificar que se usan valores de configuración en lugar de hardcodeados

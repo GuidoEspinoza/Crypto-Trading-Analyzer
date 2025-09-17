@@ -40,6 +40,8 @@ from .position_manager import PositionManager, PositionInfo
 
 # Configurar logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.CRITICAL)  # Solo errores críticos
+logger.propagate = False  # No propagar logs al logger raíz
 
 @dataclass
 class CacheEntry:

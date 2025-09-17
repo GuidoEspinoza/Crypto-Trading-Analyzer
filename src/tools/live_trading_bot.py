@@ -109,6 +109,40 @@ logger.addHandler(handler)
 # Evitar que los logs se propaguen al logger raíz
 logger.propagate = live_trading_bot_config.get_logging_config().propagate
 
+# Silenciar todos los otros loggers para mostrar solo los del live trading bot
+def silence_other_loggers():
+    """Silenciar todos los loggers excepto el del live trading bot"""
+    # Lista de módulos a silenciar
+    modules_to_silence = [
+        'src.core.trading_bot',
+        'src.core.enhanced_strategies', 
+        'src.core.paper_trader',
+        'src.core.enhanced_risk_manager',
+        'src.core.position_manager',
+        'src.core.position_monitor',
+        'src.core.position_adjuster',
+        'src.core.market_validator',
+        'src.database.database',
+        'src.database.migrations',
+        'src.config.config',
+        'src.config.config_manager',
+        'src.config.database_config',
+        'src.utils.error_handler',
+        'sqlalchemy.engine'
+    ]
+    
+    for module_name in modules_to_silence:
+        module_logger = logging.getLogger(module_name)
+        module_logger.setLevel(logging.CRITICAL)  # Solo errores críticos
+        module_logger.propagate = False
+
+# Aplicar el silenciado de otros loggers
+silence_other_loggers()
+
+# Configurar el logger raíz para evitar mensajes no deseados
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.CRITICAL)  # Solo errores críticos en el logger raíz
+
 class LiveTradingBot:
     """
     🚀 Bot de trading en vivo con logs simples
@@ -116,7 +150,11 @@ class LiveTradingBot:
     
     def __init__(self):
         self.config = TradingBotConfig()
-        self.trading_bot = TradingBot()
+        # Obtener el intervalo de análisis del perfil activo (AGRESIVO: 45 segundos)
+        from src.config.config_manager import ConfigManager
+        profile_config = ConfigManager.get_module_config('trading_bot')
+        analysis_interval = profile_config.get('analysis_interval', 45)  # 45 segundos para AGRESIVO
+        self.trading_bot = TradingBot(analysis_interval_minutes=analysis_interval/60)  # Convertir a minutos
         self.live_config = live_trading_bot_config
         
         # Configuración del bot
@@ -135,7 +173,7 @@ class LiveTradingBot:
             logger.info("📋 CONFIGURACIÓN DE ESTRATEGIAS:")
             for strategy_name, strategy in self.trading_bot.strategies.items():
                 logger.info(f"   🎯 {strategy_name}:")
-                logger.info(f"      • Confianza mínima: {strategy.min_confidence}%")
+                logger.info(f"      • Confianza mínima: {strategy.min_confidence:.1f}%")
                 if hasattr(strategy, 'rsi_oversold'):
                     logger.info(f"      • RSI Sobreventa: {strategy.rsi_oversold}")
                 if hasattr(strategy, 'rsi_overbought'):
@@ -149,15 +187,19 @@ class LiveTradingBot:
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
             logger.info("💰 CONFIGURACIÓN DEL PAPER TRADER:")
             logger.info(f"   • Balance inicial: ${self.trading_bot.paper_trader.initial_balance:,.2f}")
-            logger.info(f"   • Tamaño máximo por posición: {self.trading_bot.paper_trader.max_position_size:.1f}%")
-            logger.info(f"   • Exposición máxima total: {self.trading_bot.paper_trader.max_total_exposure:.1f}%")
+            logger.info(f"   • Tamaño máximo por posición: {self.trading_bot.paper_trader.max_position_size*100:.1f}%")
+            logger.info(f"   • Exposición máxima total: ${self.trading_bot.paper_trader.max_total_exposure:.1f}")
             logger.info(f"   • Valor mínimo por trade: ${self.trading_bot.paper_trader.min_trade_value}")
             logger.info(f"   • Valor actual del portfolio: ${portfolio_performance.get('total_value', 0):,.2f}")
             
             # Mostrar configuración del bot
+            from src.config.config_manager import ConfigManager
+            active_profile = ConfigManager.get_active_profile()
             logger.info("⚙️ CONFIGURACIÓN DEL BOT:")
+            logger.info(f"   • Perfil activo: {active_profile} ⚡")
             logger.info(f"   • Símbolos: {', '.join(self.symbols)}")
-            logger.info(f"   • Intervalo de análisis: {self.update_interval} segundos")
+            logger.info(f"   • Intervalo de análisis: {self.trading_bot.analysis_interval*60:.0f} segundos")
+            logger.info(f"   • Intervalo de actualización en vivo: {self.update_interval} segundos")
             logger.info(f"   • Confianza mínima para trades: {self.config.get_min_confidence_threshold()}%")
             
             # Configurar callback para ajustes de TP/SL dinámicos
@@ -171,8 +213,8 @@ class LiveTradingBot:
             # Configurar callback para eventos de trades
             try:
                 if hasattr(self.trading_bot, 'set_trade_event_callback'):
-                    self.trading_bot.set_trade_event_callback(self._display_trade_event)
-                    logger.info("✅ Callback de eventos de trade configurado")
+                    self.trading_bot.set_trade_event_callback(self._handle_trading_bot_event)
+                    logger.info("✅ Callback de eventos del TradingBot configurado")
             except Exception as trade_e:
                 logger.error(f"⚠️ Error configurando callback de trades: {trade_e}")
             
@@ -180,6 +222,11 @@ class LiveTradingBot:
             logger.error(f"❌ Error inicializando estrategias: {e}")
         
         self.last_signals = {}
+        
+        # Buffer para agrupar señales por símbolo y evitar entremezclado
+        self.signals_buffer = {}
+        self.current_analysis_symbol = None
+        
         # Inicializar estadísticas de sesión usando configuración
         session_config = self.live_config.get_session_stats_config()
         self.session_stats = {
@@ -277,7 +324,147 @@ class LiveTradingBot:
             logger.error(f"❌ Error obteniendo configuración del live bot: {e}")
             return {}
     
-
+    def _handle_trading_bot_event(self, event: Dict):
+        """
+        📢 Manejar eventos del TradingBot y mostrarlos en LiveTradingBot
+        """
+        try:
+            event_type = event.get('type', 'unknown')
+            timestamp = event.get('timestamp', datetime.now())
+            
+            if event_type == 'cycle_start':
+                cycle_num = event.get('cycle_number', 0)
+                symbols = event.get('symbols', [])
+                strategies = event.get('strategies', [])
+                daily_trades = event.get('daily_trades', 0)
+                max_daily_trades = event.get('max_daily_trades', 0)
+                
+                logger.info(f"🔄 Ciclo #{cycle_num} - Analizando {len(symbols)} símbolos con {len(strategies)} estrategias")
+                logger.info(f"📊 Trades diarios: {daily_trades}/{max_daily_trades}")
+                
+            elif event_type == 'signal_generated':
+                symbol = event.get('symbol', '')
+                signal_type = event.get('signal_type', '')
+                strategy = event.get('strategy', '')
+                confidence = event.get('confidence', 0)
+                price = event.get('price', 0)
+                
+                # Solo mostrar señales finales (no intermedias de estrategias individuales)
+                # Las señales intermedias se almacenan en buffer para análisis
+                if strategy not in ['ProfessionalRSI', 'MultiTimeframe']:  # Solo mostrar Ensemble o señales finales
+                    # Usar colores según el tipo de señal
+                    if signal_type == 'BUY':
+                        color = Fore.GREEN + Style.BRIGHT
+                    elif signal_type == 'SELL':
+                        color = Fore.RED + Style.BRIGHT
+                    else:
+                        color = Fore.YELLOW
+                    
+                    logger.info(f"{color}📊 Señal Final: {signal_type} {symbol} - Confianza: {confidence}% - Precio: ${price:,.2f}{Style.RESET_ALL}")
+                
+            elif event_type == 'bot_status':
+                status_type = event.get('status_type', '')
+                message = event.get('message', '')
+                data = event.get('data', {})
+                
+                if status_type == 'start':
+                    symbols = data.get('symbols', [])
+                    strategies = data.get('strategies', [])
+                    interval = data.get('analysis_interval', 0)
+                    
+                    logger.info(f"🚀 {message}")
+                    logger.info(f"📊 Monitoreando símbolos: {', '.join(symbols)}")
+                    logger.info(f"🧠 Estrategias activas: {', '.join(strategies)}")
+                    logger.info("🔍 Monitoreo de posiciones iniciado")
+                    logger.info("🎯 Monitoreo de ajustes TP/SL iniciado")
+                    
+                elif status_type == 'limit_reached':
+                    logger.info(f"⏸️ {message}")
+                    
+                elif status_type == 'cache_hit':
+                    signals_count = data.get('signals_count', 0)
+                    logger.info(f"⚡ Usando resultados de análisis en caché ({signals_count} señales)")
+                    
+                elif status_type == 'no_signals':
+                    symbols_analyzed = data.get('symbols_analyzed', 0)
+                    strategies_used = data.get('strategies_used', 0)
+                    logger.info(f"⚪ No se generaron señales de trading en este ciclo ({symbols_analyzed} símbolos, {strategies_used} estrategias)")
+                    
+                elif status_type == 'cycle_completed':
+                    cycle_num = data.get('cycle_number', 0)
+                    signals_generated = data.get('signals_generated', 0)
+                    logger.info(f"✅ Ciclo #{cycle_num} completado - {signals_generated} señales generadas")
+                    
+                    # Mostrar resumen de análisis si hay señales
+                    if signals_generated > 0:
+                        self._show_cycle_summary()
+                    
+            elif event_type == 'price_update':
+                symbol = event.get('symbol', '')
+                price = event.get('price', 0)
+                indicators = event.get('indicators', {})
+                
+                # Solo mostrar actualizaciones de precio importantes
+                if indicators:
+                    logger.debug(f"💰 {symbol}: ${price:,.2f} - Indicadores: {indicators}")
+                    
+            elif event_type in ['trade_executed', 'adjustment_executed', 'analysis_completed']:
+                # Estos eventos ya se manejan con los callbacks existentes
+                self._display_trade_event(event)
+                
+        except Exception as e:
+            logger.error(f"❌ Error manejando evento del TradingBot: {e}")
+    
+    def _show_cycle_summary(self):
+        """📋 Mostrar resumen de análisis del ciclo actual"""
+        try:
+            logger.info(f"\n{Fore.CYAN}{'='*60}")
+            logger.info(f"📋 RESUMEN DEL CICLO - {datetime.now().strftime('%H:%M:%S')}")
+            logger.info(f"{'='*60}{Style.RESET_ALL}")
+            
+            # Mostrar información de balances
+            if hasattr(self.trading_bot, 'paper_trader') and self.trading_bot.paper_trader:
+                portfolio_summary = self.trading_bot.paper_trader.get_portfolio_summary()
+                # Obtener balance USDT directamente del paper trader
+                usdt_balance = self.trading_bot.paper_trader.get_balance('USDT')
+                total_value = portfolio_summary.get('total_value', 0)
+                pnl = portfolio_summary.get('total_pnl', 0)
+                pnl_percentage = portfolio_summary.get('total_pnl_percentage', 0)
+                
+                logger.info(f"💰 BALANCES:")
+                logger.info(f"   • Balance USDT disponible: ${usdt_balance:,.2f}")
+                logger.info(f"   • Valor total portfolio: ${total_value:,.2f}")
+                if pnl >= 0:
+                    logger.info(f"   • P&L: {Fore.GREEN}+${pnl:,.2f} (+{pnl_percentage:.2f}%){Style.RESET_ALL}")
+                else:
+                    logger.info(f"   • P&L: {Fore.RED}${pnl:,.2f} ({pnl_percentage:.2f}%){Style.RESET_ALL}")
+                logger.info("")
+            
+            # Obtener señales del último ciclo desde el TradingBot
+            if hasattr(self.trading_bot, 'last_signals') and self.trading_bot.last_signals:
+                for symbol, signal_data in self.trading_bot.last_signals.items():
+                    signal_type = signal_data.get('signal_type', 'HOLD')
+                    confidence = signal_data.get('confidence', 0)
+                    price = signal_data.get('price', 0)
+                    strategy = signal_data.get('strategy', 'Unknown')
+                    
+                    # Color según el tipo de señal
+                    if signal_type == 'BUY':
+                        color = Fore.GREEN + Style.BRIGHT
+                        emoji = "📈"
+                    elif signal_type == 'SELL':
+                        color = Fore.RED + Style.BRIGHT
+                        emoji = "📉"
+                    else:
+                        color = Fore.YELLOW
+                        emoji = "⚪"
+                    
+                    logger.info(f"{color}{emoji} {symbol}: {signal_type} - {confidence}% confianza - ${price:,.2f} ({strategy}){Style.RESET_ALL}")
+            
+            logger.info(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+            
+        except Exception as e:
+            logger.error(f"❌ Error mostrando resumen del ciclo: {e}")
     
     async def analyze_and_trade(self):
         """🔍 Analizar mercado y ejecutar trades"""
@@ -618,13 +805,42 @@ class LiveTradingBot:
                 }
                 return
             
-            # Ordenar por confianza (mayor primero)
-            high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
+            # Obtener posiciones activas para diversificación
+            active_positions = self.trading_bot.position_monitor.position_manager.get_active_positions()
+            current_positions = len(active_positions)
+            
+            # Configuración de diversificación desde el perfil activo
+            config = self.trading_bot.config_manager.get_consolidated_config() if hasattr(self.trading_bot, 'config_manager') else {}
+            trading_config = config.get("trading_bot", {})
+            max_positions = trading_config.get("max_positions", 5)
+            diversification_threshold = max_positions * 0.6  # 60% del máximo
+            
+            # Ordenar señales con prioridad de diversificación
+            def signal_priority(signal):
+                base_score = signal.confidence_score
+                
+                # Priorizar compras si tenemos pocas posiciones (diversificación)
+                if signal.signal_type == "BUY" and current_positions < diversification_threshold:
+                    # Boost de +10 puntos para compras cuando necesitamos diversificar
+                    return base_score + 10
+                # Priorizar ventas si estamos cerca del límite de posiciones
+                elif signal.signal_type == "SELL" and current_positions >= max_positions * 0.8:
+                    # Boost de +5 puntos para ventas cuando estamos cerca del límite
+                    return base_score + 5
+                
+                return base_score
+            
+            # Ordenar por prioridad (mayor primero)
+            high_confidence_signals.sort(key=signal_priority, reverse=True)
+            
+            logger.info(f"📊 Portfolio diversification for {symbol}: {current_positions}/{max_positions} positions")
+            if current_positions < diversification_threshold:
+                logger.info(f"🎯 Prioritizing BUY signals for {symbol} - portfolio diversification")
             
             # Obtener valor actual del portfolio
             from src.database.database import db_manager
             portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-            portfolio_value = portfolio_summary.get("total_value", self.trading_bot.config.DEFAULT_PORTFOLIO_VALUE)
+            portfolio_value = portfolio_summary.get("total_value", 10000.0)  # Valor por defecto
             
             logger.info(f"💼 Valor actual del portfolio: ${portfolio_value:,.2f}")
             

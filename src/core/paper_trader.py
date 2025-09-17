@@ -98,7 +98,7 @@ class PaperTrader:
             initial_balance: Balance inicial en USDT (opcional, usa config si no se especifica)
         """
         # Configuración del paper trader desde archivo centralizado
-        self.initial_balance = initial_balance if initial_balance is not None else self._get_config_value("global_initial_balance", 1000.0)
+        self.initial_balance = initial_balance if initial_balance is not None else self._get_config_value("paper_trader.initial_balance", 1000.0)
         self.max_position_size = self._get_config_value("paper_trader.max_position_size", 0.8)  # 80% del balance
         self.max_total_exposure = self._get_config_value("paper_trader.max_total_exposure", 50000.0)
         self.min_trade_value = self._get_config_value("paper_trader.min_trade_value", 10.0)

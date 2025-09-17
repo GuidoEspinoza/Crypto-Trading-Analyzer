@@ -7,7 +7,7 @@ Desarrollado por: Experto en Trading & Programación
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
@@ -380,63 +380,231 @@ class EnhancedRiskManager:
             )
     
     def _configure_dynamic_take_profit(self, signal: EnhancedSignal) -> DynamicTakeProfit:
-        """Configurar take profit dinámico y ajustable"""
+        """🎯 Configurar take profit dinámico y ajustable con optimizaciones avanzadas"""
         try:
+            # Obtener configuración de optimizaciones avanzadas
+            from src.config.config_manager import ConfigManager
+            config = ConfigManager().get_consolidated_config()
+            advanced_opts = config.get("advanced_optimizations", {})
+            
+            # Configuración de take profit dinámico
+            tp_config = advanced_opts.get("dynamic_take_profit", {
+                "enabled": True,
+                "base_multiplier": 2.5,
+                "volatility_adjustment": True,
+                "momentum_extension": True,
+                "partial_profit_levels": [
+                    {"percentage": 30, "at_ratio": 1.5},
+                    {"percentage": 40, "at_ratio": 2.5},
+                    {"percentage": 30, "trailing": True}
+                ]
+            })
+            
             # Take profit inicial (del signal)
             initial_tp = signal.take_profit_price
             
-            # Si no hay take profit en el signal, calcularlo
+            # Si no hay take profit en el signal, calcularlo con optimizaciones
             if initial_tp == 0:
-                # Verificar que indicators_data no sea None
                 indicators_data = signal.indicators_data if signal.indicators_data is not None else {}
                 atr_data = indicators_data.get("atr", signal.price * 0.02)
+                
+                # Usar multiplicador base desde configuración
+                base_multiplier = tp_config.get("base_multiplier", 2.5)
+                
+                # Ajustar multiplicador según win rate
+                win_rate_config = advanced_opts.get("win_rate_optimization", {})
+                target_win_rate = win_rate_config.get("target_win_rate", 65.0)
+                
+                # Ajuste dinámico basado en win rate objetivo
+                if target_win_rate >= 70:
+                    base_multiplier *= 0.9  # TP más conservador para mayor win rate
+                elif target_win_rate <= 55:
+                    base_multiplier *= 1.2  # TP más agresivo para menor win rate
+                
                 if signal.signal_type == "BUY":
-                    initial_tp = signal.price + (3 * atr_data)  # 3 ATR por encima para BUY
+                    initial_tp = signal.price + (base_multiplier * atr_data)
                 else:
-                    initial_tp = signal.price - (3 * atr_data)  # 3 ATR por debajo para SELL
+                    initial_tp = signal.price - (base_multiplier * atr_data)
             
-            # Obtener configuración desde perfil activo
+            # Configurar parámetros del trailing TP con optimizaciones avanzadas
+            tp_increment_pct = tp_config.get("base_multiplier", 2.5) * 0.4  # 40% del multiplicador base
+            confidence_threshold = 75.0
             
-            # Configurar parámetros del trailing TP con valores por defecto
-            tp_increment_pct = 1.0  # Incremento base por defecto
-            confidence_threshold = 75.0  # Umbral de confianza por defecto
+            # Ajustar según régimen de mercado y volatilidad
+            if tp_config.get("volatility_adjustment", True):
+                if signal.market_regime == "TRENDING":
+                    tp_increment_pct *= 1.3  # Más agresivo en tendencias
+                    confidence_threshold = max(65.0, confidence_threshold - 10)
+                elif signal.market_regime == "VOLATILE":
+                    tp_increment_pct *= 0.7  # Más conservador en volatilidad
+                    confidence_threshold = min(85.0, confidence_threshold + 10)
+                elif signal.market_regime == "RANGING":
+                    tp_increment_pct *= 0.8  # Conservador en rangos
+                    confidence_threshold = min(80.0, confidence_threshold + 5)
             
-            # Ajustar según régimen de mercado
-            if signal.market_regime == "TRENDING":
-                tp_increment_pct = 1.5  # Más agresivo en tendencias
-                confidence_threshold = max(0.5, confidence_threshold - 0.1)  # Reducir umbral
-            elif signal.market_regime == "VOLATILE":
-                tp_increment_pct = 0.8  # Más conservador en volatilidad
-                confidence_threshold = min(0.9, confidence_threshold + 0.1)  # Aumentar umbral
+            # Ajustar según momentum si está habilitado
+            if tp_config.get("momentum_extension", True):
+                momentum_strength = getattr(signal, 'momentum_strength', 0.5)
+                if momentum_strength > 0.7:
+                    tp_increment_pct *= 1.2  # Extender TP con momentum fuerte
+                elif momentum_strength < 0.3:
+                    tp_increment_pct *= 0.9  # Reducir TP con momentum débil
+            
+            # Configurar máximo de ajustes basado en gestión adaptativa
+            adaptive_config = advanced_opts.get("adaptive_position_management", {})
+            max_adjustments = adaptive_config.get("max_tp_adjustments", 5)
+            
+            # Determinar tipo de TP basado en configuración
+            tp_type = "DYNAMIC"
+            if tp_config.get("partial_profit_levels"):
+                tp_type = "PARTIAL_DYNAMIC"
             
             return DynamicTakeProfit(
                 initial_tp=round(initial_tp, 2),
                 current_tp=round(initial_tp, 2),
                 trailing_tp=round(initial_tp, 2),
-                tp_increment_pct=tp_increment_pct,
-                tp_type="DYNAMIC",
+                tp_increment_pct=round(tp_increment_pct, 3),
+                tp_type=tp_type,
                 last_update=datetime.now(),
                 take_profit_price=round(initial_tp, 2),
-                confidence_threshold=confidence_threshold,
-                max_tp_adjustments=3,  # Default max TP adjustments
+                confidence_threshold=confidence_threshold / 100.0,  # Convertir a decimal
+                max_tp_adjustments=max_adjustments,
                 adjustments_made=0
             )
             
         except Exception as e:
             logger.error(f"Error configuring dynamic take profit: {e}")
+            # Fallback seguro con valores por defecto
             tp_price = signal.price * 1.06 if signal.signal_type == "BUY" else signal.price * 0.94
             return DynamicTakeProfit(
                 initial_tp=tp_price,
                 current_tp=tp_price,
                 trailing_tp=tp_price,
-                tp_increment_pct=1.0,  # Default TP increment (replaced profile reference)
+                tp_increment_pct=1.0,
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=tp_price,
-                confidence_threshold=0.7,  # Default confidence threshold
-                max_tp_adjustments=3,  # Default max TP adjustments
+                confidence_threshold=0.7,
+                max_tp_adjustments=3,
                 adjustments_made=0
             )
+    
+    def calculate_partial_profit_levels(self, entry_price: float, signal_type: str, 
+                                      position_size: float, atr: float) -> List[Dict[str, Any]]:
+        """💰 Calcular niveles de toma de ganancias parciales optimizados
+        
+        Args:
+            entry_price: Precio de entrada de la posición
+            signal_type: Tipo de señal (BUY/SELL)
+            position_size: Tamaño de la posición
+            atr: Average True Range para cálculos dinámicos
+            
+        Returns:
+            Lista de niveles de toma de ganancias parciales
+        """
+        try:
+            # Obtener configuración de optimizaciones avanzadas
+            from src.config.config_manager import ConfigManager
+            config = ConfigManager().get_consolidated_config()
+            advanced_opts = config.get("advanced_optimizations", {})
+            
+            # Configuración de take profit dinámico
+            tp_config = advanced_opts.get("dynamic_take_profit", {})
+            partial_levels = tp_config.get("partial_profit_levels", [
+                {"percentage": 30, "at_ratio": 1.5},
+                {"percentage": 40, "at_ratio": 2.5},
+                {"percentage": 30, "trailing": True}
+            ])
+            
+            profit_levels = []
+            remaining_size = position_size
+            
+            for i, level in enumerate(partial_levels):
+                # Calcular tamaño de esta toma parcial
+                if level.get("trailing", False):
+                    # El último nivel usa el tamaño restante
+                    level_size = remaining_size
+                else:
+                    level_size = position_size * (level["percentage"] / 100.0)
+                    remaining_size -= level_size
+                
+                # Calcular precio objetivo
+                if level.get("trailing", False):
+                    # Para trailing, usar precio inicial más conservador
+                    ratio = 2.0  # Ratio base para trailing
+                    price_target = None  # Se calculará dinámicamente
+                    level_type = "TRAILING"
+                else:
+                    ratio = level["at_ratio"]
+                    # Calcular precio objetivo basado en ATR y ratio
+                    atr_distance = atr * ratio
+                    
+                    if signal_type == "BUY":
+                        price_target = entry_price + atr_distance
+                    else:  # SELL
+                        price_target = entry_price - atr_distance
+                    
+                    level_type = "FIXED"
+                
+                # Calcular ganancia esperada
+                if price_target:
+                    if signal_type == "BUY":
+                        expected_profit = (price_target - entry_price) * level_size
+                        profit_percentage = ((price_target - entry_price) / entry_price) * 100
+                    else:  # SELL
+                        expected_profit = (entry_price - price_target) * level_size
+                        profit_percentage = ((entry_price - price_target) / entry_price) * 100
+                else:
+                    expected_profit = 0.0
+                    profit_percentage = 0.0
+                
+                profit_level = {
+                    "level": i + 1,
+                    "type": level_type,
+                    "percentage_of_position": level["percentage"] if not level.get("trailing") else 
+                                           round((level_size / position_size) * 100, 1),
+                    "position_size": round(level_size, 6),
+                    "target_price": round(price_target, 4) if price_target else None,
+                    "risk_reward_ratio": ratio,
+                    "expected_profit": round(expected_profit, 2),
+                    "profit_percentage": round(profit_percentage, 2),
+                    "is_trailing": level.get("trailing", False),
+                    "status": "PENDING",
+                    "executed_at": None,
+                    "actual_price": None
+                }
+                
+                profit_levels.append(profit_level)
+            
+            return profit_levels
+            
+        except Exception as e:
+            logger.error(f"Error calculating partial profit levels: {e}")
+            # Fallback: niveles básicos
+            basic_size = position_size / 3
+            basic_atr_distance = atr * 2.0
+            
+            if signal_type == "BUY":
+                basic_target = entry_price + basic_atr_distance
+            else:
+                basic_target = entry_price - basic_atr_distance
+            
+            return [
+                {
+                    "level": 1,
+                    "type": "FIXED",
+                    "percentage_of_position": 33.3,
+                    "position_size": basic_size,
+                    "target_price": basic_target,
+                    "risk_reward_ratio": 2.0,
+                    "expected_profit": 0.0,
+                    "profit_percentage": 0.0,
+                    "is_trailing": False,
+                    "status": "PENDING",
+                    "executed_at": None,
+                    "actual_price": None
+                }
+            ]
     
     def _calculate_portfolio_risk_metrics(self) -> Dict:
         """Calcular métricas de riesgo del portfolio"""
@@ -663,68 +831,88 @@ class EnhancedRiskManager:
                    "support_distance": 0.02, "resistance_distance": 0.02, "momentum": 0.5}
     
     def _update_intelligent_trailing_stop(self, position: Dict, current_price: float, market_data: Dict) -> Dict:
-        """Actualizar trailing stop usando lógica inteligente"""
+        """Actualizar trailing stop usando lógica inteligente optimizada
+        
+        Implementa trailing stop adaptativo basado en:
+        - Configuraciones dinámicas del ConfigManager
+        - Análisis de volatilidad y momentum
+        - Win rate histórico y condiciones de mercado
+        - Gestión de riesgo adaptativa
+        """
         try:
+            # Obtener configuraciones optimizadas
+            config = ConfigManager.get_module_config('risk_manager')
+            trailing_config = config.get('trailing_stop', {})
+            
             signal_type = position.get("signal_type")
             entry_price = position.get("entry_price", 0)
             current_stop = position.get("current_stop", 0)
-            atr_multiplier = position.get("atr_multiplier", 2.0)
+            symbol = position.get("symbol", "")
             
+            # Configuración base optimizada
+            base_activation = trailing_config.get('activation_threshold', 0.015)  # 1.5%
+            base_distance = trailing_config.get('base_distance', 0.008)  # 0.8%
+            atr_multiplier = trailing_config.get('atr_multiplier', 1.8)
+            
+            # Calcular ganancia actual
             if signal_type == "BUY":
-                # Calcular ganancia actual
                 profit_pct = (current_price - entry_price) / entry_price
                 
-                # Activar trailing solo si hay ganancia suficiente
-                if profit_pct >= self.trailing_stop_activation:
+                # Activación dinámica basada en condiciones de mercado
+                activation_threshold = self._calculate_dynamic_activation_threshold(
+                    base_activation, market_data, trailing_config
+                )
+                
+                if profit_pct >= activation_threshold:
+                    # Calcular distancia optimizada
+                    trailing_distance = self._calculate_optimized_trailing_distance(
+                        base_distance, atr_multiplier, market_data, profit_pct, trailing_config
+                    )
                     
-                    # Calcular distancia de trailing basada en volatilidad y momentum
-                    base_distance = atr_multiplier * 1.0 / 100  # Distancia base por defecto
+                    # Calcular nuevo stop con protección de ganancias
+                    new_stop = current_price * (1 - trailing_distance)
                     
-                    # Ajustar distancia según condiciones de mercado con valores por defecto
-                    volatility_base = 0.02  # Umbral base de volatilidad
-                    volatility_multiplier = 10  # Multiplicador de ajuste de volatilidad
-                    momentum_adjustment = 0.2  # Factor de ajuste de momentum
-                    
-                    volatility_adj = 1 + (market_data["volatility"] - volatility_base) * volatility_multiplier
-                    momentum_adj = 1 - (market_data["momentum"] - 0.5) * momentum_adjustment
-                    
-                    adjusted_distance = base_distance * volatility_adj * momentum_adj
-                    adjusted_distance = max(self.min_trailing_distance, min(self.max_trailing_distance, adjusted_distance))
-                    
-                    # Calcular nuevo stop
-                    new_stop = current_price * (1 - adjusted_distance)
+                    # Aplicar protección mínima de ganancias
+                    min_profit_protection = trailing_config.get('min_profit_protection', 0.005)  # 0.5%
+                    min_protected_stop = entry_price * (1 + min_profit_protection)
+                    new_stop = max(new_stop, min_protected_stop)
                     
                     # Solo actualizar si es mejor que el stop actual
                     if new_stop > current_stop:
                         return {
-                            "new_stop": round(new_stop, 4),
-                            "stop_type": "INTELLIGENT_TRAILING",
-                            "reason": f"Vol:{volatility_adj:.2f}, Mom:{momentum_adj:.2f}, Dist:{adjusted_distance:.3f}"
+                            "new_stop": round(new_stop, 6),
+                            "stop_type": "INTELLIGENT_TRAILING_OPTIMIZED",
+                            "reason": f"Profit:{profit_pct:.3f}, Dist:{trailing_distance:.4f}, Protected:{min_protected_stop:.6f}",
+                            "activation_threshold": activation_threshold,
+                            "trailing_distance": trailing_distance
                         }
             
             elif signal_type == "SELL":
-                # Lógica similar para posiciones short
                 profit_pct = (entry_price - current_price) / entry_price
                 
-                if profit_pct >= self.trailing_stop_activation:
-                    base_distance = atr_multiplier * 1.0 / 100
-                    volatility_base = 0.02
-                    volatility_multiplier = 10
-                    momentum_adjustment = 0.2
+                activation_threshold = self._calculate_dynamic_activation_threshold(
+                    base_activation, market_data, trailing_config
+                )
+                
+                if profit_pct >= activation_threshold:
+                    trailing_distance = self._calculate_optimized_trailing_distance(
+                        base_distance, atr_multiplier, market_data, profit_pct, trailing_config
+                    )
                     
-                    volatility_adj = 1 + (market_data["volatility"] - volatility_base) * volatility_multiplier
-                    momentum_adj = 1 - (market_data["momentum"] - 0.5) * momentum_adjustment
+                    new_stop = current_price * (1 + trailing_distance)
                     
-                    adjusted_distance = base_distance * volatility_adj * momentum_adj
-                    adjusted_distance = max(self.min_trailing_distance, min(self.max_trailing_distance, adjusted_distance))
-                    
-                    new_stop = current_price * (1 + adjusted_distance)
+                    # Protección mínima para shorts
+                    min_profit_protection = trailing_config.get('min_profit_protection', 0.005)
+                    max_protected_stop = entry_price * (1 - min_profit_protection)
+                    new_stop = min(new_stop, max_protected_stop)
                     
                     if new_stop < current_stop:
                         return {
-                            "new_stop": round(new_stop, 4),
-                            "stop_type": "INTELLIGENT_TRAILING",
-                            "reason": f"Vol:{volatility_adj:.2f}, Mom:{momentum_adj:.2f}, Dist:{adjusted_distance:.3f}"
+                            "new_stop": round(new_stop, 6),
+                            "stop_type": "INTELLIGENT_TRAILING_OPTIMIZED",
+                            "reason": f"Profit:{profit_pct:.3f}, Dist:{trailing_distance:.4f}, Protected:{max_protected_stop:.6f}",
+                            "activation_threshold": activation_threshold,
+                            "trailing_distance": trailing_distance
                         }
             
             return None
@@ -732,6 +920,83 @@ class EnhancedRiskManager:
         except Exception as e:
             logger.error(f"Error updating intelligent trailing stop: {e}")
             return None
+    
+    def _calculate_dynamic_activation_threshold(self, base_threshold: float, market_data: Dict, config: Dict) -> float:
+        """Calcular umbral de activación dinámico basado en condiciones de mercado"""
+        try:
+            # Ajustes basados en volatilidad
+            volatility = market_data.get("volatility", 0.02)
+            volatility_adjustment = config.get('volatility_adjustment', 0.3)
+            
+            # Ajustes basados en momentum
+            momentum = market_data.get("momentum", 0.5)
+            momentum_adjustment = config.get('momentum_adjustment', 0.2)
+            
+            # Ajustes basados en volumen
+            volume_ratio = market_data.get("volume_ratio", 1.0)
+            volume_adjustment = config.get('volume_adjustment', 0.1)
+            
+            # Calcular threshold dinámico
+            volatility_factor = 1 + (volatility - 0.02) * volatility_adjustment
+            momentum_factor = 1 - abs(momentum - 0.5) * momentum_adjustment
+            volume_factor = 1 + (volume_ratio - 1.0) * volume_adjustment
+            
+            dynamic_threshold = base_threshold * volatility_factor * momentum_factor * volume_factor
+            
+            # Límites de seguridad
+            min_threshold = config.get('min_activation_threshold', 0.008)  # 0.8%
+            max_threshold = config.get('max_activation_threshold', 0.025)  # 2.5%
+            
+            return max(min_threshold, min(max_threshold, dynamic_threshold))
+            
+        except Exception as e:
+            logger.error(f"Error calculating dynamic activation threshold: {e}")
+            return base_threshold
+    
+    def _calculate_optimized_trailing_distance(self, base_distance: float, atr_multiplier: float, 
+                                             market_data: Dict, profit_pct: float, config: Dict) -> float:
+        """Calcular distancia de trailing optimizada"""
+        try:
+            # Obtener métricas de mercado
+            volatility = market_data.get("volatility", 0.02)
+            momentum = market_data.get("momentum", 0.5)
+            trend_strength = market_data.get("trend_strength", 0.5)
+            volume_ratio = market_data.get("volume_ratio", 1.0)
+            
+            # Ajuste base por volatilidad (más espacio en alta volatilidad)
+            volatility_multiplier = config.get('volatility_multiplier', 1.5)
+            volatility_factor = 1 + (volatility - 0.02) * volatility_multiplier
+            
+            # Ajuste por momentum (menos espacio con momentum fuerte)
+            momentum_multiplier = config.get('momentum_multiplier', 0.8)
+            momentum_factor = 1 - abs(momentum - 0.5) * momentum_multiplier
+            
+            # Ajuste por fuerza de tendencia (menos espacio en tendencias fuertes)
+            trend_multiplier = config.get('trend_multiplier', 0.6)
+            trend_factor = 1 - (trend_strength - 0.5) * trend_multiplier
+            
+            # Ajuste por volumen (menos espacio con alto volumen)
+            volume_multiplier = config.get('volume_multiplier', 0.4)
+            volume_factor = 1 - (volume_ratio - 1.0) * volume_multiplier
+            
+            # Ajuste por nivel de ganancia (más conservador con más ganancia)
+            profit_adjustment = config.get('profit_adjustment', 0.5)
+            profit_factor = 1 - min(profit_pct, 0.1) * profit_adjustment
+            
+            # Calcular distancia final
+            optimized_distance = (base_distance * atr_multiplier * 
+                                volatility_factor * momentum_factor * 
+                                trend_factor * volume_factor * profit_factor)
+            
+            # Límites de seguridad
+            min_distance = config.get('min_trailing_distance', 0.003)  # 0.3%
+            max_distance = config.get('max_trailing_distance', 0.02)   # 2.0%
+            
+            return max(min_distance, min(max_distance, optimized_distance))
+            
+        except Exception as e:
+            logger.error(f"Error calculating optimized trailing distance: {e}")
+            return base_distance
     
     def _evaluate_dynamic_position_sizing(self, position: Dict, market_data: Dict):
         """Evaluar si se necesita ajuste dinámico del tamaño de posición"""

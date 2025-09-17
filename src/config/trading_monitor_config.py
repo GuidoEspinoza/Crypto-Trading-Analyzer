@@ -68,6 +68,7 @@ class PrecisionConfig:
     quantity_decimals: int = 4
     distance_decimals: int = 2
     pnl_decimals: int = 2
+    value_decimals: int = 2  # Para valores monetarios generales
     
     # Formatos de números
     price_format: str = "${:.4f}"
@@ -166,6 +167,9 @@ class APIConfig:
     # Cache
     price_cache_ttl: int = 30  # segundos
     enable_price_cache: bool = True
+    
+    # Display de errores
+    show_api_errors: bool = True
 
 @dataclass
 class MessagesConfig:

@@ -28,6 +28,8 @@ from src.database.database import db_manager
 
 # Configurar logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.CRITICAL)  # Solo errores críticos
+logger.propagate = False  # No propagar logs al logger raíz
 
 class AdjustmentReason(Enum):
     """Razones para ajustar TP/SL"""

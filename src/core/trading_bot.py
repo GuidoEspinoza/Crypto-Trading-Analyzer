@@ -41,9 +41,13 @@ from .position_adjuster import PositionAdjuster
 from ..database.database import db_manager
 from ..database.models import Strategy as DBStrategy
 
-# Configurar logging ANTES de la clase
+# Configurar logging ANTES de la clase - SILENCIADO para LiveTradingBot
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Silenciar el logger del TradingBot para evitar logs duplicados en LiveTradingBot
+logger.setLevel(logging.CRITICAL)  # Solo errores críticos
+logger.propagate = False  # No propagar logs al logger raíz
 
 @dataclass
 class BotStatus:
@@ -136,7 +140,7 @@ class TradingBot:
         self.max_daily_trades = config.get("trading_bot", {}).get("max_daily_trades", optimized_config.DEFAULT_MAX_DAILY_TRADES)
         self.max_concurrent_positions = config.get("trading_bot", {}).get("max_concurrent_positions", optimized_config.DEFAULT_MAX_CONCURRENT_POSITIONS)
         self.enable_trading = True  # Activar/desactivar ejecución de trades
-        self.profile = config.get("trading_bot", {}).get("profile", "balanced")  # Perfil de trading
+        self.profile = config.get("trading_bot", {}).get("profile", ConfigManager.get_active_profile())  # Perfil de trading
         
         # Configuración de timeframes profesional desde configuración centralizada
         self.primary_timeframe = config.get("timeframes", {}).get("primary", "15m")
@@ -318,11 +322,13 @@ class TradingBot:
         first_analysis_delay = self.config.get("trading_bot", {}).get("first_analysis_delay", 30)
         schedule.every(first_analysis_delay).seconds.do(self._run_first_analysis).tag('first_analysis')
         
-        self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
-        self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
-        self.logger.info(f"🧠 Active strategies: {', '.join(self.strategies.keys())}")
-        self.logger.info("🔍 Position monitoring started")
-        self.logger.info("🎯 TP/SL adjustment monitoring started")
+        # Emitir evento de inicio del bot
+        self._emit_bot_status_event('start', f"Trading Bot started - Analysis every {self.analysis_interval} minutes", {
+            'symbols': self.symbols,
+            'strategies': list(self.strategies.keys()),
+            'analysis_interval': self.analysis_interval,
+            'first_analysis_delay': first_analysis_delay
+        })
     
     def stop(self):
         """
@@ -425,14 +431,27 @@ class TradingBot:
         🔄 Ejecutar un ciclo completo de análisis con cache y procesamiento paralelo
         """
         try:
-            self.logger.info("🔄 Starting optimized analysis cycle...")
+            # Emitir evento de inicio de ciclo
+            self._emit_cycle_start_event({
+                'cycle_number': getattr(self, '_cycle_counter', 0) + 1,
+                'daily_trades': self.stats["daily_trades"],
+                'max_daily_trades': self.max_daily_trades
+            })
+            
+            # Incrementar contador de ciclos
+            if not hasattr(self, '_cycle_counter'):
+                self._cycle_counter = 0
+            self._cycle_counter += 1
             
             # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
             
             # Verificar si podemos hacer más trades hoy
             if self.stats["daily_trades"] >= self.max_daily_trades:
-                self.logger.info(f"⏸️ Daily trade limit reached ({self.max_daily_trades})")
+                self._emit_bot_status_event('limit_reached', f"Daily trade limit reached ({self.max_daily_trades})", {
+                    'daily_trades': self.stats["daily_trades"],
+                    'max_daily_trades': self.max_daily_trades
+                })
                 return
             
             # Generar clave de cache para este ciclo
@@ -441,25 +460,37 @@ class TradingBot:
             # Verificar cache
             cached_signals = self._get_from_cache(cache_key)
             if cached_signals is not None:
-                self.logger.info("⚡ Using cached analysis results")
+                self._emit_bot_status_event('cache_hit', "Using cached analysis results", {
+                    'signals_count': len(cached_signals)
+                })
                 all_signals = cached_signals
             else:
-                # Analizar en paralelo usando ThreadPoolExecutor
-                all_signals = self._analyze_symbols_parallel()
+                # Analizar secuencialmente para mejor claridad en logs
+                all_signals = self._analyze_symbols_sequential()
                 
                 # Almacenar en cache
                 self._store_in_cache(cache_key, all_signals)
+            
+            # Emitir eventos de señales generadas al final del ciclo (tanto del cache como nuevas)
+            for signal in all_signals:
+                self._emit_signal_event(signal)
             
             # Procesar señales con trading
             if all_signals:
                 self._process_signals(all_signals)
             else:
-                self.logger.info("⚪ No trading signals generated this cycle")
+                self._emit_bot_status_event('no_signals', "No trading signals generated this cycle", {
+                    'symbols_analyzed': len(self.symbols),
+                    'strategies_used': len(self.strategies)
+                })
             
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
             
-            self.logger.info("✅ Optimized analysis cycle completed")
+            self._emit_bot_status_event('cycle_completed', "Analysis cycle completed", {
+                'cycle_number': self._cycle_counter,
+                'signals_generated': len(all_signals) if all_signals else 0
+            })
             
         except Exception as e:
             self.logger.error(f"❌ Error in analysis cycle: {e}")
@@ -491,7 +522,7 @@ class TradingBot:
                     if signal and signal.signal_type != "HOLD":
                         all_signals.append(signal)
                         self.stats["signals_generated"] += 1
-                        self.logger.info(f"📊 Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%")
+                        # NO emitir evento aquí - se emitirá al final del ciclo
                 except Exception as e:
                     self.logger.error(f"❌ Error in parallel analysis: {e}")
         
@@ -623,8 +654,37 @@ class TradingBot:
             self.logger.info(f"📉 No signals above confidence threshold ({self.min_confidence_threshold}%)")
             return
         
-        # Ordenar por confianza (mayor primero)
-        high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
+        # Obtener posiciones activas para diversificación
+        active_positions = db_manager.get_active_positions(is_paper=True)
+        current_positions = len(active_positions)
+        
+        # Configuración de diversificación desde el perfil activo
+        config = self.config_manager.get_consolidated_config() if hasattr(self, 'config_manager') else {}
+        trading_config = config.get("trading_bot", {})
+        max_positions = trading_config.get("max_positions", 5)
+        diversification_threshold = max_positions * 0.6  # 60% del máximo
+        
+        # Ordenar señales con prioridad de diversificación
+        def signal_priority(signal):
+            base_score = signal.confidence_score
+            
+            # Priorizar compras si tenemos pocas posiciones (diversificación)
+            if signal.signal_type == "BUY" and current_positions < diversification_threshold:
+                # Boost de +10 puntos para compras cuando necesitamos diversificar
+                return base_score + 10
+            # Priorizar ventas si estamos cerca del límite de posiciones
+            elif signal.signal_type == "SELL" and current_positions >= max_positions * 0.8:
+                # Boost de +5 puntos para ventas cuando estamos cerca del límite
+                return base_score + 5
+            
+            return base_score
+        
+        # Ordenar por prioridad (mayor primero)
+        high_confidence_signals.sort(key=signal_priority, reverse=True)
+        
+        self.logger.info(f"📊 Portfolio diversification: {current_positions}/{max_positions} positions")
+        if current_positions < diversification_threshold:
+            self.logger.info("🎯 Prioritizing BUY signals for portfolio diversification")
         
         # Obtener valor actual del portfolio
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
@@ -1395,6 +1455,90 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error emitting analysis event: {e}")
     
+    def _emit_cycle_start_event(self, cycle_info: Dict):
+        """📢 Emitir evento de inicio de ciclo de análisis"""
+        try:
+            event = {
+                'type': 'cycle_start',
+                'timestamp': datetime.now(),
+                'symbols': self.symbols,
+                'strategies': list(self.strategies.keys()),
+                **cycle_info
+            }
+            
+            if self.trade_event_callback:
+                self.trade_event_callback(event)
+                
+            if not self.event_queue.full():
+                self.event_queue.put(event, block=False)
+                
+        except Exception as e:
+            pass  # Silenciar errores de eventos
+    
+    def _emit_signal_event(self, signal: TradingSignal):
+        """📢 Emitir evento de señal generada"""
+        try:
+            event = {
+                'type': 'signal_generated',
+                'timestamp': datetime.now(),
+                'symbol': signal.symbol,
+                'signal_type': signal.signal_type,
+                'strategy': signal.strategy_name,
+                'confidence': signal.confidence_score,
+                'price': signal.price,
+                'indicators': getattr(signal, 'indicators', {}),
+                'reasoning': getattr(signal, 'reasoning', '')
+            }
+            
+            if self.trade_event_callback:
+                self.trade_event_callback(event)
+                
+            if not self.event_queue.full():
+                self.event_queue.put(event, block=False)
+                
+        except Exception as e:
+            pass  # Silenciar errores de eventos
+    
+    def _emit_price_event(self, symbol: str, price: float, indicators: Dict = None):
+        """📢 Emitir evento de precio e indicadores"""
+        try:
+            event = {
+                'type': 'price_update',
+                'timestamp': datetime.now(),
+                'symbol': symbol,
+                'price': price,
+                'indicators': indicators or {}
+            }
+            
+            if self.trade_event_callback:
+                self.trade_event_callback(event)
+                
+            if not self.event_queue.full():
+                self.event_queue.put(event, block=False)
+                
+        except Exception as e:
+            pass  # Silenciar errores de eventos
+    
+    def _emit_bot_status_event(self, status_type: str, message: str, data: Dict = None):
+        """📢 Emitir evento de estado del bot"""
+        try:
+            event = {
+                'type': 'bot_status',
+                'timestamp': datetime.now(),
+                'status_type': status_type,  # 'start', 'stop', 'config', 'error', etc.
+                'message': message,
+                'data': data or {}
+            }
+            
+            if self.trade_event_callback:
+                self.trade_event_callback(event)
+                
+            if not self.event_queue.full():
+                self.event_queue.put(event, block=False)
+                
+        except Exception as e:
+            pass  # Silenciar errores de eventos
+
     def get_events(self) -> List[Dict]:
         """📥 Obtener eventos pendientes para LiveTradingBot"""
         events = []
@@ -1404,6 +1548,6 @@ class TradingBot:
         except queue.Empty:
             pass
         except Exception as e:
-            self.logger.error(f"❌ Error getting events: {e}")
+            pass  # Silenciar errores de eventos
         
         return events

@@ -175,7 +175,7 @@ def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
                 'max_daily_risk': 0.05
             },
             'paper_trader': {
-                'max_position_size': 0.8,  # 80% del balance
+                'max_position_size': 0.08,  # 8% del balance
                 'min_trade_value': 10.0
             },
             # Alias para compatibilidad con tests

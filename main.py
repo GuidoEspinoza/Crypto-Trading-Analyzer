@@ -584,8 +584,9 @@ async def reset_paper_trading():
     🔄 Resetear el portfolio de paper trading a los valores por defecto
     """
     try:
-        paper_trader = PaperTrader()
-        result = paper_trader.reset_portfolio()
+        # Usar la instancia del trading bot para acceder al paper_trader correcto
+        bot = get_trading_bot()
+        result = bot.paper_trader.reset_portfolio()
         
         if result["success"]:
             return {

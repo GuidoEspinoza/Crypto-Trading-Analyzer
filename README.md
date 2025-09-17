@@ -162,6 +162,85 @@ MAX_RISK_PER_TRADE=2.0
 MIN_CONFIDENCE=65.0
 ```
 
+### ⚙️ Parámetros de Indicadores Técnicos
+
+El sistema incluye **parámetros configurables** para todos los indicadores técnicos, permitiendo optimización personalizada:
+
+#### 📊 RSI (Relative Strength Index)
+```python
+# Configuración en src/config/config.py
+'advanced_indicators.rsi_period': 14,        # Período de cálculo (default: 14)
+'advanced_indicators.rsi_oversold': 30,      # Umbral de sobreventa (default: 30)
+'advanced_indicators.rsi_overbought': 70,    # Umbral de sobrecompra (default: 70)
+```
+
+#### 📈 Bollinger Bands
+```python
+# Configuración en src/config/config.py
+'advanced_indicators.bollinger_period': 20,     # Período de media móvil (default: 20)
+'advanced_indicators.bollinger_std_dev': 2.0,   # Desviaciones estándar (default: 2.0)
+'advanced_indicators.bb_lower_threshold': 20,   # Umbral inferior % (default: 20)
+'advanced_indicators.bb_upper_threshold': 80,   # Umbral superior % (default: 80)
+```
+
+#### 🎯 Stochastic Oscillator
+```python
+# Configuración en src/config/config.py
+'advanced_indicators.stoch_k_period': 14,       # Período %K (default: 14)
+'advanced_indicators.stoch_d_period': 3,        # Período %D (default: 3)
+'advanced_indicators.stoch_oversold': 20,       # Umbral de sobreventa (default: 20)
+'advanced_indicators.stoch_overbought': 80,     # Umbral de sobrecompra (default: 80)
+```
+
+#### 📊 MACD (Moving Average Convergence Divergence)
+```python
+# Configuración en src/config/config.py
+'advanced_indicators.macd_periods': [12, 26, 9],  # [Fast EMA, Slow EMA, Signal] (default: [12, 26, 9])
+
+# También disponible en perfiles de trading:
+'macd_fast': 12,     # Período EMA rápida (default: 12)
+'macd_slow': 26,     # Período EMA lenta (default: 26)
+'macd_signal': 9,    # Período línea de señal (default: 9)
+'macd_periods': [12, 26, 9]  # Configuración completa
+```
+
+#### 🚀 Características del Sistema de Configuración
+
+- **🔄 Cache Inteligente**: El sistema de cache diferencia automáticamente entre configuraciones diferentes
+- **⚡ Rendimiento Optimizado**: Cache con mejoras de velocidad de hasta 86x
+- **🎯 Personalización Total**: Cada indicador puede ajustarse independientemente
+- **🛡️ Validación Automática**: Los parámetros se validan automáticamente
+- **📊 Compatibilidad Completa**: Funciona con todos los perfiles de trading
+
+#### 💡 Ejemplo de Uso Personalizado
+
+```python
+# Configuración agresiva para mercados volátiles
+config = {
+    'advanced_indicators.rsi_oversold': 25,      # Más agresivo
+    'advanced_indicators.rsi_overbought': 75,    # Más agresivo
+    'advanced_indicators.bb_lower_threshold': 15, # Más sensible
+    'advanced_indicators.bb_upper_threshold': 85, # Más sensible
+    'advanced_indicators.macd_periods': [8, 17, 5], # MACD más rápido y sensible
+}
+
+# Configuración conservadora para mercados estables
+config = {
+    'advanced_indicators.rsi_oversold': 35,      # Más conservador
+    'advanced_indicators.rsi_overbought': 65,    # Más conservador
+    'advanced_indicators.bb_lower_threshold': 25, # Menos sensible
+    'advanced_indicators.bb_upper_threshold': 75, # Menos sensible
+    'advanced_indicators.macd_periods': [15, 30, 12], # MACD más lento y estable
+}
+
+# Configuración para scalping (operaciones rápidas)
+config = {
+    'advanced_indicators.macd_periods': [5, 13, 3],  # MACD ultra rápido
+    'advanced_indicators.rsi_period': 7,             # RSI más sensible
+    'advanced_indicators.bb_period': 10,             # Bollinger Bands más reactivo
+}
+```
+
 ## 🚀 Arquitectura del Proyecto
 
 ### 🏗️ Estructura Modular

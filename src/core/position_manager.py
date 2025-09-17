@@ -424,11 +424,140 @@ class PositionManager:
                 if position.stop_loss is not None and current_price >= position.stop_loss:
                     return "STOP_LOSS"
             
+            # Verificar salidas basadas en tiempo
+            time_exit_reason = self._check_time_based_exit(position)
+            if time_exit_reason:
+                return time_exit_reason
+            
             return None
             
         except Exception as e:
             logger.error(f"❌ Error checking exit conditions for position {position.trade_id}: {e}")
             return None
+    
+    def _check_time_based_exit(self, position: PositionInfo) -> Optional[str]:
+        """⏰ Verificar si una posición debe cerrarse por tiempo
+        
+        Args:
+            position: Información de la posición
+            
+        Returns:
+            Razón de cierre temporal o None
+        """
+        try:
+            # Obtener configuración de salidas temporales
+            from src.config.config_manager import ConfigManager
+            config = ConfigManager.get_consolidated_config()
+            time_config = config.get("advanced_optimizations", {}).get("time_based_exits", {})
+            
+            # Verificar si las salidas temporales están habilitadas
+            if not time_config.get("enabled", False):
+                return None
+            
+            # Obtener información del trade desde la base de datos
+            with db_manager.get_db_session() as session:
+                trade = session.query(Trade).filter(
+                    Trade.id == position.trade_id,
+                    Trade.status == "OPEN"
+                ).first()
+                
+                if not trade:
+                    return None
+                
+                # Calcular tiempo transcurrido
+                current_time = datetime.now()
+                time_elapsed = current_time - trade.entry_time
+                time_elapsed_hours = time_elapsed.total_seconds() / 3600
+                
+                # Obtener parámetros temporales del trade (si están disponibles)
+                # Estos deberían estar en el campo notes o en una tabla separada
+                expected_duration = getattr(trade, 'expected_duration_hours', None)
+                max_hold_time = getattr(trade, 'max_hold_time_hours', None)
+                
+                # Si no hay parámetros específicos, usar valores por defecto basados en timeframe
+                if expected_duration is None or max_hold_time is None:
+                    timeframe = getattr(trade, 'timeframe', '1h')
+                    expected_duration, max_hold_time = self._get_default_time_parameters(timeframe)
+                
+                # Calcular P&L actual
+                current_pnl_percentage = position.unrealized_pnl_percentage
+                
+                # Verificar condiciones de salida temporal
+                
+                # 1. Tiempo máximo alcanzado
+                if time_elapsed_hours >= max_hold_time:
+                    return "MAX_TIME_REACHED"
+                
+                # 2. Tiempo esperado alcanzado con ganancia mínima
+                profit_threshold = time_config.get("profit_threshold_for_early_exit", 0.03)  # 3%
+                if (time_elapsed_hours >= expected_duration and 
+                    current_pnl_percentage >= profit_threshold):
+                    return "TIME_TARGET_WITH_PROFIT"
+                
+                # 3. Tiempo esperado alcanzado con pérdida significativa
+                loss_threshold = time_config.get("loss_threshold_for_early_exit", -0.015)  # -1.5%
+                if (time_elapsed_hours >= expected_duration * 1.2 and  # 20% más del tiempo esperado
+                    current_pnl_percentage <= loss_threshold):
+                    return "TIME_TARGET_WITH_LOSS"
+                
+                # 4. Decaimiento temporal - reducir tolerancia con el tiempo
+                time_decay_factor = time_config.get("time_decay_factor", 0.1)
+                time_progress = min(time_elapsed_hours / max_hold_time, 1.0)
+                
+                # Ajustar umbrales según el progreso temporal
+                adjusted_loss_threshold = loss_threshold * (1 - time_decay_factor * time_progress)
+                
+                if current_pnl_percentage <= adjusted_loss_threshold:
+                    return "TIME_DECAY_LOSS"
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error checking time-based exit for position {position.trade_id}: {e}")
+            return None
+    
+    def _get_default_time_parameters(self, timeframe: str) -> tuple:
+        """⏰ Obtener parámetros temporales optimizados para trading activo
+        
+        Args:
+            timeframe: Timeframe del análisis
+            
+        Returns:
+            tuple: (expected_duration_hours, max_hold_time_hours)
+        """
+        # Configuración base optimizada para trading activo
+        base_timeframe_map = {
+            "1m": (0.3, 1.5),    # Muy rápido
+            "3m": (0.8, 3.0),    # Rápido
+            "5m": (1.5, 6.0),    # Optimizado para scalping
+            "15m": (3.0, 9.0),   # Trading activo
+            "30m": (6.0, 18.0),  # Swing corto
+            "1h": (10.0, 36.0),  # Swing medio
+            "2h": (18.0, 54.0),  # Swing largo
+            "4h": (36.0, 120.0), # Posicional corto
+            "6h": (54.0, 180.0), # Posicional medio
+            "8h": (72.0, 240.0), # Posicional largo
+            "12h": (120.0, 360.0), # Holding corto
+            "1d": (180.0, 540.0),  # Holding medio
+            "3d": (360.0, 1080.0), # Holding largo
+            "1w": (720.0, 1800.0)  # Holding muy largo
+        }
+        
+        # Obtener configuración de salidas temporales
+        try:
+            time_config = self.config_manager.get_module_config('position_manager', 'AGRESIVO')
+            time_exits = time_config.get('time_based_exits', {})
+            timeframe_multipliers = time_exits.get('timeframe_multipliers', {})
+            
+            # Aplicar multiplicador específico del timeframe si existe
+            base_expected, base_max = base_timeframe_map.get(timeframe, (18.0, 54.0))
+            multiplier = timeframe_multipliers.get(timeframe, 1.0)
+            
+            return (base_expected * multiplier, base_max * multiplier)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error getting timeframe multipliers: {e}")
+            return base_timeframe_map.get(timeframe, (18.0, 54.0))  # Valores por defecto optimizados
     
     def close_position(self, trade_id: int, current_price: float, reason: str) -> bool:
         """🎯 Cerrar posición específica

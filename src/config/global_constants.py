@@ -39,12 +39,7 @@ BASE_CURRENCY: str = "USDT"
 
 # Selección basada en alta liquidez, volatilidad y volumen de trading
 SYMBOLS: List[str] = [
-    # Pares principales (máxima liquidez)
-    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT",
-    # Altcoins de alta capitalización y volumen
-    "ADAUSDT", "XRPUSDT", "LINKUSDT", "DOGEUSDT", "TRXUSDT",
-    # Tokens con alta volatilidad y buen volumen
-    "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "SUIUSDT"
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT", "LINKUSDT"
 ]
 
 # Símbolos para testing (subconjunto de los principales)
@@ -83,6 +78,15 @@ RESET_STRATEGIES: Dict[str, Dict[str, int]] = {
 
 # Estrategia de reset activa (cambiar según perfil de trading)
 ACTIVE_RESET_STRATEGY: str = "AGGRESSIVE"  # Recomendado para máxima rentabilidad
+
+# ============================================================================
+# 🎯 PERFIL ACTIVO DEL SISTEMA
+# ============================================================================
+
+# Perfil de trading activo del sistema
+# Opciones disponibles: RAPIDO, AGRESIVO, OPTIMO, CONSERVADOR
+# Este valor se usa en ConfigManager para determinar la configuración activa
+ACTIVE_TRADING_PROFILE: str = "OPTIMO"  # Perfil balanceado recomendado
 
 # ============================================================================
 # 🎯 LÍMITES Y UMBRALES GLOBALES
@@ -204,6 +208,9 @@ __all__ = [
     "DAILY_RESET_MINUTE",
     "RESET_STRATEGIES",
     "ACTIVE_RESET_STRATEGY",
+    
+    # Perfil activo
+    "ACTIVE_TRADING_PROFILE",
     
     # Límites globales
     "MAX_GLOBAL_POSITIONS",
