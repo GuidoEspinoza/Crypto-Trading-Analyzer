@@ -555,7 +555,7 @@ def check_active_positions_detailed(config: TradingMonitorConfig):
                 current_price_str = f"{current_price:.{config.precision.price_decimals}f}"
                 pnl_str = f"{pnl:.{config.precision.value_decimals}f}"
                 pnl_pct_str = f"{pnl_pct:.{config.precision.percentage_decimals}f}%"
-                quantity_str = f"{trade.quantity:.{config.precision.size_decimals}f}"
+                quantity_str = f"{trade.quantity:.{config.precision.quantity_decimals}f}"
                 
                 print(f"\n   {target_emoji} Trade #{trade.id} - {trade.symbol} ({trade.trade_type})")
                 print(f"      Strategy: {trade.strategy_name}")

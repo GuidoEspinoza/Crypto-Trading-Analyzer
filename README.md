@@ -33,6 +33,10 @@
 - **🛡️ Seguridad Total**: Protege tu capital con gestión de riesgo avanzada
 - **📊 Análisis Completo**: Combina 15+ indicadores técnicos
 - **🎮 Fácil de Usar**: Interfaz web intuitiva y API REST
+- **📈 Dashboard Profesional**: Centro de control visual en tiempo real
+- **🎯 Métricas Avanzadas**: ROI, Sharpe Ratio, Win Rate, Drawdown y más
+- **🔔 Alertas Inteligentes**: Notificaciones automáticas de rendimiento
+- **🌙 Modo Oscuro**: Interfaz moderna optimizada para trading
 
 ---
 
@@ -103,6 +107,24 @@
 - Envía alertas de cambios importantes
 
 **¿Cómo funciona?** Como un sistema de seguridad que vigila tus inversiones 24/7 y te alerta de cualquier cambio importante.
+
+### 📊 **Real-Time Dashboard** - El Centro de Control Visual
+**¿Qué hace?** Proporciona una interfaz web moderna y elegante para monitorear todo el sistema en tiempo real.
+
+**Funciones principales:**
+- **Resumen del Portfolio**: Visualiza el estado completo de tu cartera
+- **Métricas en Tiempo Real**: ROI, Sharpe Ratio, Win Rate, Drawdown máximo
+- **Gráficos Interactivos**: Curva de equity, distribución de señales, métricas avanzadas
+- **Alertas Inteligentes**: Notificaciones automáticas sobre rendimiento y riesgos
+- **Modo Oscuro**: Interfaz moderna optimizada para trading profesional
+
+**Características técnicas:**
+- **Puerto dedicado**: Corre en http://localhost:8050
+- **Actualización automática**: Datos en tiempo real cada 30 segundos
+- **Responsive Design**: Funciona en desktop, tablet y móvil
+- **Visualizaciones avanzadas**: Gráficos de Plotly con interactividad completa
+
+**¿Cómo funciona?** Como un centro de comando profesional que te permite supervisar todas las operaciones, métricas y rendimiento desde una sola pantalla elegante y fácil de usar.
 
 ### ✅ **Market Validator** - El Verificador de Condiciones
 **¿Qué hace?** Verifica que las condiciones del mercado sean adecuadas para operar.
@@ -318,12 +340,16 @@ python3 main.py
 
 # En otra terminal, iniciar el bot
 python3 src/tools/live_trading_bot.py
+
+# En una tercera terminal, iniciar el dashboard
+python3 src/dashboard/real_time_dashboard.py
 ```
 
-### 4️⃣ **Acceder al Panel**
-- Abrir navegador en: http://localhost:8000/docs
-- Ver estadísticas en tiempo real
-- Monitorear operaciones
+### 4️⃣ **Acceder a las Interfaces**
+- **Dashboard Principal**: http://localhost:8050 (Centro de control visual)
+- **API Documentación**: http://localhost:8000/docs (Endpoints técnicos)
+- **Monitoreo en tiempo real**: Métricas actualizadas cada 30 segundos
+- **Alertas automáticas**: Notificaciones de rendimiento y riesgos
 
 ### 5️⃣ **Monitorear Resultados**
 ```bash
@@ -381,6 +407,30 @@ print(f"Riesgo: {assessment.risk_level}")
 print(f"Tamaño recomendado: ${assessment.position_sizing.recommended_size}")
 print(f"Stop loss: ${assessment.dynamic_stop_loss.price}")
 ```
+
+### 📊 **Dashboard en Tiempo Real - Uso Completo**
+```bash
+# Iniciar el dashboard (puerto 8050)
+python3 src/dashboard/real_time_dashboard.py
+
+# El dashboard se actualiza automáticamente cada 30 segundos
+# Incluye:
+# - Resumen completo del portfolio
+# - Métricas de rendimiento en tiempo real
+# - Gráficos interactivos de equity y distribución
+# - Alertas automáticas de rendimiento
+# - Modo oscuro profesional
+```
+
+**Características del Dashboard:**
+- **📈 Curva de Equity**: Visualiza el crecimiento de tu capital en tiempo real
+- **🎯 Métricas Clave**: ROI, Sharpe Ratio, Win Rate, Drawdown máximo
+- **📊 Distribución de Señales**: Análisis visual de tipos de operaciones
+- **🔔 Sistema de Alertas**: Notificaciones automáticas sobre:
+  - Win Rate muy bajo (< 30%)
+  - Sharpe Ratio negativo
+  - Drawdown excesivo (> 15%)
+  - Rendimiento excepcional (> 20% ROI)
 
 ---
 
@@ -470,9 +520,16 @@ python3 tests/test_advanced_indicators.py
 
 ---
 
-## 🌐 API REST - Control Total
+## 🌐 Interfaces del Sistema
 
-### 📡 **Endpoints Principales**
+### 📊 **Dashboard Principal (Puerto 8050)**
+- **URL**: http://localhost:8050
+- **Función**: Centro de control visual en tiempo real
+- **Características**: Métricas, gráficos, alertas automáticas
+- **Actualización**: Cada 30 segundos automáticamente
+
+### 📡 **API REST (Puerto 8000)**
+**Endpoints Principales:**
 - **GET /health** - Estado del sistema
 - **GET /positions** - Posiciones activas
 - **POST /analyze** - Análisis de un símbolo específico
@@ -480,10 +537,11 @@ python3 tests/test_advanced_indicators.py
 - **GET /config** - Configuración actual
 - **POST /backtest** - Ejecutar backtesting
 
-### 🔗 **Acceso a la Documentación**
+### 🔗 **Acceso a las Interfaces**
 Una vez iniciado el sistema, accede a:
-- **Documentación interactiva**: http://localhost:8000/docs
-- **Esquema de API**: http://localhost:8000/redoc
+- **Dashboard Principal**: http://localhost:8050 (Recomendado para uso diario)
+- **Documentación API**: http://localhost:8000/docs (Para desarrolladores)
+- **Esquema de API**: http://localhost:8000/redoc (Referencia técnica)
 
 ---
 

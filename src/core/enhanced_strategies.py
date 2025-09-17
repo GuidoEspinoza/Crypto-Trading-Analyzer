@@ -1481,8 +1481,10 @@ class EnsembleStrategy(EnhancedTradingStrategy):
         self.strategy_weights = strategies_config.get('ensemble_weights', default_weights)
         
         # === CONFIGURACIÓN DE CONSENSO DESDE PERFIL ===
-        self.min_consensus_threshold = trading_config.get('min_confidence', 70.0) / 100.0  # Usar confianza del perfil
-        self.confidence_boost_factor = strategies_config.get('confidence_boost_factor', 1.2)
+        # Corregir configuración problemática: usar valores específicos para ensemble
+        ensemble_consensus = strategies_config.get('ensemble_min_consensus_threshold', 0.55)
+        self.min_consensus_threshold = ensemble_consensus if ensemble_consensus <= 1.0 else ensemble_consensus / 100.0
+        self.confidence_boost_factor = strategies_config.get('ensemble_confidence_boost_factor', 1.25)
         
         # 📊 Log de configuración cargada
         logger.info(f"🎯 Ensemble Strategy configurada desde perfil {ConfigManager.get_active_profile()}:")
@@ -1610,6 +1612,25 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             total_weight = 0.0
             notes = []
             confluence_score = 0
+            
+            # VALIDACIÓN CRÍTICA: Verificar si las estrategias principales dan señales activas
+            main_strategies_active = 0
+            for strategy_name, signal in strategy_signals.items():
+                if signal and signal.signal_type != "HOLD":
+                    main_strategies_active += 1
+            
+            # Si ninguna estrategia principal da señal activa, forzar HOLD
+            if main_strategies_active == 0:
+                return {
+                    "signal_type": "HOLD",
+                    "confidence": 45.0,
+                    "consensus": 0.0,
+                    "weighted_score": 0.0,
+                    "buy_score": 0.0,
+                    "sell_score": 0.0,
+                    "confluence_score": 0,
+                    "notes": ["All main strategies suggest HOLD - Ensemble forced HOLD"]
+                }
             
             # Procesar señales de estrategias principales
             for strategy_name, signal in strategy_signals.items():

@@ -172,7 +172,9 @@ def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
             },
             'risk_manager': {
                 'max_risk_per_trade': 0.02,
-                'max_daily_risk': 0.05
+                'max_daily_risk': 0.05,
+                'max_positions': 5,
+                'max_daily_trades': 10
             },
             'paper_trader': {
                 'max_position_size': 0.08,  # 8% del balance
@@ -395,19 +397,21 @@ class TradingProfiles:
             "atr_default": 2.0,
             "atr_volatile": 2.5,
             "atr_sideways": 1.5,
-            "trailing_stop_activation": 0.02,
-            "breakeven_threshold": 0.01,
-            "tp_min_percentage": 0.01,
-            "tp_max_percentage": 0.05,
-            "sl_min_percentage": 0.01,
-            "sl_max_percentage": 0.03,
-            "tp_increment_percentage": 0.005,
+            "trailing_stop_activation": 2.0,
+            "breakeven_threshold": 1.0,
+            "tp_min_percentage": 1.0,
+            "tp_max_percentage": 5.0,
+            "sl_min_percentage": 1.0,
+            "sl_max_percentage": 3.0,
+            "tp_increment_percentage": 0.5,
             "max_tp_adjustments": 3,
             "tp_confidence_threshold": 75.0,
-            "max_daily_loss_percent": 0.05,
+            "max_daily_loss_percent": 5.0,
             "min_confidence_threshold": 65.0,
             "position_size_multiplier": 1.0,
             "volatility_adjustment_factor": 1.0,
+            "max_positions": 5,
+            "max_daily_trades": 10,
             
             # Strategy defaults
             "default_min_confidence": 55.0,
