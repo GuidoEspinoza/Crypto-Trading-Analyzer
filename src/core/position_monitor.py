@@ -14,30 +14,56 @@ import time
 import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
+from collections import defaultdict
+import weakref
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Importaciones locales
-from src.config.config import TradingBotConfig, RiskManagerConfig, TradingProfiles
-from database.database import db_manager
-from database.models import Trade
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {}
+from ..database.database import db_manager
+from ..database.models import Trade
 from .enhanced_strategies import TradingSignal
 from .paper_trader import PaperTrader, TradeResult
 from .position_manager import PositionManager, PositionInfo
 
 # Configurar logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.CRITICAL)  # Solo errores críticos
+logger.propagate = False  # No propagar logs al logger raíz
+
+@dataclass
+class CacheEntry:
+    """📦 Entrada de cache con TTL"""
+    value: float
+    timestamp: datetime
+    ttl_seconds: int = 30
+    
+    def is_expired(self) -> bool:
+        """Verificar si la entrada ha expirado"""
+        return (datetime.now() - self.timestamp).total_seconds() > self.ttl_seconds
 
 @dataclass
 class PositionStatus:
-    """📊 Estado actual de una posición"""
+    """📊 Estado de una posición"""
     trade_id: int
     symbol: str
     entry_price: float
     current_price: float
     quantity: float
-    stop_loss: Optional[float]  # Puede ser None
-    take_profit: Optional[float]  # Puede ser None
+    stop_loss: Optional[float]
+    take_profit: Optional[float]
     trailing_stop: Optional[float]
     unrealized_pnl: float
     unrealized_pnl_percentage: float
@@ -66,40 +92,53 @@ class PositionMonitor:
         """
         self.price_fetcher = price_fetcher
         self.paper_trader = paper_trader
-        self.config = TradingBotConfig()
-        self.risk_config = RiskManagerConfig()
         
         # Inicializar PositionManager
         self.position_manager = PositionManager(paper_trader)
         
-        # Control de threading
+        # Control de threading mejorado
         self.monitoring_active = False
         self.monitor_thread = None
         self.stop_event = threading.Event()
+        self._monitor_lock = threading.Lock()  # Lock para operaciones de monitoreo
         
-        # Cache de precios para optimización
-        self.price_cache = {}
-        self.last_price_update = {}
+        # Cache inteligente de precios con TTL
+        self.price_cache: Dict[str, CacheEntry] = {}
+        self._cache_lock = threading.RLock()  # Lock para acceso seguro al cache
         
-        # Control de trades ya procesados para evitar intentos repetitivos
+        # Pool de threads para procesamiento paralelo
+        self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="PositionMonitor")
+        
+        # Control de trades procesados con optimización de memoria
         self.processed_trades = set()  # Set de trade_ids ya procesados para cierre
-        self.failed_close_attempts = {}  # Dict para contar intentos fallidos por trade_id
-        profile = TradingProfiles.get_current_profile()
-        self.max_close_attempts = profile.get('max_close_attempts', 3)  # Máximo número de intentos antes de marcar como procesado
+        self.failed_close_attempts = defaultdict(int)  # Dict para contar intentos fallidos por trade_id
+        # Obtener configuración desde el perfil de trading
+        from ..config.config import PaperTraderConfig
+        self.max_close_attempts = PaperTraderConfig.get_max_close_attempts()  # Máximo número de intentos antes de marcar como procesado
         
-        # Configuración de monitoreo desde TradingBotConfig
-        self.monitor_interval = self.config.get_live_update_interval()  # segundos entre checks
-        self.price_cache_duration = profile.get('price_cache_duration', 30)  # segundos de validez del cache
+        # Configuración de monitoreo optimizada
+        self.monitor_interval = config.get("trading_bot", {}).get("live_update_interval", 30)  # segundos entre checks (default 30)
+        self.price_cache_duration = PaperTraderConfig.get_price_cache_duration()  # segundos de validez del cache
+        self.cache_cleanup_interval = 300  # 5 minutos
+        self._last_cache_cleanup = datetime.now()
+        self.log_interval = PaperTraderConfig.get_position_log_interval()  # segundos entre logs de estado
+        self.idle_sleep_multiplier = PaperTraderConfig.get_idle_sleep_multiplier()  # multiplicador para sleep cuando no hay posiciones
         
-        # Inicializar estadísticas del monitor
+        # Estadísticas thread-safe del monitor
         self.stats = {
             "tp_executed": 0,
             "sl_executed": 0,
             "positions_monitored": 0,
-            "monitoring_cycles": 0
+            "monitoring_cycles": 0,
+            "cache_hits": 0,
+            "cache_misses": 0
         }
+        self._stats_lock = threading.Lock()
         
-        logger.info("📊 Position Monitor initialized with PositionManager")
+        # Registro de callbacks para cleanup
+        self._cleanup_callbacks: List[Callable] = []
+        
+        logger.info("📊 Position Monitor initialized with enhanced threading and caching")
     
     def _cleanup_processed_trades(self):
         """🧹 Limpiar trades procesados que ya no están en posiciones activas"""
@@ -146,7 +185,7 @@ class PositionMonitor:
         logger.info("🚀 Position monitoring started")
     
     def stop_monitoring(self):
-        """🛑 Detener monitoreo de posiciones"""
+        """🛑 Detener monitoreo de posiciones con cleanup completo"""
         if not self.monitoring_active:
             return
         
@@ -154,26 +193,40 @@ class PositionMonitor:
         self.stop_event.set()
         
         if self.monitor_thread and self.monitor_thread.is_alive():
-            profile = TradingProfiles.get_current_profile()
-            from src.config.config import TradingBotConfig
-            timeout = TradingBotConfig.get_thread_join_timeout()
+            timeout = config.get("trading_bot", {}).get("thread_join_timeout", 30)
             self.monitor_thread.join(timeout=timeout)
         
-        logger.info("🛑 Position monitoring stopped")
+        # Cleanup del thread pool
+        try:
+            self._thread_pool.shutdown(wait=True, timeout=10)
+        except Exception as e:
+            logger.warning(f"⚠️ Error shutting down thread pool: {e}")
+        
+        # Ejecutar callbacks de cleanup
+        for callback in self._cleanup_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                logger.warning(f"⚠️ Error in cleanup callback: {e}")
+        
+        # Limpiar cache
+        with self._cache_lock:
+            self.price_cache.clear()
+        
+        logger.info("🛑 Position monitoring stopped with complete cleanup")
     
     def _monitoring_loop(self):
         """🔄 Loop principal de monitoreo"""
         logger.info("📊 Starting position monitoring loop")
         
         cleanup_counter = 0
-        profile = TradingProfiles.get_current_profile()
-        from src.config.config import TradingBotConfig
-        cleanup_interval = TradingBotConfig.get_cleanup_interval()  # Limpiar cada N ciclos
+        cleanup_interval = config.get("trading_bot", {}).get("cleanup_interval", 100)  # Limpiar cada N ciclos
         
         while self.monitoring_active and not self.stop_event.is_set():
             try:
-                # Incrementar contador de ciclos
-                self.stats["monitoring_cycles"] += 1
+                # Incrementar contador de ciclos thread-safe
+                with self._stats_lock:
+                    self.stats["monitoring_cycles"] += 1
                 cleanup_counter += 1
                 
                 # Limpiar trades procesados periódicamente
@@ -186,7 +239,7 @@ class PositionMonitor:
                 
                 if not active_positions:
                     # No hay posiciones, esperar más tiempo
-                    time.sleep(self.monitor_interval * 2)
+                    time.sleep(self.monitor_interval * self.idle_sleep_multiplier)
                     continue
                 
                 logger.debug(f"📊 Monitoring {len(active_positions)} active positions")
@@ -233,6 +286,50 @@ class PositionMonitor:
                 time.sleep(self.monitor_interval)
         
         logger.info("📊 Position monitoring loop ended")
+    
+    def _cleanup_expired_cache(self):
+        """🧹 Limpiar entradas expiradas del cache"""
+        now = datetime.now()
+        
+        # Solo hacer cleanup cada cierto intervalo
+        if (now - self._last_cache_cleanup).total_seconds() < self.cache_cleanup_interval:
+            return
+        
+        with self._cache_lock:
+            expired_keys = [
+                symbol for symbol, entry in self.price_cache.items()
+                if entry.is_expired()
+            ]
+            
+            for key in expired_keys:
+                del self.price_cache[key]
+            
+            if expired_keys:
+                logger.debug(f"🧹 Cleaned {len(expired_keys)} expired cache entries")
+        
+        self._last_cache_cleanup = now
+    
+    def add_cleanup_callback(self, callback: Callable):
+        """➕ Agregar callback para cleanup"""
+        self._cleanup_callbacks.append(callback)
+    
+    def get_cache_info(self) -> Dict:
+        """📊 Obtener información del cache"""
+        with self._cache_lock:
+            cache_info = {
+                "size": len(self.price_cache),
+                "entries": {
+                    symbol: {
+                        "value": entry.value,
+                        "timestamp": entry.timestamp.isoformat(),
+                        "ttl_seconds": entry.ttl_seconds,
+                        "expired": entry.is_expired()
+                    }
+                    for symbol, entry in self.price_cache.items()
+                }
+            }
+        
+        return cache_info
     
     def _get_open_positions(self) -> List[Dict]:
         """📊 Obtener posiciones abiertas de la base de datos"""
@@ -309,11 +406,12 @@ class PositionMonitor:
                 if trade_id in self.failed_close_attempts:
                     del self.failed_close_attempts[trade_id]
                 
-                # Actualizar estadísticas del monitor
-                if close_reason == "TAKE_PROFIT":
-                    self.stats["tp_executed"] += 1
-                elif close_reason in ["STOP_LOSS", "TRAILING_STOP"]:
-                    self.stats["sl_executed"] += 1
+                # Actualizar estadísticas del monitor thread-safe
+                with self._stats_lock:
+                    if close_reason == "TAKE_PROFIT":
+                        self.stats["tp_executed"] += 1
+                    elif close_reason in ["STOP_LOSS", "TRAILING_STOP"]:
+                        self.stats["sl_executed"] += 1
             else:
                 # Incrementar contador de intentos fallidos
                 if trade_id not in self.failed_close_attempts:
@@ -325,9 +423,9 @@ class PositionMonitor:
                     f"(attempt {self.failed_close_attempts[trade_id]}/{self.max_close_attempts})"
                 )
         else:
-            # Log de estado (solo cada minuto para evitar spam)
+            # Log de estado (configurable para evitar spam)
             if trade_id not in getattr(self, '_last_log_time', {}) or \
-               time.time() - getattr(self, '_last_log_time', {}).get(trade_id, 0) > 60:
+               time.time() - getattr(self, '_last_log_time', {}).get(trade_id, 0) > self.log_interval:
                 
                 if not hasattr(self, '_last_log_time'):
                     self._last_log_time = {}
@@ -348,20 +446,39 @@ class PositionMonitor:
                 )
     
     def _get_current_price(self, symbol: str) -> Optional[float]:
-        """💰 Obtener precio actual con cache"""
-        now = time.time()
+        """💰 Obtener precio actual con cache inteligente y TTL"""
+        now = datetime.now()
         
-        # Verificar cache
-        if symbol in self.price_cache and symbol in self.last_price_update:
-            if now - self.last_price_update[symbol] < self.price_cache_duration:
-                return self.price_cache[symbol]
+        # Verificar cache con lock thread-safe
+        with self._cache_lock:
+            if symbol in self.price_cache:
+                cache_entry = self.price_cache[symbol]
+                if not cache_entry.is_expired():
+                    with self._stats_lock:
+                        self.stats["cache_hits"] += 1
+                    return cache_entry.value
+                else:
+                    # Remover entrada expirada
+                    del self.price_cache[symbol]
         
-        # Obtener precio fresco
+        # Cache miss - obtener precio fresco
+        with self._stats_lock:
+            self.stats["cache_misses"] += 1
+        
         try:
             price = self.price_fetcher(symbol)
             if price and price > 0:
-                self.price_cache[symbol] = price
-                self.last_price_update[symbol] = now
+                # Almacenar en cache con TTL
+                with self._cache_lock:
+                    self.price_cache[symbol] = CacheEntry(
+                        value=price,
+                        timestamp=now,
+                        ttl_seconds=self.price_cache_duration
+                    )
+                
+                # Cleanup periódico del cache
+                self._cleanup_expired_cache()
+                
                 return price
         except Exception as e:
             logger.error(f"❌ Error fetching price for {symbol}: {e}")
@@ -436,7 +553,7 @@ class PositionMonitor:
                 signal_type="SELL" if status.trade_type == "BUY" else "BUY",
                 price=status.current_price,
                 confidence=100.0,  # Cierre automático = 100% confianza
-                timeframe="1h",
+                timeframe=config.get("trading_bot", {}).get("primary_timeframe", "1h"),
                 strategy_name="AUTO_CLOSE",
                 indicators={"reason": status.close_reason},
                 stop_loss=0,  # No necesario para cierre
@@ -482,22 +599,37 @@ class PositionMonitor:
             logger.error(f"❌ Error updating closed trade {status.trade_id}: {e}")
     
     def get_monitor_stats(self) -> Dict:
-        """📊 Obtener estadísticas del monitor
+        """📊 Obtener estadísticas del monitor thread-safe
         
         Returns:
             Diccionario con estadísticas del monitor
         """
+        with self._stats_lock:
+            stats_copy = self.stats.copy()
+        
+        with self._cache_lock:
+            cache_size = len(self.price_cache)
+            cache_efficiency = (
+                stats_copy["cache_hits"] / (stats_copy["cache_hits"] + stats_copy["cache_misses"])
+                if (stats_copy["cache_hits"] + stats_copy["cache_misses"]) > 0 else 0
+            )
+        
         return {
             "monitoring_active": self.monitoring_active,
-            "monitoring_cycles": self.stats["monitoring_cycles"],
-            "tp_executed": self.stats["tp_executed"],
-            "sl_executed": self.stats["sl_executed"],
-            "positions_monitored": self.stats["positions_monitored"],
+            "monitoring_cycles": stats_copy["monitoring_cycles"],
+            "tp_executed": stats_copy["tp_executed"],
+            "sl_executed": stats_copy["sl_executed"],
+            "positions_monitored": stats_copy["positions_monitored"],
+            "cache_hits": stats_copy["cache_hits"],
+            "cache_misses": stats_copy["cache_misses"],
+            "cache_efficiency": f"{cache_efficiency:.2%}",
+            "cache_size": cache_size,
             "processed_trades_count": len(self.processed_trades),
             "failed_attempts_count": len(self.failed_close_attempts),
             "processed_trades": list(self.processed_trades),
             "failed_attempts": dict(self.failed_close_attempts),
-            "max_close_attempts": self.max_close_attempts
+            "max_close_attempts": self.max_close_attempts,
+            "thread_pool_active": not self._thread_pool._shutdown
         }
     
     def reset_processed_trades(self):
@@ -514,7 +646,7 @@ class PositionMonitor:
             trade_type = position["trade_type"]
             
             # Configuración de trailing stop desde config
-            trailing_percentage = self.risk_config.trailing_stop_percentage
+            trailing_percentage = self.risk_config["trailing_stop_percentage"]
             
             if trade_type == "BUY":
                 # Para posiciones largas, trailing stop se mueve hacia arriba
@@ -556,21 +688,54 @@ class PositionMonitor:
             logger.error(f"❌ Error actualizando trailing stop: {e}")
     
     def get_monitoring_status(self) -> Dict:
-        """📊 Obtener estado del monitoreo"""
+        """📊 Obtener estado del monitoreo con métricas avanzadas"""
         # Obtener estadísticas del PositionManager
         position_stats = self.position_manager.get_statistics()
+        
+        # Obtener información del cache thread-safe
+        with self._cache_lock:
+            cache_size = len(self.price_cache)
+            cache_entries = list(self.price_cache.keys())
+            expired_entries = sum(1 for entry in self.price_cache.values() if entry.is_expired())
+        
+        # Obtener estadísticas thread-safe
+        with self._stats_lock:
+            cache_hits = self.stats["cache_hits"]
+            cache_misses = self.stats["cache_misses"]
+            cache_efficiency = (
+                cache_hits / (cache_hits + cache_misses)
+                if (cache_hits + cache_misses) > 0 else 0
+            )
         
         return {
             "monitoring_active": self.monitoring_active,
             "monitor_interval": self.monitor_interval,
-            "price_cache_size": len(self.price_cache),
-            "last_update": max(self.last_price_update.values()) if self.last_price_update else None,
+            
+            # Métricas de cache mejoradas
+            "cache": {
+                "size": cache_size,
+                "entries": cache_entries,
+                "expired_entries": expired_entries,
+                "hits": cache_hits,
+                "misses": cache_misses,
+                "efficiency": f"{cache_efficiency:.2%}",
+                "ttl_seconds": self.price_cache_duration
+            },
+            
+            # Métricas de threading
+            "threading": {
+                "thread_pool_active": not self._thread_pool._shutdown,
+                "monitor_thread_alive": self.monitor_thread.is_alive() if self.monitor_thread else False,
+                "stop_event_set": self.stop_event.is_set()
+            },
             
             # Estadísticas del PositionManager
-            "active_positions": position_stats["active_positions"],
-            "positions_managed": position_stats["positions_managed"],
-            "take_profits_executed": position_stats["take_profits_executed"],
-            "stop_losses_executed": position_stats["stop_losses_executed"],
-            "trailing_stops_activated": position_stats["trailing_stops_activated"],
-            "total_realized_pnl": position_stats["total_realized_pnl"]
+            "positions": {
+                "active_positions": position_stats["active_positions"],
+                "positions_managed": position_stats["positions_managed"],
+                "take_profits_executed": position_stats["take_profits_executed"],
+                "stop_losses_executed": position_stats["stop_losses_executed"],
+                "trailing_stops_activated": position_stats["trailing_stops_activated"],
+                "total_realized_pnl": position_stats["total_realized_pnl"]
+            }
         }

@@ -14,11 +14,24 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.config import PaperTraderConfig, TradingBotConfig, USDT_BASE_PRICE
+from src.config.config_manager import ConfigManager
 
-from database.database import db_manager
-from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
-from .enhanced_strategies import TradingSignal
+# Inicializar configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'paper_trader': {'max_slippage': 0.001, 'simulation_fees': 0.001},
+        'trading': {'usdt_base_price': 1.0}
+    }
+
+from ..database.database import db_manager
+from ..database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
+from .enhanced_strategies import TradingSignal, EnhancedSignal
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # 📊 CONFIGURACIÓN DEL PAPER TRADER PROFESIONAL
 # ===============================================
-# Todos los parámetros se obtienen desde config.py para centralizar la configuración
+# Todos los parámetros se obtienen desde config["py"] para centralizar la configuración
 # Los valores hardcodeados han sido eliminados para evitar inconsistencias
 
 @dataclass
@@ -52,6 +65,31 @@ class PaperTrader:
     - Cálculo de P&L en tiempo real
     """
     
+    def _get_config_value(self, key_path, default_value=None):
+        """
+        Helper para acceso seguro a valores de configuración
+        
+        Args:
+            key_path: Ruta de la clave (ej: "paper_trader.max_position_size")
+            default_value: Valor por defecto si no se encuentra la clave
+            
+        Returns:
+            Valor de configuración o valor por defecto
+        """
+        try:
+            keys = key_path.split('.')
+            value = config
+            for key in keys:
+                if isinstance(value, dict):
+                    value = value.get(key)
+                else:
+                    return default_value
+                if value is None:
+                    return default_value
+            return value
+        except (KeyError, AttributeError, TypeError):
+            return default_value
+    
     def __init__(self, initial_balance: float = None):
         """
         Inicializar Paper Trader
@@ -60,13 +98,12 @@ class PaperTrader:
             initial_balance: Balance inicial en USDT (opcional, usa config si no se especifica)
         """
         # Configuración del paper trader desde archivo centralizado
-        self.config = PaperTraderConfig()
-        self.initial_balance = initial_balance if initial_balance is not None else self.config.INITIAL_BALANCE
-        self.max_position_size = self.config.get_max_position_size()
-        self.max_total_exposure = self.config.get_max_total_exposure()
-        self.min_trade_value = self.config.get_min_trade_value()
-        self.max_balance_usage = self.config.MAX_BALANCE_USAGE
-        self.min_confidence_threshold = self.config.get_min_confidence_threshold()
+        self.initial_balance = initial_balance if initial_balance is not None else self._get_config_value("paper_trader.initial_balance", 1000.0)
+        self.max_position_size = self._get_config_value("paper_trader.max_position_size", 0.8)  # 80% del balance
+        self.max_total_exposure = self._get_config_value("paper_trader.max_total_exposure", 50000.0)
+        self.min_trade_value = self._get_config_value("paper_trader.min_trade_value", 10.0)
+        self.max_balance_usage = self._get_config_value("paper_trader.max_balance_usage", 0.8)  # Default 80%
+        self.min_confidence_threshold = self._get_config_value("paper_trader.paper_min_confidence", 70.0)
         
         # Configurar logging
         logging.basicConfig(level=logging.INFO)
@@ -137,11 +174,12 @@ class PaperTrader:
             self.logger.info(f"🎯 Processing signal: {signal.signal_type} {signal.symbol} @ {signal.price}")
             
             # Validar señal
-            if not self._validate_signal(signal):
+            is_valid, validation_message = self._validate_signal(signal)
+            if not is_valid:
                 return TradeResult(
                     success=False,
                     trade_id=None,
-                    message="❌ Signal validation failed",
+                    message=validation_message,
                     entry_price=signal.price,
                     quantity=0.0,
                     entry_value=0.0
@@ -173,7 +211,7 @@ class PaperTrader:
                 entry_value=0.0
             )
     
-    def _validate_signal(self, signal: TradingSignal) -> bool:
+    def _validate_signal(self, signal: TradingSignal) -> Tuple[bool, str]:
         """
         ✅ Validar si una señal es ejecutable
         
@@ -181,21 +219,24 @@ class PaperTrader:
             signal: Señal a validar
             
         Returns:
-            bool: True si es válida
+            Tuple[bool, str]: (True si es válida, mensaje de validación)
         """
         try:
             # Validaciones básicas
             if signal.confidence_score < self.min_confidence_threshold:
-                self.logger.info(f"❌ Low confidence: {signal.confidence_score:.1f}% < {self.min_confidence_threshold:.1f}%")
-                return False
+                message = f"❌ Low confidence: {signal.confidence_score:.1f}% < {self.min_confidence_threshold:.1f}%"
+                self.logger.info(message)
+                return False, message
             
             if signal.price <= 0:
-                self.logger.error(f"❌ Invalid price: {signal.price}")
-                return False
+                message = f"❌ Invalid price: {signal.price}"
+                self.logger.error(message)
+                return False, message
             
             if signal.signal_type not in ["BUY", "SELL", "HOLD"]:
-                self.logger.error(f"❌ Invalid signal type: {signal.signal_type}")
-                return False
+                message = f"❌ Invalid signal type: {signal.signal_type}"
+                self.logger.error(message)
+                return False, message
             
             # Asegurar que el portfolio está inicializado
             self._ensure_portfolio_initialized()
@@ -204,15 +245,17 @@ class PaperTrader:
             if signal.signal_type == "BUY":
                 # Verificar si tenemos USDT suficiente
                 usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * (self.max_position_size / 100.0)  # Convertir porcentaje
+                max_trade_value = usdt_balance * self.max_position_size  # Ya está como decimal
                 
                 if usdt_balance < self.min_trade_value:
-                    self.logger.info(f"❌ Insufficient USDT balance: ${usdt_balance:.2f} < ${self.min_trade_value:.2f}")
-                    return False
+                    message = f"❌ Insufficient USDT balance: ${usdt_balance:.2f} < ${self.min_trade_value:.2f}"
+                    self.logger.info(message)
+                    return False, message
                     
                 if max_trade_value < self.min_trade_value:
-                    self.logger.info(f"❌ Max trade value too low: ${max_trade_value:.2f} < ${self.min_trade_value:.2f}")
-                    return False
+                    message = f"❌ Max trade value too low: ${max_trade_value:.2f} < ${self.min_trade_value:.2f}"
+                    self.logger.info(message)
+                    return False, message
             
             elif signal.signal_type == "SELL":
                 # Verificar si tenemos el asset para vender
@@ -220,15 +263,18 @@ class PaperTrader:
                 asset_balance = self._get_asset_balance(asset_symbol)
                 
                 if asset_balance <= 0:
-                    self.logger.info(f"❌ No {asset_symbol} balance to sell: {asset_balance}")
-                    return False
+                    message = f"❌ No {asset_symbol} balance to sell: {asset_balance}"
+                    self.logger.info(message)
+                    return False, message
             
-            self.logger.info(f"✅ Signal validation passed: {signal.signal_type} {signal.symbol} @ ${signal.price:.2f} ({signal.confidence_score:.1f}%)")
-            return True
+            message = f"✅ Signal validation passed: {signal.signal_type} {signal.symbol} @ ${signal.price:.2f} ({signal.confidence_score:.1f}%)"
+            self.logger.info(message)
+            return True, message
             
         except Exception as e:
-            self.logger.error(f"❌ Error validating signal: {e}")
-            return False
+            message = f"❌ Error validating signal: {e}"
+            self.logger.error(message)
+            return False, message
     
     def _execute_buy(self, signal: TradingSignal) -> TradeResult:
         """
@@ -244,20 +290,28 @@ class PaperTrader:
             with db_manager.get_db_session() as session:
                 # Calcular cantidad a comprar
                 usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * (self.max_position_size / 100.0)  # Convertir % a decimal
-                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage / 100.0))  # Límite configurable para fees
+                max_trade_value = usdt_balance * self.max_position_size  # Ya está en decimal desde config
+                trade_value = min(max_trade_value, usdt_balance * self.max_balance_usage)  # Límite configurable para fees
                 
                 if trade_value < self.min_trade_value:
                     return TradeResult(
                         success=False,
                         trade_id=None,
-                        message=f"❌ Trade value too small: ${trade_value:.2f}",
+                        message=f"❌ Trade value too small: ${trade_value:.2f} (min: ${self.min_trade_value:.2f})",
                         entry_price=signal.price,
                         quantity=0.0,
                         entry_value=0.0
                     )
                 
-                quantity = trade_value / signal.price
+                # Simular slippage realista para mayor precisión
+                execution_price = self._simulate_slippage(signal.price, "BUY")
+                
+                # Calcular cantidad con precio de ejecución real
+                quantity = trade_value / execution_price
+                
+                # Simular comisiones de trading
+                trading_fee = trade_value * config.get("paper_trader", {}).get("simulation_fees", 0.001)
+                net_trade_value = trade_value + trading_fee  # Costo total incluyendo fees
                 
                 # Obtener TP/SL de la señal o calcularlos automáticamente
                 stop_loss_price = None
@@ -278,7 +332,6 @@ class PaperTrader:
                         # Convertir TradingSignal a EnhancedSignal si es necesario
                         if not hasattr(signal, 'market_regime'):
                             # Crear EnhancedSignal temporal para el cálculo
-                            from .enhanced_strategies import EnhancedSignal
                             enhanced_signal = EnhancedSignal(
                                 symbol=signal.symbol,
                                 signal_type=signal.signal_type,
@@ -292,13 +345,13 @@ class PaperTrader:
                                 stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
                                 take_profit_price=getattr(signal, 'take_profit_price', 0.0),
                                 market_regime='NORMAL',
-                                timeframe=TradingBotConfig.get_primary_timeframe()
+                                timeframe="1h"  # Valor por defecto
                             )
                         else:
                             enhanced_signal = signal
                         
                         # Calcular evaluación de riesgo
-                        risk_assessment = risk_manager.evaluate_signal_risk(enhanced_signal)
+                        risk_assessment = risk_manager.assess_trade_risk(enhanced_signal, self._get_usdt_balance())
                         
                         # Usar TP/SL calculados si no están disponibles
                         if stop_loss_price is None:
@@ -322,19 +375,30 @@ class PaperTrader:
                             
                         self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
 
-                # Crear trade en base de datos
+                # Verificar que tenemos suficiente balance incluyendo fees
+                if net_trade_value > usdt_balance:
+                    return TradeResult(
+                        success=False,
+                        trade_id=None,
+                        message=f"❌ Insufficient balance: ${usdt_balance:.2f} needed: ${net_trade_value:.2f} (including fees: ${trading_fee:.2f})",
+                        entry_price=execution_price,
+                        quantity=0.0,
+                        entry_value=0.0
+                    )
+                
+                # Crear trade en base de datos con precio de ejecución real
                 new_trade = Trade(
                     symbol=signal.symbol,
                     strategy_name=signal.strategy_name,
                     trade_type="BUY",
-                    entry_price=signal.price,
+                    entry_price=execution_price,  # Usar precio de ejecución con slippage
                     quantity=quantity,
                     entry_value=trade_value,
                     status="OPEN",
                     is_paper_trade=True,
-                    timeframe=TradingBotConfig.get_primary_timeframe(),
+                    timeframe="1h",  # Valor por defecto
                     confidence_score=signal.confidence_score,
-                    notes=signal.notes,
+                    notes=f"{signal.notes} | Fee: ${trading_fee:.4f} | Slippage: {((execution_price - signal.price) / signal.price * 100):.3f}%",
                     stop_loss=stop_loss_price,
                     take_profit=take_profit_price
                 )
@@ -342,12 +406,12 @@ class PaperTrader:
                 session.add(new_trade)
                 session.flush()  # Para obtener el ID
                 
-                # Actualizar portfolio - Reducir USDT
-                self._update_usdt_balance(-trade_value, session)
+                # Actualizar portfolio - Reducir USDT (incluyendo fees)
+                self._update_usdt_balance(-net_trade_value, session)
                 
-                # Actualizar portfolio - Aumentar asset
+                # Actualizar portfolio - Aumentar asset con precio de ejecución real
                 asset_symbol = signal.symbol.split('/')[0]
-                self._update_asset_balance(asset_symbol, quantity, signal.price, session)
+                self._update_asset_balance(asset_symbol, quantity, execution_price, session)
                 
                 # Guardar señal en base de datos
                 self._save_signal_to_db(signal, new_trade.id, "EXECUTED", session)
@@ -363,8 +427,8 @@ class PaperTrader:
                 return TradeResult(
                     success=True,
                     trade_id=new_trade.id,
-                    message=f"✅ Bought {quantity:.6f} {asset_symbol} for ${trade_value:.2f}",
-                    entry_price=signal.price,
+                    message=f"✅ Bought {quantity:.6f} {asset_symbol} for ${trade_value:.2f} (exec: ${execution_price:.4f}, fee: ${trading_fee:.4f})",
+                    entry_price=execution_price,
                     quantity=quantity,
                     entry_value=trade_value
                 )
@@ -379,6 +443,68 @@ class PaperTrader:
                 quantity=0.0,
                 entry_value=0.0
             )
+    
+    def _simulate_slippage(self, price: float, order_type: str) -> float:
+        """
+        🎯 Simular slippage realista para órdenes
+        
+        Args:
+            price: Precio original de la señal
+            order_type: Tipo de orden ("BUY" o "SELL")
+            
+        Returns:
+            float: Precio de ejecución con slippage simulado
+        """
+        import random
+        from ..config.config import PaperTraderConfig
+        
+        # Obtener slippage máximo desde configuración
+        max_slippage = PaperTraderConfig.get_max_slippage()
+        
+        # Simular slippage aleatorio dentro del rango permitido
+        # El slippage es generalmente menor en mercados líquidos
+        slippage_factor = random.uniform(0.1, 1.0) * max_slippage
+        
+        if order_type == "BUY":
+            # Para compras, el slippage aumenta el precio (desfavorable)
+            execution_price = price * (1 + slippage_factor)
+        else:  # SELL
+            # Para ventas, el slippage disminuye el precio (desfavorable)
+            execution_price = price * (1 - slippage_factor)
+        
+        return execution_price
+    
+    def _simulate_order_execution_delay(self) -> float:
+        """
+        ⏱️ Simular delay realista en ejecución de órdenes
+        
+        Returns:
+            float: Tiempo de delay en segundos
+        """
+        import random
+        
+        # Simular delay entre 0.1 y 2.0 segundos (típico en exchanges)
+        return random.uniform(0.1, 2.0)
+    
+    def _calculate_realistic_fees(self, trade_value: float, order_type: str) -> float:
+        """
+        💰 Calcular fees realistas basados en el tipo de orden
+        
+        Args:
+            trade_value: Valor del trade
+            order_type: Tipo de orden
+            
+        Returns:
+            float: Fee calculado
+        """
+        from ..config.config import PaperTraderConfig
+        base_fee = PaperTraderConfig.get_simulation_fees()
+        
+        # Simular fees ligeramente variables (como en exchanges reales)
+        import random
+        fee_variation = random.uniform(0.95, 1.05)  # ±5% de variación
+        
+        return trade_value * base_fee * fee_variation
     
     def _execute_sell(self, signal: TradingSignal) -> TradeResult:
         """
@@ -405,9 +531,16 @@ class PaperTrader:
                         entry_value=0.0
                     )
                 
-                # Vender todo el balance del asset
+                # Simular slippage realista para venta
+                execution_price = self._simulate_slippage(signal.price, "SELL")
+                
+                # Vender todo el balance del asset con precio de ejecución real
                 quantity = asset_balance
-                sale_value = quantity * signal.price
+                sale_value = quantity * execution_price
+                
+                # Simular comisiones de trading para venta
+                trading_fee = sale_value * config.get("paper_trader", {}).get("simulation_fees", 0.001)
+                net_sale_value = sale_value - trading_fee  # Valor neto después de fees
                 
                 # Buscar trades abiertos para cerrar
                 open_trades = session.query(Trade).filter(
@@ -428,33 +561,33 @@ class PaperTrader:
                     trade.exit_time = datetime.now()
                     total_pnl += trade.pnl
                 
-                # Crear nuevo trade de venta
+                # Crear nuevo trade de venta con precio de ejecución real
                 new_trade = Trade(
                     symbol=signal.symbol,
                     strategy_name=signal.strategy_name,
                     trade_type="SELL",
-                    entry_price=signal.price,
-                    exit_price=signal.price,
+                    entry_price=execution_price,
+                    exit_price=execution_price,
                     quantity=quantity,
                     entry_value=sale_value,
                     exit_value=sale_value,
                     pnl=0.0,  # Para trades de venta directa
                     status="CLOSED",
                     is_paper_trade=True,
-                    timeframe=TradingBotConfig.get_primary_timeframe(),
+                    timeframe="1h",  # Valor por defecto
                     confidence_score=signal.confidence_score,
-                    notes=signal.notes,
+                    notes=f"{signal.notes} | Fee: ${trading_fee:.4f} | Slippage: {((execution_price - signal.price) / signal.price * 100):.3f}%",
                     exit_time=datetime.now()
                 )
                 
                 session.add(new_trade)
                 session.flush()
                 
-                # Actualizar portfolio - Aumentar USDT
-                self._update_usdt_balance(sale_value, session)
+                # Actualizar portfolio - Aumentar USDT (valor neto después de fees)
+                self._update_usdt_balance(net_sale_value, session)
                 
-                # Actualizar portfolio - Reducir asset a 0
-                self._update_asset_balance(asset_symbol, -asset_balance, signal.price, session)
+                # Actualizar portfolio - Reducir asset a 0 con precio de ejecución real
+                self._update_asset_balance(asset_symbol, -asset_balance, execution_price, session)
                 
                 # Guardar señal en base de datos
                 self._save_signal_to_db(signal, new_trade.id, "EXECUTED", session)
@@ -464,16 +597,16 @@ class PaperTrader:
                 # Obtener balance de USDT después de la venta
                 usdt_balance_after = self._get_usdt_balance()
                 
-                self.logger.info(f"✅ SELL executed: {quantity:.6f} {asset_symbol} @ ${signal.price:.2f} (PnL: ${total_pnl:.2f})")
+                self.logger.info(f"✅ SELL executed: {quantity:.6f} {asset_symbol} @ ${execution_price:.4f} (PnL: ${total_pnl:.2f}, Fee: ${trading_fee:.4f})")
                 self.logger.info(f"💰 USDT Balance after sale: ${usdt_balance_after:.2f}")
                 
                 return TradeResult(
                     success=True,
                     trade_id=new_trade.id,
-                    message=f"✅ Sold {quantity:.6f} {asset_symbol} for ${sale_value:.2f} (PnL: ${total_pnl:.2f})",
-                    entry_price=signal.price,
+                    message=f"✅ Sold {quantity:.6f} {asset_symbol} for ${net_sale_value:.2f} (PnL: ${total_pnl:.2f}, Fee: ${trading_fee:.4f})",
+                    entry_price=execution_price,
                     quantity=quantity,
-                    entry_value=sale_value
+                    entry_value=net_sale_value
                 )
                 
         except Exception as e:
@@ -530,8 +663,8 @@ class PaperTrader:
                     initial_portfolio = Portfolio(
                         symbol="USDT",
                         quantity=self.initial_balance,
-                        avg_price=USDT_BASE_PRICE,
-                    current_price=USDT_BASE_PRICE,
+                        avg_price=config.get("trading", {}).get("usdt_base_price", 1.0),
+                    current_price=config.get("trading", {}).get("usdt_base_price", 1.0),
                         current_value=self.initial_balance,
                         unrealized_pnl=0.0,
                         unrealized_pnl_percentage=0.0,
@@ -590,15 +723,15 @@ class PaperTrader:
         
         if usdt_portfolio:
             usdt_portfolio.quantity += amount
-            usdt_portfolio.current_value = usdt_portfolio.quantity * USDT_BASE_PRICE
+            usdt_portfolio.current_value = usdt_portfolio.quantity * config.get("trading", {}).get("usdt_base_price", 1.0)
             usdt_portfolio.last_updated = datetime.now()
         else:
             # Crear entrada USDT si no existe
             new_usdt = Portfolio(
                 symbol="USDT",
                 quantity=max(0, amount),
-                avg_price=USDT_BASE_PRICE,
-                current_price=USDT_BASE_PRICE,
+                avg_price=config.get("trading", {}).get("usdt_base_price", 1.0),
+                current_price=config.get("trading", {}).get("usdt_base_price", 1.0),
                 current_value=max(0, amount),
                 is_paper=True
             )
@@ -657,7 +790,7 @@ class PaperTrader:
                 symbol=signal.symbol,
                 strategy_name=signal.strategy_name,
                 signal_type=signal.signal_type,
-                timeframe=TradingBotConfig.get_primary_timeframe(),
+                timeframe="1h",  # Valor por defecto
                 price=signal.price,
                 confidence_score=signal.confidence_score,
                 strength=signal.strength,

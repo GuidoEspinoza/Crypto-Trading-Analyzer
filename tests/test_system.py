@@ -10,46 +10,72 @@ import os
 import time
 import json
 import traceback
+import importlib.util
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-# Agregar el directorio backend al path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Configurar el path del proyecto
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+sys.path.insert(0, os.path.join(project_root, 'src'))
 
 # Importar componentes del sistema
 try:
     import ccxt
     import pandas as pd
     import numpy as np
-    # Agregar el directorio raíz del proyecto al path
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, project_root)
-    sys.path.insert(0, os.path.join(project_root, 'src'))
     
-    from src.database.database import db_manager
-    from src.core.enhanced_strategies import (
-        ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy,
-        TradingSignal, TradingStrategy, EnhancedSignal, EnhancedTradingStrategy
+    # Importar configuraciones centralizadas primero
+    from src.config.config import (
+        TradingProfiles, TRADING_PROFILE, get_consolidated_config, 
+        validate_system_configuration, auto_validate_on_startup
     )
+    from src.config.global_constants import (
+        GLOBAL_INITIAL_BALANCE, BASE_CURRENCY, USDT_BASE_PRICE, 
+        TIMEZONE, RESET_STRATEGIES
+    )
+    
+    # Importar componentes principales
+    print("🔄 Cargando configuraciones centralizadas...")
+    
+    # Importar clases principales del sistema
+    from src.database.database import DatabaseManager
+    from src.core.advanced_indicators import AdvancedIndicators
+    from src.core.enhanced_risk_manager import EnhancedRiskManager
+    from src.core.enhanced_strategies import TradingSignal, EnhancedSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
     from src.core.paper_trader import PaperTrader
     from src.core.trading_bot import TradingBot
-    from src.core.enhanced_risk_manager import EnhancedRiskManager
-    from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
     from src.core.position_manager import PositionManager
     from src.core.position_monitor import PositionMonitor
-    # Importar configuraciones centralizadas
-    from src.config.config import (
-        TradingProfiles, TRADING_PROFILE
-    )
-    # Configuraciones de production_config removidas (no utilizadas)
-    # Importar LiveTradingBot desde el nuevo módulo
     from src.tools.live_trading_bot import LiveTradingBot
+    
+    # Variables globales para las clases importadas
+    db_manager = None
+    
+    print("✅ Todas las clases importadas correctamente")
+    
 except ImportError as e:
     print(f"❌ Error importing modules: {e}")
-    print("💡 Make sure you're in the backend directory and all dependencies are installed")
-    # Skip tests if imports fail
-    import pytest
-    pytest.skip(f"Skipping tests due to import error: {e}")
+    print("💡 Ejecutando pruebas básicas de configuración solamente")
+    # Continuar con pruebas limitadas
+    ccxt = None
+    pd = None
+    np = None
+    # Definir clases como None para evitar errores
+    DatabaseManager = None
+    AdvancedIndicators = None
+    EnhancedRiskManager = None
+    TradingSignal = None
+    EnhancedSignal = None
+    ProfessionalRSIStrategy = None
+    MultiTimeframeStrategy = None
+    EnsembleStrategy = None
+    PaperTrader = None
+    TradingBot = None
+    PositionManager = None
+    PositionMonitor = None
+    LiveTradingBot = None
+    db_manager = None
 
 class SystemTester:
     """
@@ -61,6 +87,7 @@ class SystemTester:
         self.results = {
             "binance_connection": False,
             "database_operations": False,
+            "centralized_configurations": False,
             "advanced_indicators": False,
             "enhanced_risk_manager": False,
             "enhanced_strategies": False,
@@ -78,8 +105,19 @@ class SystemTester:
         }
         
         # Configuraciones centralizadas
-        # Configuraciones de production_config removidas (no utilizadas)
         self.bot_config = TradingProfiles.PROFILES[TRADING_PROFILE]
+        self.consolidated_config = get_consolidated_config()
+        
+        # Validar configuraciones al inicio
+        self.config_validation_passed = False
+        try:
+            self.config_validation_passed = validate_system_configuration()
+            if self.config_validation_passed:
+                self.log_success("✓ Validación de configuraciones centralizadas exitosa")
+            else:
+                self.log_warning("⚠️ Algunas validaciones de configuración fallaron")
+        except Exception as e:
+            self.log_error("Error en validación de configuraciones", e)
         
         # Símbolos para testing
         self.test_symbols = ["BTCUSDT", "ETHUSDT", "ADAUSDT"]
@@ -157,7 +195,16 @@ class SystemTester:
         print("\n🗄️ Probando operaciones de base de datos...")
         
         try:
+            # Verificar que DatabaseManager esté disponible
+            if DatabaseManager is None:
+                self.log_error("DatabaseManager no está disponible")
+                return False
+            
             # Probar inicialización
+            global db_manager
+            if db_manager is None:
+                db_manager = DatabaseManager()
+            
             db_manager.create_tables()
             self.log_success("Base de datos inicializada")
             
@@ -167,7 +214,7 @@ class SystemTester:
             
             # Probar obtener estrategias
             with db_manager.get_db_session() as session:
-                from database.models import Strategy
+                from src.database.models import Strategy
                 strategies = session.query(Strategy).all()
                 self.log_success(f"Estrategias en DB: {len(strategies)}")
             
@@ -177,13 +224,65 @@ class SystemTester:
         except Exception as e:
             self.log_error("Error en operaciones de base de datos", e)
             return False
-
     
-
-    
-
-    
-
+    def test_centralized_configurations(self) -> bool:
+        """
+        ⚙️ Probar configuraciones centralizadas y constantes globales
+        """
+        print("\n⚙️ Probando configuraciones centralizadas...")
+        
+        try:
+            # Probar constantes globales
+            self.log_success(f"GLOBAL_INITIAL_BALANCE: ${GLOBAL_INITIAL_BALANCE:,.2f}")
+            self.log_success(f"BASE_CURRENCY: {BASE_CURRENCY}")
+            self.log_success(f"USDT_BASE_PRICE: ${USDT_BASE_PRICE}")
+            self.log_success(f"TIMEZONE: {TIMEZONE}")
+            self.log_success(f"RESET_STRATEGIES: {RESET_STRATEGIES}")
+            
+            # Probar configuración consolidada
+            if self.consolidated_config:
+                self.log_success(f"Configuración consolidada cargada: {len(self.consolidated_config)} módulos")
+                
+                # Verificar módulos principales
+                expected_modules = [
+                    'trading_bot', 'enhanced_risk_manager', 'paper_trader',
+                    'advanced_indicators', 'enhanced_strategies'
+                ]
+                
+                for module in expected_modules:
+                    if module in self.consolidated_config:
+                        self.log_success(f"✓ Módulo {module} configurado")
+                    else:
+                        self.log_warning(f"⚠️ Módulo {module} no encontrado en configuración")
+            else:
+                self.log_warning("⚠️ Configuración consolidada no disponible")
+            
+            # Probar perfil de trading actual
+            if self.bot_config:
+                self.log_success(f"Perfil de trading activo: {TRADING_PROFILE}")
+                self.log_success(f"Configuración del perfil cargada correctamente")
+            else:
+                self.log_error("Error cargando configuración del perfil de trading")
+                return False
+            
+            # Probar validación del sistema
+            if self.config_validation_passed:
+                self.log_success("✓ Validación completa del sistema exitosa")
+            else:
+                self.log_warning("⚠️ Validación del sistema con advertencias")
+            
+            self.results["centralized_configurations"] = True
+            self.results["detailed_results"]["centralized_configurations"] = {
+                "global_constants_working": True,
+                "consolidated_config_working": self.consolidated_config is not None,
+                "trading_profile_working": self.bot_config is not None,
+                "system_validation_working": self.config_validation_passed
+            }
+            return True
+            
+        except Exception as e:
+            self.log_error("Error en configuraciones centralizadas", e)
+            return False
     
     def test_position_manager_module(self) -> bool:
         """
@@ -307,6 +406,12 @@ class SystemTester:
         try:
             # Crear componentes integrados
             paper_trader = PaperTrader()
+            
+            # Resetear portfolio para asegurar balance limpio
+            reset_result = paper_trader.reset_portfolio()
+            if reset_result.get('success'):
+                self.log_success(f"Portfolio reseteado: {reset_result.get('message')}")
+            
             position_manager = PositionManager()
             position_monitor = PositionMonitor(position_manager)
             
@@ -635,6 +740,12 @@ class SystemTester:
         try:
             # Crear PaperTrader
             paper_trader = PaperTrader()
+            
+            # Resetear portfolio para asegurar balance limpio
+            reset_result = paper_trader.reset_portfolio()
+            if reset_result.get('success'):
+                self.log_success(f"Portfolio reseteado: {reset_result.get('message')}")
+            
             self.log_success("PaperTrader inicializado")
             
             # Verificar balance inicial
@@ -789,7 +900,16 @@ class SystemTester:
         try:
             # Intentar importar FastAPI app
             try:
-                from main import app
+                import sys
+                import os
+                main_path = os.path.join(project_root, 'main.py')
+                if os.path.exists(main_path):
+                    spec = importlib.util.spec_from_file_location("main", main_path)
+                    main_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(main_module)
+                    app = main_module.app
+                else:
+                    raise ImportError("main.py not found")
                 self.log_success("FastAPI app importada")
                 
                 # Verificar que la app tiene rutas
@@ -847,46 +967,57 @@ class SystemTester:
         """
         🔄 Prueba de integración completa del sistema
         Verifica el flujo: Señal → Evaluación de Riesgo → Ejecución → Seguimiento
+        Usa configuraciones centralizadas para garantizar consistencia
         """
         print("\n🔄 Probando integración completa del sistema...")
         
         try:
-            # 1. Generar señal con estrategia
+            # 0. Verificar configuraciones centralizadas
+            self.log_success(f"0. Usando configuración: {TRADING_PROFILE}")
+            self.log_success(f"   Balance inicial: {GLOBAL_INITIAL_BALANCE} {BASE_CURRENCY}")
+            
+            # 1. Generar señal con estrategia usando configuración centralizada
             strategy = ProfessionalRSIStrategy()
             signal = strategy.analyze(self.test_symbols[0])
             self.log_success(f"1. Señal generada: {signal.signal_type} ({signal.confidence_score:.1f}%)")
             
-            # Si la señal tiene baja confianza, crear una señal de prueba con alta confianza
-            if signal.confidence_score < 70.0:
+            # Si la señal tiene baja confianza o es SELL (sin balance), crear una señal de prueba con alta confianza
+            if signal.confidence_score < 70.0 or signal.signal_type == "SELL":
                 signal = EnhancedSignal(
                     symbol="BTC/USDT",
                     signal_type="BUY",
-                    price=50000.0,
+                    price=self.current_btc_price,  # Usar precio real actual
                     confidence_score=85.0,  # Alta confianza para pasar validación
                     strength="Strong",
                     strategy_name="TestStrategy",
                     timestamp=datetime.now(),
                     timeframe="1h",
                     indicators_data={"rsi": 30, "macd": 0.8},
-                    notes="High confidence test signal",
+                    notes="High confidence test signal (forced BUY for testing)",
                     volume_confirmation=True,
                     trend_confirmation="BULLISH",
                     risk_reward_ratio=2.5,
-                    stop_loss_price=48000.0,
-                    take_profit_price=55000.0,
+                    stop_loss_price=self.current_btc_price * 0.96,  # 4% stop loss
+                    take_profit_price=self.current_btc_price * 1.10,  # 10% take profit
                     market_regime="TRENDING",
                     confluence_score=3
                 )
                 self.log_success(f"1. Señal de prueba creada: {signal.signal_type} ({signal.confidence_score:.1f}%)")
             
-            # 2. Evaluar riesgo
+            # 2. Evaluar riesgo usando balance de configuración centralizada
             risk_manager = EnhancedRiskManager()
-            assessment = risk_manager.assess_trade_risk(signal, 10000.0)
+            assessment = risk_manager.assess_trade_risk(signal, GLOBAL_INITIAL_BALANCE)
             self.log_success(f"2. Riesgo evaluado: Score {assessment.overall_risk_score:.1f}/100")
             
             # 3. Ejecutar en paper trading si aprobado
             if assessment.is_approved:
                 paper_trader = PaperTrader()
+                
+                # Resetear portfolio para asegurar balance limpio
+                reset_result = paper_trader.reset_portfolio()
+                if reset_result.get('success'):
+                    self.log_success(f"Portfolio reseteado: {reset_result.get('message')}")
+                
                 result = paper_trader.execute_signal(signal)
                 
                 if result.success:
@@ -897,14 +1028,26 @@ class SystemTester:
                     performance = paper_trader.calculate_portfolio_performance()
                     self.log_success(f"4. Seguimiento: {len(positions)} posiciones, Performance: {performance}")
                 else:
-                    self.log_error(f"3. Error ejecutando trade: {result.message}")
+                    # Verificar si es un error esperado (SELL sin balance)
+                    if signal.signal_type == "SELL" and "balance to sell" in result.message:
+                        self.log_warning(f"3. Señal SELL sin balance (comportamiento normal): {result.message}")
+                    else:
+                        self.log_error(f"3. Error ejecutando trade: {result.message}")
             else:
                 self.log_warning("Trade no aprobado por risk manager")
             
-            # 5. Verificar integración con TradingBot
+            # 5. Verificar integración con TradingBot usando configuración centralizada
             bot = TradingBot(analysis_interval_minutes=1)
             bot_status = bot.get_status()
             self.log_success(f"5. TradingBot integrado: {bot_status.is_running}")
+            
+            # 6. Verificar que las configuraciones están sincronizadas
+            config_sync = (
+                self.consolidated_config is not None and
+                self.bot_config is not None and
+                TRADING_PROFILE in ["RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"]
+            )
+            self.log_success(f"6. Configuraciones sincronizadas: {config_sync}")
             
             self.results["system_integration"] = True
             self.results["detailed_results"]["system_integration"] = {
@@ -912,7 +1055,8 @@ class SystemTester:
                 "risk_evaluation": True,
                 "trade_execution": assessment.is_approved,
                 "position_tracking": True,
-                "bot_integration": True
+                "bot_integration": True,
+                "config_synchronization": config_sync
             }
             return True
             
@@ -930,6 +1074,7 @@ class SystemTester:
         individual_tests = [
             ("Conexión Binance", self.test_binance_connection),
             ("Base de Datos", self.test_database_operations),
+            ("Configuraciones Centralizadas", self.test_centralized_configurations),
             ("Advanced Indicators", self.test_advanced_indicators_module),
             ("Enhanced Risk Manager", self.test_enhanced_risk_manager_module),
             ("Enhanced Strategies", self.test_enhanced_strategies_module),

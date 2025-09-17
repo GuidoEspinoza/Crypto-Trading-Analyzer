@@ -16,9 +16,25 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.config import TradingBotConfig, RiskManagerConfig, TradingProfiles
-from database.database import db_manager
-from database.models import Trade
+from src.config.config_manager import ConfigManager
+
+# Inicializar configuración centralizada con manejo de errores
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'risk_manager': {'trailing_stop_activation': 5.0},
+        'trading': {'usdt_base_price': 1.0},
+        'paper_trader': {'max_slippage': 0.001, 'simulation_fees': 0.001},
+        'advanced_indicators': {'fibonacci_lookback': 50},
+        'api': {'latency_simulation_sleep': 0.1}
+    }
+from ..database.database import db_manager
+from ..database.models import Trade
 from .enhanced_strategies import TradingSignal
 from .paper_trader import PaperTrader, TradeResult
 from .advanced_indicators import AdvancedIndicators
@@ -87,18 +103,49 @@ class PositionManager:
             paper_trader: Instancia del paper trader para ejecutar órdenes
         """
         self.paper_trader = paper_trader or PaperTrader()
-        self.config = TradingBotConfig()
-        self.risk_config = RiskManagerConfig()
         
         # Cache de posiciones para optimización
         self.positions_cache = {}
         self.last_cache_update = 0
-        profile = TradingProfiles.get_current_profile()
-        self.cache_duration = profile.get('position_check_interval', 30)  # segundos
         
-        # Configuración de trailing stops desde RiskManagerConfig
-        self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
-        self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
+        # Obtener configuración del perfil de trading
+        try:
+            from src.config.config import TradingProfiles
+            profile = TradingProfiles.get_current_profile()
+            self.cache_duration = profile.get('position_check_interval', 30)  # segundos
+            self.seconds_per_day = profile.get('seconds_per_day', 86400)  # Configurable para tests
+            self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
+        except Exception as e:
+            logger.warning(f"⚠️ Error loading trading profile, using defaults: {e}")
+            self.cache_duration = 30  # segundos
+            self.seconds_per_day = 86400  # Configurable para tests
+            self.trailing_stop_distance = 1.0 / 100  # Default 1.0% convertir de % a decimal
+        
+        # Configuración de trailing stops desde configuración centralizada
+        try:
+            from src.config.config import RiskManagerConfig
+            risk_config = RiskManagerConfig()
+            self.trailing_stop_activation = risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
+        except Exception as e:
+            logger.warning(f"⚠️ Error loading risk config, using default: {e}")
+            self.trailing_stop_activation = config.get("risk_manager", {}).get("trailing_stop_activation", 5.0) / 100  # Convertir de % a decimal
+        
+        # Configuraciones adicionales del perfil
+        try:
+            self.atr_estimation_pct = profile.get('atr_estimation_percentage', 2.0) / 100  # Convertir de % a decimal
+            self.profit_scaling_ratios = {
+                'tp_max_ratio': profile.get('tp_max_ratio', 0.67),  # 2/3 del máximo
+                'tp_mid_ratio': profile.get('tp_mid_ratio', 0.5),   # 1/2 del máximo
+                'tp_min_ratio': profile.get('tp_min_ratio', 0.67)   # 2/3 del mínimo (default value)
+            }
+        except NameError:
+            # Si profile no está definido (error en el try anterior)
+            self.atr_estimation_pct = 2.0 / 100  # 2% como estimación conservadora
+            self.profit_scaling_ratios = {
+                'tp_max_ratio': 0.67,  # 2/3 del máximo
+                'tp_mid_ratio': 0.5,   # 1/2 del máximo
+                'tp_min_ratio': 0.67   # 2/3 del mínimo (default value)
+            }
         
         # Estadísticas
         self.stats = {
@@ -111,6 +158,58 @@ class PositionManager:
         
         logger.info("📊 Position Manager initialized")
     
+    def invalidate_cache(self, trade_id: Optional[int] = None):
+        """🔄 Invalidar cache de posiciones
+        
+        Args:
+            trade_id: ID específico a invalidar, None para invalidar todo
+        """
+        if trade_id is not None:
+            # Invalidar posición específica
+            if trade_id in self.positions_cache:
+                del self.positions_cache[trade_id]
+                logger.debug(f"🔄 Cache invalidated for position {trade_id}")
+        else:
+            # Invalidar todo el cache
+            self.positions_cache.clear()
+            self.last_cache_update = 0
+            logger.debug("🔄 Full cache invalidated")
+    
+    def is_cache_valid(self) -> bool:
+        """✅ Verificar si el cache es válido
+        
+        Returns:
+            True si el cache es válido
+        """
+        now = time.time()
+        return (now - self.last_cache_update) < self.cache_duration
+    
+    def update_cache_entry(self, position: PositionInfo):
+        """🔄 Actualizar entrada específica del cache
+        
+        Args:
+            position: Información de posición actualizada
+        """
+        self.positions_cache[position.trade_id] = position
+        logger.debug(f"🔄 Cache updated for position {position.trade_id}")
+    
+    def get_cache_stats(self) -> Dict:
+        """📊 Obtener estadísticas del cache
+        
+        Returns:
+            Diccionario con estadísticas del cache
+        """
+        now = time.time()
+        cache_age = now - self.last_cache_update if self.last_cache_update > 0 else 0
+        
+        return {
+            "cache_size": len(self.positions_cache),
+            "cache_age_seconds": cache_age,
+            "cache_valid": self.is_cache_valid(),
+            "cache_duration": self.cache_duration,
+            "last_update": datetime.fromtimestamp(self.last_cache_update).isoformat() if self.last_cache_update > 0 else None
+        }
+    
     def get_active_positions(self, refresh_cache: bool = False) -> List[PositionInfo]:
         """📊 Obtener todas las posiciones activas
         
@@ -120,10 +219,8 @@ class PositionManager:
         Returns:
             Lista de posiciones activas
         """
-        now = time.time()
-        
-        # Verificar cache
-        if not refresh_cache and (now - self.last_cache_update) < self.cache_duration:
+        # Verificar cache usando método optimizado
+        if not refresh_cache and self.is_cache_valid():
             return list(self.positions_cache.values())
         
         # Obtener posiciones frescas de la base de datos
@@ -142,7 +239,7 @@ class PositionManager:
                         positions.append(position_info)
                         self.positions_cache[trade.id] = position_info
                 
-                self.last_cache_update = now
+                self.last_cache_update = time.time()
                 logger.debug(f"📊 Loaded {len(positions)} active positions")
                 
         except Exception as e:
@@ -161,7 +258,7 @@ class PositionManager:
         """
         try:
             # Calcular días mantenida
-            days_held = (datetime.now() - trade.entry_time).total_seconds() / 86400
+            days_held = (datetime.now() - trade.entry_time).total_seconds() / self.seconds_per_day
             
             # Calcular métricas de riesgo/recompensa
             potential_profit = 0
@@ -250,6 +347,9 @@ class PositionManager:
                 # Actualizar trailing stop si aplica
                 self._update_trailing_stop(position)
                 
+                # Actualizar cache con la posición modificada
+                self.update_cache_entry(position)
+                
                 logger.debug(f"💰 Updated position {trade_id}: {old_price:.4f} -> {new_price:.4f}")
                 return True
                 
@@ -324,11 +424,140 @@ class PositionManager:
                 if position.stop_loss is not None and current_price >= position.stop_loss:
                     return "STOP_LOSS"
             
+            # Verificar salidas basadas en tiempo
+            time_exit_reason = self._check_time_based_exit(position)
+            if time_exit_reason:
+                return time_exit_reason
+            
             return None
             
         except Exception as e:
             logger.error(f"❌ Error checking exit conditions for position {position.trade_id}: {e}")
             return None
+    
+    def _check_time_based_exit(self, position: PositionInfo) -> Optional[str]:
+        """⏰ Verificar si una posición debe cerrarse por tiempo
+        
+        Args:
+            position: Información de la posición
+            
+        Returns:
+            Razón de cierre temporal o None
+        """
+        try:
+            # Obtener configuración de salidas temporales
+            from src.config.config_manager import ConfigManager
+            config = ConfigManager.get_consolidated_config()
+            time_config = config.get("advanced_optimizations", {}).get("time_based_exits", {})
+            
+            # Verificar si las salidas temporales están habilitadas
+            if not time_config.get("enabled", False):
+                return None
+            
+            # Obtener información del trade desde la base de datos
+            with db_manager.get_db_session() as session:
+                trade = session.query(Trade).filter(
+                    Trade.id == position.trade_id,
+                    Trade.status == "OPEN"
+                ).first()
+                
+                if not trade:
+                    return None
+                
+                # Calcular tiempo transcurrido
+                current_time = datetime.now()
+                time_elapsed = current_time - trade.entry_time
+                time_elapsed_hours = time_elapsed.total_seconds() / 3600
+                
+                # Obtener parámetros temporales del trade (si están disponibles)
+                # Estos deberían estar en el campo notes o en una tabla separada
+                expected_duration = getattr(trade, 'expected_duration_hours', None)
+                max_hold_time = getattr(trade, 'max_hold_time_hours', None)
+                
+                # Si no hay parámetros específicos, usar valores por defecto basados en timeframe
+                if expected_duration is None or max_hold_time is None:
+                    timeframe = getattr(trade, 'timeframe', '1h')
+                    expected_duration, max_hold_time = self._get_default_time_parameters(timeframe)
+                
+                # Calcular P&L actual
+                current_pnl_percentage = position.unrealized_pnl_percentage
+                
+                # Verificar condiciones de salida temporal
+                
+                # 1. Tiempo máximo alcanzado
+                if time_elapsed_hours >= max_hold_time:
+                    return "MAX_TIME_REACHED"
+                
+                # 2. Tiempo esperado alcanzado con ganancia mínima
+                profit_threshold = time_config.get("profit_threshold_for_early_exit", 0.03)  # 3%
+                if (time_elapsed_hours >= expected_duration and 
+                    current_pnl_percentage >= profit_threshold):
+                    return "TIME_TARGET_WITH_PROFIT"
+                
+                # 3. Tiempo esperado alcanzado con pérdida significativa
+                loss_threshold = time_config.get("loss_threshold_for_early_exit", -0.015)  # -1.5%
+                if (time_elapsed_hours >= expected_duration * 1.2 and  # 20% más del tiempo esperado
+                    current_pnl_percentage <= loss_threshold):
+                    return "TIME_TARGET_WITH_LOSS"
+                
+                # 4. Decaimiento temporal - reducir tolerancia con el tiempo
+                time_decay_factor = time_config.get("time_decay_factor", 0.1)
+                time_progress = min(time_elapsed_hours / max_hold_time, 1.0)
+                
+                # Ajustar umbrales según el progreso temporal
+                adjusted_loss_threshold = loss_threshold * (1 - time_decay_factor * time_progress)
+                
+                if current_pnl_percentage <= adjusted_loss_threshold:
+                    return "TIME_DECAY_LOSS"
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error checking time-based exit for position {position.trade_id}: {e}")
+            return None
+    
+    def _get_default_time_parameters(self, timeframe: str) -> tuple:
+        """⏰ Obtener parámetros temporales optimizados para trading activo
+        
+        Args:
+            timeframe: Timeframe del análisis
+            
+        Returns:
+            tuple: (expected_duration_hours, max_hold_time_hours)
+        """
+        # Configuración base optimizada para trading activo
+        base_timeframe_map = {
+            "1m": (0.3, 1.5),    # Muy rápido
+            "3m": (0.8, 3.0),    # Rápido
+            "5m": (1.5, 6.0),    # Optimizado para scalping
+            "15m": (3.0, 9.0),   # Trading activo
+            "30m": (6.0, 18.0),  # Swing corto
+            "1h": (10.0, 36.0),  # Swing medio
+            "2h": (18.0, 54.0),  # Swing largo
+            "4h": (36.0, 120.0), # Posicional corto
+            "6h": (54.0, 180.0), # Posicional medio
+            "8h": (72.0, 240.0), # Posicional largo
+            "12h": (120.0, 360.0), # Holding corto
+            "1d": (180.0, 540.0),  # Holding medio
+            "3d": (360.0, 1080.0), # Holding largo
+            "1w": (720.0, 1800.0)  # Holding muy largo
+        }
+        
+        # Obtener configuración de salidas temporales
+        try:
+            time_config = self.config_manager.get_module_config('position_manager', 'AGRESIVO')
+            time_exits = time_config.get('time_based_exits', {})
+            timeframe_multipliers = time_exits.get('timeframe_multipliers', {})
+            
+            # Aplicar multiplicador específico del timeframe si existe
+            base_expected, base_max = base_timeframe_map.get(timeframe, (18.0, 54.0))
+            multiplier = timeframe_multipliers.get(timeframe, 1.0)
+            
+            return (base_expected * multiplier, base_max * multiplier)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error getting timeframe multipliers: {e}")
+            return base_timeframe_map.get(timeframe, (18.0, 54.0))  # Valores por defecto optimizados
     
     def close_position(self, trade_id: int, current_price: float, reason: str) -> bool:
         """🎯 Cerrar posición específica
@@ -395,9 +624,8 @@ class PositionManager:
                 
                 self.stats["total_pnl"] += pnl
                 
-                # Remover del cache
-                if trade_id in self.positions_cache:
-                    del self.positions_cache[trade_id]
+                # Remover del cache usando método optimizado
+                self.invalidate_cache(trade_id)
                 
                 # Obtener balances actuales para el log detallado
                 usdt_balance = self.paper_trader._get_usdt_balance()
@@ -528,23 +756,33 @@ class PositionManager:
             "last_cache_update": datetime.fromtimestamp(self.last_cache_update).isoformat() if self.last_cache_update > 0 else None
         }
     
-    def calculate_atr_trailing_stop(self, symbol: str, current_price: float, trade_type: str, atr_multiplier: float = 2.0) -> Optional[float]:
+    def calculate_atr_trailing_stop(self, symbol: str, current_price: float, trade_type: str, atr_multiplier: Optional[float] = None) -> Optional[float]:
         """📊 Calcular trailing stop dinámico basado en ATR
         
         Args:
             symbol: Símbolo del activo
             current_price: Precio actual
             trade_type: Tipo de trade (BUY/SELL)
-            atr_multiplier: Multiplicador del ATR para el trailing stop
+            atr_multiplier: Multiplicador del ATR para el trailing stop (usa configuración si es None)
             
         Returns:
             Precio del trailing stop o None si hay error
         """
         try:
+            # Usar configuración dinámica si no se especifica multiplicador
+            if atr_multiplier is None:
+                # Obtener atr_multiplier del perfil de trading
+                try:
+                    from src.config.config import TradingProfiles
+                    profile = TradingProfiles.get_current_profile()
+                    atr_multiplier = profile.get('atr_multiplier', 2.0)
+                except Exception:
+                    atr_multiplier = 2.0  # Default fallback
+            
             # Obtener datos históricos para calcular ATR
             # Por ahora usamos un ATR estimado basado en el precio
             # En una implementación completa, se obtendría data histórica real
-            estimated_atr = current_price * 0.02  # 2% como estimación conservadora
+            estimated_atr = current_price * self.atr_estimation_pct
             
             if trade_type == "BUY":
                 # Para posiciones largas, trailing stop debajo del precio
@@ -766,8 +1004,8 @@ class PositionManager:
             from src.config.config import RiskManagerConfig
             
             # Obtener umbrales dinámicos desde config
-            tp_min = RiskManagerConfig.get_tp_min_percentage()
-            tp_max = RiskManagerConfig.get_tp_max_percentage()
+            tp_min = config.get("risk_manager", {}).get("tp_min_percentage", 2.0)
+            tp_max = config.get("risk_manager", {}).get("tp_max_percentage", 8.0)
             
             # Incremento base del TP (usar mínimo de config)
             tp_increment_pct = tp_min

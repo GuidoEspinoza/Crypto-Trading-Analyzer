@@ -9,7 +9,7 @@ import pandas as pd
 import pandas_ta as ta
 import numpy as np
 import warnings
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from datetime import datetime
 import logging
@@ -18,7 +18,53 @@ from functools import lru_cache
 import hashlib
 import time
 
-from src.config.config import StrategyConfig, CacheConfig, TechnicalAnalysisConfig, ConfluenceConfig
+from src.config.config_manager import ConfigManager
+from src.config.config import TechnicalAnalysisConfig, StrategyConfig
+
+# Configuración centralizada
+try:
+    config_manager = ConfigManager()
+    config = config_manager.get_consolidated_config()
+    if config is None:
+        config = {}
+    
+    # Importar constantes de confianza desde StrategyConfig.Base
+    BASE_CONFIDENCE = StrategyConfig.Base.BASE_CONFIDENCE
+    HOLD_CONFIDENCE = StrategyConfig.Base.HOLD_CONFIDENCE
+    
+except Exception as e:
+    # Configuración de fallback en caso de error
+    config = {
+        'fibonacci': {'retracement_levels': [0.236, 0.382, 0.500, 0.618, 0.786]},
+        'advanced_indicators': {
+            'ichimoku_tenkan_period': 9,
+            'ichimoku_kijun_period': 26,
+            'ichimoku_shift': 26,
+            'ichimoku_senkou_b_period': 52,
+            'stochastic_k_period': 14,
+            'stochastic_d_period': 3
+        },
+        'oscillator': {
+            'stochastic_thresholds': {'oversold': 20, 'overbought': 80},
+            'williams_r_thresholds': {'oversold': -80, 'overbought': -20},
+            'cci_thresholds': {'oversold': -100, 'overbought': 100},
+            'rsi_thresholds': {'oversold_extreme': 20, 'oversold': 30, 'overbought': 70, 'overbought_extreme': 80},
+            'roc_thresholds': {'strong_positive': 5.0, 'moderate_positive': 2.0, 'moderate_negative': -2.0, 'strong_negative': -5.0}
+        },
+        'calculation': {
+            'cci_constant': 0.015,
+            'approximation_factors': {'close': 0.98, 'far': 1.02, 'very_close': 0.995}
+        },
+        'threshold': {
+            'proximity_threshold': 0.01,
+            'breakout_threshold': 0.02
+        }
+    }
+    
+    # Constantes de fallback
+    BASE_CONFIDENCE = 50.0
+    HOLD_CONFIDENCE = 45.0
+    ENHANCED_CONFIDENCE = 60.0
 
 # Clases base para estrategias de trading
 @dataclass
@@ -40,17 +86,22 @@ class TradingStrategy(ABC):
     def __init__(self, name: str):
         self.name = name
         self.is_active = True
-        self.config = StrategyConfig.Base()  # Configuración base centralizada
-        self.min_confidence = StrategyConfig.Base.DEFAULT_MIN_CONFIDENCE  # Mínima confianza desde config
+        self.min_confidence = 65.0  # Mínima confianza por defecto
         self.advanced_indicators = AdvancedIndicators()
     
     @abstractmethod
-    def analyze(self, symbol: str, timeframe: str = "1h") -> TradingSignal:
+    def analyze(self, symbol: str, timeframe: str = None) -> TradingSignal:
         """Analizar símbolo y generar señal"""
         pass
     
-    def get_market_data(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> pd.DataFrame:
+    def get_market_data(self, symbol: str, timeframe: str = None, limit: int = 100) -> pd.DataFrame:
         """Obtener datos de mercado"""
+        # Usar timeframe del perfil activo si no se especifica
+        if timeframe is None:
+            from src.config.config import TradingBotConfig
+            trading_config = TradingBotConfig()
+            timeframe = trading_config.get_primary_timeframe()
+        
         import ccxt
         exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
@@ -72,9 +123,12 @@ class TradingStrategy(ABC):
             return float(ticker['last']) if ticker['last'] else 0.0
         except Exception as e:
             logging.error(f"Error getting current price for {symbol}: {e}")
-            # Fallback: usar el último precio de los datos históricos
+            # Fallback: usar el último precio de los datos históricos con timeframe primario
             try:
-                df = self.get_market_data(symbol, "1m", limit=1)
+                from src.config.config import TradingBotConfig
+                trading_config = TradingBotConfig()
+                primary_timeframe = trading_config.get_primary_timeframe()
+                df = self.get_market_data(symbol, primary_timeframe, limit=1)
                 return float(df['close'].iloc[-1]) if not df.empty else 0.0
             except:
                 return 0.0
@@ -100,7 +154,12 @@ class EnhancedSignal(TradingSignal):
     take_profit_price: float = 0.0
     market_regime: str = "NORMAL"  # TRENDING, RANGING, VOLATILE
     confluence_score: int = 0  # Número de indicadores que confirman la señal
-    timeframe: str = "1h"  # Timeframe de la señal
+    timeframe: str = None  # Timeframe de la señal (se asignará dinámicamente)
+    
+    # Nuevos campos para gestión temporal
+    expected_duration_hours: float = 0.0  # Duración esperada del trade en horas
+    max_hold_time_hours: float = 0.0  # Tiempo máximo de retención antes de salida forzada
+    time_based_exit_enabled: bool = False  # Si está habilitada la salida por tiempo
 
 class EnhancedTradingStrategy(TradingStrategy):
     """Clase base para estrategias mejoradas con optimizaciones de cache"""
@@ -108,24 +167,21 @@ class EnhancedTradingStrategy(TradingStrategy):
     # Cache compartido entre instancias
     _cache = {}
     _cache_timestamps = {}
-    _cache_ttl = CacheConfig.DEFAULT_TTL  # TTL desde configuración centralizada
+    _cache_ttl = 300  # TTL por defecto: 5 minutos
     
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)
-        # Importar configuración para obtener valores del perfil activo
-        from src.config.config import StrategyConfig
-        config = StrategyConfig.ProfessionalRSI()
-        self.min_volume_ratio = config.get_min_volume_ratio()  # Volumen según perfil activo
-        self.min_confluence = config.get_min_confluence()  # Confluencia según perfil activo
+        # Configuración desde ConfigManager
+        self.min_volume_ratio = 1.2  # Valor por defecto
+        self.min_confluence = 0.6  # Valor por defecto
         # Signal filters deshabilitados (módulo eliminado)
         self.signal_filter = None
         
-        # Configuración avanzada de confluencia desde configuración centralizada
-        self.confluence_weights = ConfluenceConfig.COMPONENT_WEIGHTS.copy()
-        # Sobrescribir peso de volumen si está disponible en el perfil
-        if hasattr(config, 'get_volume_weight'):
-            self.confluence_weights["volume"] = config.get_volume_weight()
-        self.min_confluence_score = config.get_confluence_threshold() if hasattr(config, 'get_confluence_threshold') else ConfluenceConfig.CONFLUENCE_THRESHOLDS["strong"]
+        # Configuración avanzada de confluencia con valores por defecto
+        self.confluence_weights = {
+            'rsi': 0.25, 'macd': 0.25, 'bollinger': 0.25, 'volume': 0.25
+        }
+        self.min_confluence_score = 0.7
     
     @classmethod
     def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
@@ -154,7 +210,7 @@ class EnhancedTradingStrategy(TradingStrategy):
         cls._cache_timestamps[cache_key] = time.time()
         
         # Limpiar cache viejo si es necesario
-        if len(cls._cache) > CacheConfig.MAX_CACHE_ENTRIES:  # Límite desde configuración
+        if len(cls._cache) > 1000:  # Límite por defecto
             cls._cleanup_cache()
     
     @classmethod
@@ -189,8 +245,8 @@ class EnhancedTradingStrategy(TradingStrategy):
             current_volume = volume_series.iloc[-1]
             
             # Usar vectorización para mejor rendimiento
-            rolling_20 = volume_series.rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["medium"], min_periods=10)
-            rolling_50 = volume_series.rolling(TechnicalAnalysisConfig.VOLUME_PERIODS["long"], min_periods=25)
+            rolling_20 = volume_series.rolling(20, min_periods=10)  # Período medio por defecto
+            rolling_50 = volume_series.rolling(50, min_periods=25)  # Período largo por defecto
             
             avg_volume_20 = rolling_20.mean().iloc[-1]
             avg_volume_50 = rolling_50.mean().iloc[-1]
@@ -212,14 +268,21 @@ class EnhancedTradingStrategy(TradingStrategy):
             vwap = volume_price / volume_cumsum
             vwap_deviation = abs(df['close'].iloc[-1] - vwap.iloc[-1]) / vwap.iloc[-1]
             
-            # Clasificación de fuerza de volumen usando configuración centralizada
-            volume_strength = TechnicalAnalysisConfig.get_volume_strength(volume_ratio_20)
+            # Clasificación de fuerza de volumen con umbrales por defecto
+            if volume_ratio_20 >= 3.0:  # Umbral muy fuerte
+                volume_strength = "VERY_STRONG"
+            elif volume_ratio_20 >= 2.0:  # Umbral fuerte
+                volume_strength = "STRONG"
+            elif volume_ratio_20 >= 1.5:  # Umbral moderado
+                volume_strength = "MODERATE"
+            else:
+                volume_strength = "WEAK"
             
             # Confirmación mejorada
             volume_confirmation = (
                 volume_ratio_20 >= self.min_volume_ratio and
                 volume_strength in ["STRONG", "VERY_STRONG"] and
-                vwap_deviation < TechnicalAnalysisConfig.VWAP_DEVIATION_THRESHOLD  # Precio cerca del VWAP
+                vwap_deviation < 0.02  # Precio cerca del VWAP (2% por defecto)
             )
             
             result = {
@@ -442,7 +505,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             
             # Determinar tendencia
             if current_ema_20 > current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS["strong_trend"]:
-                result = "BULLISH"
+                result = "UPTREND"
             elif current_ema_20 < current_ema_50 and adx_value > TechnicalAnalysisConfig.ADX_THRESHOLDS["strong_trend"]:
                 result = "BEARISH"
             else:
@@ -477,7 +540,9 @@ class EnhancedTradingStrategy(TradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=14)
+                from src.config.config_manager import ConfigManager
+                config = ConfigManager().get_consolidated_config()
+                atr = ta.atr(high_float, low_float, close_float, length=config.get("strategy", {}).get("base", {}).get("default_atr_period", 14))
             if atr is None or atr.empty:
                 return "NORMAL"
             
@@ -511,63 +576,31 @@ class EnhancedTradingStrategy(TradingStrategy):
     def calculate_risk_reward(self, entry_price: float, signal_type: str, atr: float) -> Tuple[float, float, float]:
         """Calcular stop loss, take profit y ratio riesgo/beneficio
         
-        Usa rangos dinámicos desde config.py:
+        Usa rangos dinámicos desde config["py"]:
         - Stop Loss: sl_min% - sl_max% del precio de entrada
         - Take Profit: tp_min% - tp_max% del precio de entrada
         """
         try:
-            # Importar configuración dinámica
-            from src.config.config import RiskManagerConfig
+            # Importar configuración del perfil activo
+            from src.config.config_manager import ConfigManager
             
-            # Obtener rangos dinámicos desde config
-            sl_min = RiskManagerConfig.get_sl_min_percentage()
-            sl_max = RiskManagerConfig.get_sl_max_percentage()
-            tp_min = RiskManagerConfig.get_tp_min_percentage()
-            tp_max = RiskManagerConfig.get_tp_max_percentage()
+            # Obtener configuración del perfil activo (AGRESIVO)
+            risk_config = ConfigManager.get_module_config('risk_manager')
             
-            # Calcular porcentaje ATR respecto al precio
-            atr_percentage = (atr / entry_price) * 100
+            # Usar los valores configurados en el perfil AGRESIVO
+            sl_percentage = risk_config.get('stop_loss_percentage', 2.5)  # 2.5% para AGRESIVO
+            tp_percentage = risk_config.get('take_profit_percentage', 5.5)  # 5.5% para AGRESIVO
             
-            # Determinar SL y TP basado en rangos dinámicos
+            # Usar valores fijos del perfil AGRESIVO
             if signal_type == "BUY":
-                # Stop Loss: sl_min%-sl_max% por debajo del precio de entrada
-                if atr_percentage <= sl_min:
-                    sl_pct = sl_min  # Mínimo dinámico
-                elif atr_percentage >= sl_max:
-                    sl_pct = sl_max  # Máximo dinámico
-                else:
-                    sl_pct = atr_percentage  # Usar ATR si está en rango
-                
-                # Take Profit: tp_min%-tp_max% por encima del precio de entrada
-                if atr_percentage * 1.5 <= tp_min:
-                    tp_pct = tp_min  # Mínimo dinámico
-                elif atr_percentage * 1.5 >= tp_max:
-                    tp_pct = tp_max  # Máximo dinámico
-                else:
-                    tp_pct = atr_percentage * 1.5  # 1.5x ATR si está en rango
-                
-                stop_loss = entry_price * (1 - sl_pct / 100)
-                take_profit = entry_price * (1 + tp_pct / 100)
+                # Para compras: SL 2.5% abajo, TP 5.5% arriba
+                stop_loss = entry_price * (1 - sl_percentage / 100)
+                take_profit = entry_price * (1 + tp_percentage / 100)
                 
             elif signal_type == "SELL":
-                # Stop Loss: sl_min%-sl_max% por encima del precio de entrada
-                if atr_percentage <= sl_min:
-                    sl_pct = sl_min  # Mínimo dinámico
-                elif atr_percentage >= sl_max:
-                    sl_pct = sl_max  # Máximo dinámico
-                else:
-                    sl_pct = atr_percentage  # Usar ATR si está en rango
-                
-                # Take Profit: tp_min%-tp_max% por debajo del precio de entrada
-                if atr_percentage * 1.5 <= tp_min:
-                    tp_pct = tp_min  # Mínimo dinámico
-                elif atr_percentage * 1.5 >= tp_max:
-                    tp_pct = tp_max  # Máximo dinámico
-                else:
-                    tp_pct = atr_percentage * 1.5  # 1.5x ATR si está en rango
-                
-                stop_loss = entry_price * (1 + sl_pct / 100)
-                take_profit = entry_price * (1 - tp_pct / 100)
+                # Para ventas: SL 2.5% arriba, TP 5.5% abajo
+                stop_loss = entry_price * (1 + sl_percentage / 100)
+                take_profit = entry_price * (1 - tp_percentage / 100)
             else:
                 return 0.0, 0.0, 0.0
             
@@ -585,7 +618,89 @@ class EnhancedTradingStrategy(TradingStrategy):
             logger.error(f"Error calculating risk/reward: {str(e)}")
             return 0.0, 0.0, 0.0
     
-    def analyze_with_filters(self, symbol: str, timeframe: str = "1h"):
+    def calculate_time_based_parameters(self, timeframe: str, signal_type: str) -> tuple:
+        """
+        🕐 Calcular parámetros temporales basados en el timeframe
+        
+        Args:
+            timeframe: Timeframe del análisis (1m, 5m, 15m, 1h, 4h, 1d, etc.)
+            signal_type: Tipo de señal (BUY/SELL)
+            
+        Returns:
+            tuple: (expected_duration_hours, max_hold_time_hours, time_based_exit_enabled)
+        """
+        try:
+            # Mapeo de timeframes a duración esperada (en horas)
+            timeframe_duration_map = {
+                # Timeframes cortos - trades rápidos
+                "1m": {"expected": 0.5, "max_hold": 2.0},      # 30 min esperado, máx 2h
+                "3m": {"expected": 1.0, "max_hold": 4.0},      # 1h esperado, máx 4h
+                "5m": {"expected": 2.0, "max_hold": 8.0},      # 2h esperado, máx 8h
+                "15m": {"expected": 4.0, "max_hold": 12.0},    # 4h esperado, máx 12h
+                "30m": {"expected": 8.0, "max_hold": 24.0},    # 8h esperado, máx 1 día
+                
+                # Timeframes medios - trades de medio plazo
+                "1h": {"expected": 12.0, "max_hold": 48.0},    # 12h esperado, máx 2 días
+                "2h": {"expected": 24.0, "max_hold": 72.0},    # 1 día esperado, máx 3 días
+                "4h": {"expected": 48.0, "max_hold": 168.0},   # 2 días esperado, máx 1 semana
+                
+                # Timeframes largos - trades de largo plazo
+                "6h": {"expected": 72.0, "max_hold": 240.0},   # 3 días esperado, máx 10 días
+                "8h": {"expected": 96.0, "max_hold": 336.0},   # 4 días esperado, máx 2 semanas
+                "12h": {"expected": 168.0, "max_hold": 504.0}, # 1 semana esperado, máx 3 semanas
+                "1d": {"expected": 240.0, "max_hold": 720.0},  # 10 días esperado, máx 1 mes
+                "3d": {"expected": 504.0, "max_hold": 1440.0}, # 3 semanas esperado, máx 2 meses
+                "1w": {"expected": 1008.0, "max_hold": 2160.0} # 6 semanas esperado, máx 3 meses
+            }
+            
+            # Obtener configuración del perfil activo
+            from src.config.config_manager import ConfigManager
+            profile_config = ConfigManager.get_consolidated_config()
+            
+            # Verificar si la salida basada en tiempo está habilitada en el perfil
+            time_based_config = profile_config.get("advanced_optimizations", {}).get("time_based_exits", {})
+            time_based_exit_enabled = time_based_config.get("enabled", True)  # Habilitado por defecto
+            
+            # Obtener duración base del timeframe
+            duration_config = timeframe_duration_map.get(timeframe, {"expected": 24.0, "max_hold": 72.0})
+            
+            expected_duration = duration_config["expected"]
+            max_hold_time = duration_config["max_hold"]
+            
+            # Ajustar según el perfil activo
+            profile_name = ConfigManager.get_active_profile()
+            
+            if profile_name == "RAPIDO":
+                # Perfil rápido: reducir tiempos en 40%
+                expected_duration *= 0.6
+                max_hold_time *= 0.6
+            elif profile_name == "AGRESIVO":
+                # Perfil agresivo: reducir tiempos en 20%
+                expected_duration *= 0.8
+                max_hold_time *= 0.8
+            elif profile_name == "OPTIMO":
+                # Perfil óptimo: mantener tiempos estándar
+                pass  # Sin cambios
+            elif profile_name == "CONSERVADOR":
+                # Perfil conservador: aumentar tiempos en 50%
+                expected_duration *= 1.5
+                max_hold_time *= 1.5
+            
+            # Ajustar según tipo de señal (opcional)
+            signal_multiplier = time_based_config.get("signal_type_multiplier", {})
+            if signal_type in signal_multiplier:
+                multiplier = signal_multiplier[signal_type]
+                expected_duration *= multiplier
+                max_hold_time *= multiplier
+            
+            return expected_duration, max_hold_time, time_based_exit_enabled
+            
+        except Exception as e:
+            logger.error(f"Error calculating time-based parameters: {str(e)}")
+            # Valores por defecto seguros
+            return 24.0, 72.0, False
+    
+    def analyze_with_filters(self, symbol: str, timeframe: str = None):
         """🔍 Analiza con filtros avanzados aplicados"""
         # Importación dinámica de FilteredSignal
         try:
@@ -601,7 +716,8 @@ class EnhancedTradingStrategy(TradingStrategy):
         
         # Aplicar filtros si están habilitados
         if self.signal_filter:
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            from src.config.config import DataLimitsConfig
+            df = self.get_market_data(symbol, timeframe, limit=DataLimitsConfig.get_strategy_limit())
             return self.signal_filter.filter_signal(original_signal, df)
         else:
             # Sin filtros, crear FilteredSignal básico
@@ -614,6 +730,186 @@ class EnhancedTradingStrategy(TradingStrategy):
                 risk_assessment="MEDIUM",
                 quality_grade="B"
             )
+    
+    def apply_multiple_confirmation_filters(self, signal_data: Dict[str, Any], df: pd.DataFrame) -> Dict[str, Any]:
+        """🔍 Aplica filtros de confirmación múltiple para validar señales de trading
+        
+        Args:
+            signal_data: Datos de la señal original
+            df: DataFrame con datos OHLCV
+            
+        Returns:
+            Dict con resultado de filtros y puntuación de confirmación
+        """
+        try:
+            # Obtener configuración de optimizaciones avanzadas
+            from src.config.config_manager import ConfigManager
+            config = ConfigManager().get_consolidated_config()
+            advanced_opts = config.get("advanced_optimizations", {})
+            
+            # Configuración de filtros
+            filter_config = advanced_opts.get("confirmation_filters", {
+                "min_confirmations": 3,
+                "volume_confirmation": True,
+                "trend_confirmation": True,
+                "momentum_confirmation": True,
+                "volatility_filter": True,
+                "support_resistance_filter": True
+            })
+            
+            confirmations = []
+            confirmation_scores = {}
+            
+            # === 1. FILTRO DE VOLUMEN ===
+            if filter_config.get("volume_confirmation", True):
+                volume_analysis = self.analyze_volume(df)
+                if volume_analysis.get("volume_trend") == "INCREASING":
+                    confirmations.append("volume_increasing")
+                    confirmation_scores["volume"] = 85.0
+                elif volume_analysis.get("relative_volume", 1.0) > 1.2:
+                    confirmations.append("volume_above_average")
+                    confirmation_scores["volume"] = 70.0
+                else:
+                    confirmation_scores["volume"] = 30.0
+            
+            # === 2. FILTRO DE TENDENCIA ===
+            if filter_config.get("trend_confirmation", True):
+                trend = self.analyze_trend(df)
+                signal_type = signal_data.get("signal_type", "HOLD")
+                
+                if (signal_type == "BUY" and trend == "UPTREND") or \
+                   (signal_type == "SELL" and trend == "BEARISH"):
+                    confirmations.append("trend_aligned")
+                    confirmation_scores["trend"] = 90.0
+                elif trend == "NEUTRAL":
+                    confirmation_scores["trend"] = 50.0
+                else:
+                    confirmation_scores["trend"] = 20.0
+            
+            # === 3. FILTRO DE MOMENTUM ===
+            if filter_config.get("momentum_confirmation", True):
+                try:
+                    # RSI para momentum
+                    rsi = ta.rsi(df['close'], length=14)
+                    if rsi is not None and not rsi.empty:
+                        current_rsi = rsi.iloc[-1]
+                        prev_rsi = rsi.iloc[-2] if len(rsi) > 1 else current_rsi
+                        
+                        signal_type = signal_data.get("signal_type", "HOLD")
+                        
+                        if signal_type == "BUY" and current_rsi > prev_rsi and current_rsi < 70:
+                            confirmations.append("momentum_bullish")
+                            confirmation_scores["momentum"] = 80.0
+                        elif signal_type == "SELL" and current_rsi < prev_rsi and current_rsi > 30:
+                            confirmations.append("momentum_bearish")
+                            confirmation_scores["momentum"] = 80.0
+                        else:
+                            confirmation_scores["momentum"] = 40.0
+                    else:
+                        confirmation_scores["momentum"] = 50.0
+                except Exception:
+                    confirmation_scores["momentum"] = 50.0
+            
+            # === 4. FILTRO DE VOLATILIDAD ===
+            if filter_config.get("volatility_filter", True):
+                market_regime = self.detect_market_regime(df)
+                
+                if market_regime in ["TRENDING", "NORMAL"]:
+                    confirmations.append("volatility_favorable")
+                    confirmation_scores["volatility"] = 75.0
+                elif market_regime == "RANGING":
+                    confirmation_scores["volatility"] = 60.0
+                else:  # VOLATILE
+                    confirmation_scores["volatility"] = 25.0
+            
+            # === 5. FILTRO DE SOPORTE/RESISTENCIA ===
+            if filter_config.get("support_resistance_filter", True):
+                try:
+                    current_price = df['close'].iloc[-1]
+                    
+                    # Calcular niveles de soporte y resistencia simples
+                    high_20 = df['high'].rolling(20).max().iloc[-1]
+                    low_20 = df['low'].rolling(20).min().iloc[-1]
+                    
+                    # Distancia a niveles clave
+                    resistance_distance = (high_20 - current_price) / current_price
+                    support_distance = (current_price - low_20) / current_price
+                    
+                    signal_type = signal_data.get("signal_type", "HOLD")
+                    
+                    if signal_type == "BUY" and support_distance > 0.02:  # 2% sobre soporte
+                        confirmations.append("above_support")
+                        confirmation_scores["support_resistance"] = 70.0
+                    elif signal_type == "SELL" and resistance_distance < 0.02:  # 2% bajo resistencia
+                        confirmations.append("below_resistance")
+                        confirmation_scores["support_resistance"] = 70.0
+                    else:
+                        confirmation_scores["support_resistance"] = 45.0
+                        
+                except Exception:
+                    confirmation_scores["support_resistance"] = 50.0
+            
+            # === CÁLCULO DE PUNTUACIÓN FINAL ===
+            total_confirmations = len(confirmations)
+            min_confirmations = filter_config.get("min_confirmations", 3)
+            
+            # Puntuación promedio ponderada
+            if confirmation_scores:
+                weighted_score = sum(confirmation_scores.values()) / len(confirmation_scores)
+            else:
+                weighted_score = 50.0
+            
+            # Bonus por múltiples confirmaciones
+            confirmation_bonus = min(total_confirmations * 5, 20)  # Máximo 20% bonus
+            final_score = min(weighted_score + confirmation_bonus, 100.0)
+            
+            # Determinar si pasa los filtros
+            passes_filters = (
+                total_confirmations >= min_confirmations and
+                final_score >= 60.0
+            )
+            
+            # Clasificación de calidad
+            if final_score >= 85:
+                quality_grade = "A+"
+            elif final_score >= 75:
+                quality_grade = "A"
+            elif final_score >= 65:
+                quality_grade = "B+"
+            elif final_score >= 55:
+                quality_grade = "B"
+            else:
+                quality_grade = "C"
+            
+            return {
+                "passes_filters": passes_filters,
+                "confirmation_score": round(final_score, 2),
+                "confirmations_count": total_confirmations,
+                "min_confirmations_required": min_confirmations,
+                "confirmations_list": confirmations,
+                "individual_scores": confirmation_scores,
+                "quality_grade": quality_grade,
+                "filter_details": {
+                    "volume_analysis": confirmation_scores.get("volume", 0),
+                    "trend_alignment": confirmation_scores.get("trend", 0),
+                    "momentum_strength": confirmation_scores.get("momentum", 0),
+                    "volatility_regime": confirmation_scores.get("volatility", 0),
+                    "support_resistance": confirmation_scores.get("support_resistance", 0)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error applying multiple confirmation filters: {e}")
+            return {
+                "passes_filters": False,
+                "confirmation_score": 0.0,
+                "confirmations_count": 0,
+                "min_confirmations_required": 3,
+                "confirmations_list": [],
+                "individual_scores": {},
+                "quality_grade": "F",
+                "filter_details": {}
+            }
 
 class ProfessionalRSIStrategy(EnhancedTradingStrategy):
     """🎯 Estrategia RSI Profesional con confirmaciones múltiples y nuevos indicadores"""
@@ -621,26 +917,41 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Professional_RSI_Enhanced")
         
-        # Configuración desde archivo centralizado
-        self.config = StrategyConfig.ProfessionalRSI()
-        self.min_confidence = self.config.get_min_confidence()
-        self.rsi_oversold = self.config.get_rsi_oversold()
-        self.rsi_overbought = self.config.get_rsi_overbought()
-        self.rsi_period = self.config.get_rsi_period()
+        # 🎯 Configuración desde perfil activo centralizado
+        from src.config.config_manager import ConfigManager
         
-        # Configuración de confirmaciones
-        self.min_volume_ratio = self.config.get_min_volume_ratio()
-        self.min_confluence = self.config.get_min_confluence()
-        self.trend_strength_threshold = self.config.get_trend_strength_threshold()
+        # Obtener configuración del perfil activo
+        strategies_config = ConfigManager.get_module_config('strategies')
+        indicators_config = ConfigManager.get_module_config('indicators')
+        trading_config = ConfigManager.get_module_config('trading_bot')
         
-        # Configuración de filtros de calidad (usar fallbacks si no existen métodos)
-        self.min_atr_ratio = getattr(self.config, 'MIN_ATR_RATIO', 0.8)
-        self.max_spread_threshold = getattr(self.config, 'MAX_SPREAD_THRESHOLD', 0.002)
+        # === PARÁMETROS RSI DESDE PERFIL ===
+        self.rsi_oversold = strategies_config.get('rsi_oversold', 30)
+        self.rsi_overbought = strategies_config.get('rsi_overbought', 70)
+        self.rsi_period = indicators_config.get('rsi_period', 14)
         
-    def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
+        # === CONFIANZA MÍNIMA DESDE PERFIL ===
+        self.min_confidence = trading_config.get('min_confidence', 70.0)  # Ya está en formato correcto
+        
+        # === PARÁMETROS DE CONFIRMACIÓN ===
+        self.min_volume_ratio = 1.2  # Ratio mínimo de volumen vs promedio
+        self.min_confluence = 2      # Mínimo de confirmaciones requeridas
+        self.trend_strength_threshold = 0.6  # Umbral de fuerza de tendencia
+        
+        # === FILTROS DE CALIDAD ===
+        self.min_atr_ratio = 0.8     # Ratio mínimo ATR para volatilidad
+        self.max_spread_threshold = 0.003  # Máximo spread permitido
+        
+        # 📊 Log de configuración cargada
+        logger.info(f"🎯 RSI Strategy configurada desde perfil {ConfigManager.get_active_profile()}:")
+        logger.info(f"   • RSI: {self.rsi_oversold}/{self.rsi_overbought} (período: {self.rsi_period})")
+        logger.info(f"   • Confianza mínima: {self.min_confidence*100:.1f}%")
+        
+    def analyze(self, symbol: str, timeframe: str = None) -> EnhancedSignal:
         """Análisis RSI profesional con confirmaciones avanzadas"""
         try:
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            from src.config.config import DataLimitsConfig
+            df = self.get_market_data(symbol, timeframe, limit=DataLimitsConfig.get_strategy_limit())
             current_price = self.get_current_price(symbol)
             
             if df.empty or current_price == 0:
@@ -696,7 +1007,7 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
             # === LÓGICA DE SEÑALES CON CONFLUENCIA AVANZADA ===
             confluence_score = 0
             signal_type = "HOLD"
-            confidence = self.config.BASE_CONFIDENCE  # Usar configuración centralizada
+            confidence = BASE_CONFIDENCE  # Usar constante centralizada
             notes = []
             
             # === ANÁLISIS RSI MEJORADO ===
@@ -821,6 +1132,11 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
                 current_price, signal_type, current_atr
             )
             
+            # Calcular parámetros temporales basados en timeframe
+            expected_duration, max_hold_time, time_based_exit_enabled = self.calculate_time_based_parameters(
+                timeframe, signal_type
+            )
+            
             # Verificar ratio riesgo/beneficio mínimo
             if risk_reward < 1.5 and signal_type != "HOLD":
                 signal_type = "HOLD"
@@ -865,7 +1181,11 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
                 stop_loss_price=round(float(stop_loss), 2),
                 take_profit_price=round(float(take_profit), 2),
                 market_regime=str(market_regime),
-                confluence_score=int(confluence_score)
+                confluence_score=int(confluence_score),
+                # Parámetros temporales basados en timeframe
+                expected_duration_hours=round(float(expected_duration), 2),
+                max_hold_time_hours=round(float(max_hold_time), 2),
+                time_based_exit_enabled=bool(time_based_exit_enabled)
             )
             
         except Exception as e:
@@ -906,16 +1226,92 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Multi_Timeframe")
         
-        # Configuración desde archivo centralizado
-        self.config = StrategyConfig.MultiTimeframe()
-        self.timeframes = getattr(self.config, 'TIMEFRAMES', ["1m", "5m", "15m"])
-        self.min_confidence = self.config.get_min_confidence()
-        self.rsi_config = getattr(self.config, 'RSI_CONFIG', {"1m": {"oversold": 35, "overbought": 65}})
-        self.timeframe_weights = getattr(self.config, 'TIMEFRAME_WEIGHTS', {"1m": 0.5, "5m": 0.3, "15m": 0.2})
-        self.min_timeframe_consensus = getattr(self.config, 'MIN_TIMEFRAME_CONSENSUS', 2)
-        self.trend_alignment_required = getattr(self.config, 'TREND_ALIGNMENT_REQUIRED', True)
+        # 🎯 Configuración desde perfil activo centralizado
+        from src.config.config_manager import ConfigManager
         
-    def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
+        # Obtener configuración del perfil activo
+        profile_config = ConfigManager.get_consolidated_config()
+        strategies_config = ConfigManager.get_module_config('strategies')
+        indicators_config = ConfigManager.get_module_config('indicators')
+        trading_config = ConfigManager.get_module_config('trading_bot')
+        
+        # === TIMEFRAMES DESDE PERFIL ===
+        self.timeframes = profile_config.get('timeframes', ['15m', '30m', '1h'])
+        
+        # === CONFIANZA MÍNIMA DESDE PERFIL ===
+        self.min_confidence = trading_config.get('min_confidence', 70.0)  # Ya está en formato correcto
+        
+        # === CONFIGURACIÓN RSI DINÁMICA DESDE PERFIL ===
+        self.rsi_config = self._build_dynamic_rsi_config(strategies_config)
+        self.timeframe_weights = self._build_dynamic_weights()
+        
+        # === PARÁMETROS DE CONSENSO ===
+        self.min_timeframe_consensus = 2  # Mínimo de timeframes que deben coincidir
+        self.trend_alignment_required = True  # Requiere alineación de tendencias
+        
+        # 📊 Log de configuración cargada
+        logger.info(f"📊 MultiTimeframe Strategy configurada desde perfil {ConfigManager.get_active_profile()}:")
+        logger.info(f"   • Timeframes: {', '.join(self.timeframes)}")
+        logger.info(f"   • Confianza mínima: {self.min_confidence*100:.1f}%")
+        logger.info(f"   • RSI base: {strategies_config.get('rsi_oversold', 30)}/{strategies_config.get('rsi_overbought', 70)}")
+        
+    def _build_dynamic_rsi_config(self, strategies_config: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
+        """Construir configuración RSI dinámica basada en timeframes del perfil"""
+        # Obtener valores base del perfil
+        base_oversold = strategies_config.get('rsi_oversold', 30)
+        base_overbought = strategies_config.get('rsi_overbought', 70)
+        
+        rsi_config = {}
+        for tf in self.timeframes:
+            # Ajustar niveles RSI según el timeframe, basándose en los valores del perfil
+            if 'm' in tf and int(tf.replace('m', '')) <= 5:  # Timeframes muy cortos
+                # Más estricto para timeframes cortos
+                rsi_config[tf] = {
+                    "oversold": max(20, base_oversold - 5), 
+                    "overbought": min(80, base_overbought + 5)
+                }
+            elif 'm' in tf and int(tf.replace('m', '')) <= 30:  # Timeframes medios
+                # Usar valores del perfil
+                rsi_config[tf] = {
+                    "oversold": base_oversold, 
+                    "overbought": base_overbought
+                }
+            else:  # Timeframes largos (1h+)
+                # Más conservador para timeframes largos
+                rsi_config[tf] = {
+                    "oversold": max(15, base_oversold - 10), 
+                    "overbought": min(85, base_overbought + 10)
+                }
+        return rsi_config
+    
+    def _build_dynamic_weights(self) -> Dict[str, float]:
+        """Construir pesos dinámicos basados en timeframes del perfil"""
+        weights = {}
+        num_timeframes = len(self.timeframes)
+        if num_timeframes == 0:
+            return {}
+        
+        # Distribuir pesos: más peso a timeframes intermedios
+        if num_timeframes == 1:
+            weights[self.timeframes[0]] = 1.0
+        elif num_timeframes == 2:
+            weights[self.timeframes[0]] = 0.6  # Timeframe más corto
+            weights[self.timeframes[1]] = 0.4  # Timeframe más largo
+        else:
+            # Para 3 o más timeframes
+            weights[self.timeframes[0]] = 0.5   # Timeframe más corto
+            weights[self.timeframes[-1]] = 0.2  # Timeframe más largo
+            # Distribuir el resto entre timeframes intermedios
+            remaining_weight = 0.3
+            intermediate_count = num_timeframes - 2
+            if intermediate_count > 0:
+                weight_per_intermediate = remaining_weight / intermediate_count
+                for i in range(1, num_timeframes - 1):
+                    weights[self.timeframes[i]] = weight_per_intermediate
+        
+        return weights
+    
+    def analyze(self, symbol: str, timeframe: str = None) -> EnhancedSignal:
         """Análisis multi-timeframe"""
         try:
             signals = {}
@@ -924,7 +1320,9 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             # Analizar cada timeframe
             for tf in self.timeframes:
                 try:
-                    df = self.get_market_data(symbol, tf, limit=50)
+                    from src.config.config_manager import ConfigManager
+                    config = ConfigManager().get_consolidated_config()
+                    df = self.get_market_data(symbol, tf, limit=config.get("threshold", {}).get("trend_limit", 100))
                     if not df.empty:
                         trends[tf] = self.analyze_trend(df)
                         
@@ -935,10 +1333,14 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                         with warnings.catch_warnings():
                             warnings.simplefilter('ignore', FutureWarning)
                             warnings.simplefilter('ignore', UserWarning)
-                            rsi = ta.rsi(close_float, length=14)
+                            from src.config.config_manager import ConfigManager
+                            config = ConfigManager().get_consolidated_config()
+                            rsi = ta.rsi(close_float, length=config.get("strategy", {}).get("professional_rsi", {}).get("rsi_period", 14))
                         if rsi is not None:
                             rsi_value = rsi.iloc[-1]
-                            rsi_thresholds = self.rsi_config.get(tf, self.rsi_config.get("1h", {"oversold": 30, "overbought": 70}))
+                            # Usar configuración por defecto si no existe para este timeframe
+                            default_config = {"oversold": 30, "overbought": 70}
+                            rsi_thresholds = self.rsi_config.get(tf, default_config)
                             if rsi_value <= rsi_thresholds["oversold"]:
                                 signals[tf] = "BUY"
                             elif rsi_value >= rsi_thresholds["overbought"]:
@@ -959,8 +1361,8 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             buy_votes = sum(1 for s in signals.values() if s == "BUY")
             sell_votes = sum(1 for s in signals.values() if s == "SELL")
             
-            # Ponderar por timeframe (mayor peso a timeframes más largos)
-            weights = {"1h": 1, "4h": 2, "1d": 3}
+            # Ponderar por timeframe usando pesos dinámicos del perfil
+            weights = self.timeframe_weights
             weighted_buy = sum(weights.get(tf, 1) for tf, signal in signals.items() if signal == "BUY")
             weighted_sell = sum(weights.get(tf, 1) for tf, signal in signals.items() if signal == "SELL")
             
@@ -969,13 +1371,19 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             
             if weighted_buy > weighted_sell and buy_votes >= 2:
                 signal_type = "BUY"
-                confidence = self.config.ENHANCED_CONFIDENCE + (weighted_buy * 5)
+                # Usar la constante global definida en el módulo
+                enhanced_confidence = globals().get('ENHANCED_CONFIDENCE', 60.0)
+                confidence = enhanced_confidence + (weighted_buy * 5)
             elif weighted_sell > weighted_buy and sell_votes >= 2:
                 signal_type = "SELL"
-                confidence = self.config.ENHANCED_CONFIDENCE + (weighted_sell * 5)
+                # Usar la constante global definida en el módulo
+                enhanced_confidence = globals().get('ENHANCED_CONFIDENCE', 60.0)
+                confidence = enhanced_confidence + (weighted_sell * 5)
             else:
                 signal_type = "HOLD"
-                confidence = self.config.HOLD_CONFIDENCE
+                # Usar la constante global definida en el módulo
+                hold_confidence = globals().get('HOLD_CONFIDENCE', 45.0)
+                confidence = hold_confidence
             
             # Análisis de volumen y otros factores
             volume_analysis = self.analyze_volume(df_main) if not df_main.empty else {"volume_confirmation": False}
@@ -990,12 +1398,17 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.DEFAULT_ATR_PERIOD)
-            current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
+                from src.config.config_manager import ConfigManager
+                config = ConfigManager().get_consolidated_config()
+                atr = ta.atr(high_float, low_float, close_float, length=config.get("strategy", {}).get("base", {}).get("default_atr_period", 14))
+            current_atr = atr.iloc[-1] if atr is not None else current_price * config.get("threshold", {}).get("atr_fallback", 0.02)
             
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(
                 current_price, signal_type, current_atr
             )
+            
+            # Usar el timeframe más largo disponible para confirmación de tendencia
+            longest_tf = self.timeframes[-1] if self.timeframes else list(trends.keys())[-1] if trends else "1h"
             
             return EnhancedSignal(
                 symbol=symbol,
@@ -1016,7 +1429,7 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
                 },
                 notes=f"Multi-TF: {buy_votes}B/{sell_votes}S votes, Trends: {trends}",
                 volume_confirmation=bool(volume_analysis.get("volume_confirmation", False)),
-                trend_confirmation=str(trends.get("1d", "NEUTRAL")),
+                trend_confirmation=str(trends.get(longest_tf, "NEUTRAL")),
                 risk_reward_ratio=round(float(risk_reward), 2),
                 stop_loss_price=round(float(stop_loss), 2),
                 take_profit_price=round(float(take_profit), 2),
@@ -1050,21 +1463,34 @@ class EnsembleStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Ensemble_Master")
         
-        # Configuración desde archivo centralizado
-        self.config = StrategyConfig.Ensemble()
+        # 🎯 Configuración desde perfil activo centralizado
+        from src.config.config_manager import ConfigManager
+        
+        # Obtener configuración del perfil activo
+        profile_config = ConfigManager.get_consolidated_config()
+        strategies_config = ConfigManager.get_module_config('strategies')
+        trading_config = ConfigManager.get_module_config('trading_bot')
         
         # Inicializar sub-estrategias
         self.rsi_strategy = ProfessionalRSIStrategy()
         self.mtf_strategy = MultiTimeframeStrategy()
         
-        # Pesos para cada estrategia (basado en performance histórica)
-        self.strategy_weights = getattr(self.config, 'STRATEGY_WEIGHTS', {"Professional_RSI": 0.4, "Multi_Timeframe": 0.6})
+        # === PESOS DE ESTRATEGIAS DESDE PERFIL ===
+        # Usar pesos del perfil o valores por defecto
+        default_weights = {"Professional_RSI": 0.4, "Multi_Timeframe": 0.6}
+        self.strategy_weights = strategies_config.get('ensemble_weights', default_weights)
         
-        # Configuración de consenso
-        self.min_consensus_threshold = self.config.get_min_consensus_threshold()
-        self.confidence_boost_factor = self.config.get_confidence_boost_factor()
+        # === CONFIGURACIÓN DE CONSENSO DESDE PERFIL ===
+        self.min_consensus_threshold = trading_config.get('min_confidence', 70.0) / 100.0  # Usar confianza del perfil
+        self.confidence_boost_factor = strategies_config.get('confidence_boost_factor', 1.2)
         
-    def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
+        # 📊 Log de configuración cargada
+        logger.info(f"🎯 Ensemble Strategy configurada desde perfil {ConfigManager.get_active_profile()}:")
+        logger.info(f"   • Pesos: RSI={self.strategy_weights.get('Professional_RSI', 0.4)*100:.0f}%, MTF={self.strategy_weights.get('Multi_Timeframe', 0.6)*100:.0f}%")
+        logger.info(f"   • Consenso mínimo: {self.min_consensus_threshold*100:.1f}%")
+        logger.info(f"   • Factor boost: {self.confidence_boost_factor:.1f}x")
+        
+    def analyze(self, symbol: str, timeframe: str = None) -> EnhancedSignal:
         """Análisis ensemble combinando múltiples estrategias"""
         try:
             # Obtener señales de todas las estrategias
@@ -1087,7 +1513,8 @@ class EnsembleStrategy(EnhancedTradingStrategy):
                 signals["Multi_Timeframe"] = None
             
             # Análisis adicional propio
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            from src.config.config import DataLimitsConfig
+            df = self.get_market_data(symbol, timeframe, limit=DataLimitsConfig.get_strategy_limit())
             current_price = self.get_current_price(symbol)
             
             if df.empty or current_price == 0:
@@ -1126,8 +1553,10 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=14)
-            current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
+                from src.config.config_manager import ConfigManager
+                config = ConfigManager().get_consolidated_config()
+                atr = ta.atr(high_float, low_float, close_float, length=config.get("strategy", {}).get("base", {}).get("default_atr_period", 14))
+            current_atr = atr.iloc[-1] if atr is not None else current_price * config.get("threshold", {}).get("atr_fallback", 0.02)
             
             # Calcular stop loss y take profit
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(
@@ -1256,19 +1685,21 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             if total_score == 0:
                 consensus = 0.5
                 signal_type = "HOLD"
-                confidence = self.config.HOLD_CONFIDENCE
+                confidence = HOLD_CONFIDENCE
             else:
                 consensus = max(buy_score, sell_score) / total_score
                 
                 if buy_score > sell_score and consensus >= self.min_consensus_threshold:
                     signal_type = "BUY"
-                    confidence = min(95, self.config.BASE_CONFIDENCE + (buy_score * 40))
+                    confidence = min(95, BASE_CONFIDENCE + (buy_score * 40))
                 elif sell_score > buy_score and consensus >= self.min_consensus_threshold:
                     signal_type = "SELL"
-                    confidence = min(95, self.config.BASE_CONFIDENCE + (sell_score * 40))
+                    confidence = min(95, BASE_CONFIDENCE + (sell_score * 40))
                 else:
                     signal_type = "HOLD"
-                    confidence = StrategyConfig.Base.HOLD_CONFIDENCE
+                    from src.config.config_manager import ConfigManager
+                    config = ConfigManager().get_consolidated_config()
+                    confidence = config.get("strategy", {}).get("base", {}).get("hold_confidence", 50)
                     notes.append(f"Insufficient consensus ({consensus:.1%})")
             
             # Boost de confianza por consenso alto

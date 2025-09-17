@@ -142,8 +142,37 @@ class IndicatorCache:
     def _generate_indicator_key(self, symbol: str, timeframe: str, indicator_name: str, params: Dict) -> str:
         """
         🔑 Generar clave específica para indicadores
+        Incluye parámetros de configuración para cache más preciso
         """
-        params_str = "_".join([f"{k}_{v}" for k, v in sorted(params.items())])
+        # Incluir parámetros de configuración específicos del indicador
+        config_params = {}
+        
+        # Para RSI, incluir umbrales configurables
+        if indicator_name.lower() in ['rsi', 'enhanced_rsi']:
+            config_params.update({
+                'rsi_oversold': params.get('rsi_oversold', 30),
+                'rsi_overbought': params.get('rsi_overbought', 70)
+            })
+        
+        # Para Bollinger Bands, incluir umbrales configurables
+        elif indicator_name.lower() in ['bb', 'bollinger_bands']:
+            config_params.update({
+                'bb_lower_threshold': params.get('bb_lower_threshold', 20),
+                'bb_upper_threshold': params.get('bb_upper_threshold', 80)
+            })
+        
+        # Para Stochastic, incluir umbrales configurables
+        elif indicator_name.lower() in ['stoch', 'stochastic', 'stochastic_oscillator']:
+            config_params.update({
+                'stoch_oversold': params.get('stoch_oversold', 20),
+                'stoch_overbought': params.get('stoch_overbought', 80)
+            })
+        
+        # Combinar parámetros regulares con parámetros de configuración
+        all_params = {**params, **config_params}
+        
+        # Generar string de parámetros ordenado
+        params_str = "_".join([f"{k}_{v}" for k, v in sorted(all_params.items())])
         key_data = f"{symbol}_{timeframe}_{indicator_name}_{params_str}"
         return hashlib.md5(key_data.encode()).hexdigest()[:16]
     

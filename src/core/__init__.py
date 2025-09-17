@@ -7,6 +7,7 @@ Motor de trading automático con estrategias inteligentes
 from .enhanced_strategies import (
     TradingStrategy,
     TradingSignal,
+    EnhancedSignal,
     EnhancedTradingStrategy, 
     ProfessionalRSIStrategy, 
     MultiTimeframeStrategy, 
@@ -24,6 +25,7 @@ __all__ = [
     # Estrategias base
     'TradingStrategy',
     'TradingSignal',
+    'EnhancedSignal',
     
     # Estrategias mejoradas
     'EnhancedTradingStrategy',
