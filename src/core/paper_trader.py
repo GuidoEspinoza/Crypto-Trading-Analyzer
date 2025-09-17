@@ -142,6 +142,9 @@ class PaperTrader:
                 
                 session.commit()
                 
+                # Invalidar caché del portfolio summary
+                db_manager.clear_cache()
+                
                 self.logger.info(f"🔄 Portfolio reset to initial balance: ${self.initial_balance:,.2f}")
                 
                 return {

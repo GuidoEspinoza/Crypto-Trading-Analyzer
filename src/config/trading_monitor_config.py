@@ -98,6 +98,8 @@ class EmojiConfig:
     chart: str = "📊"
     clock: str = "🕐"
     clipboard: str = "📋"
+    calendar: str = "📅"
+    search: str = "🔍"
     target: str = "🎯"
     money: str = "💰"
     refresh: str = "🔄"
