@@ -293,11 +293,33 @@ class MetricsCalculator:
                         if len(returns) > 1:
                             volatility = np.std(returns) * np.sqrt(252) * 100  # Volatilidad anualizada en %
                 
-                # Calcular Sharpe Ratio
+                # Calcular Sharpe Ratio mejorado
                 if volatility > 0 and len(self.equity_history) > 1:
                     # Usar retorno anualizado y volatilidad anualizada
                     risk_free_rate = 2.0  # Tasa libre de riesgo asumida del 2%
-                    sharpe_ratio = (total_return - risk_free_rate) / volatility if volatility > 0 else 0
+                    
+                    # Si la volatilidad es muy alta (>100%), usar un enfoque más conservador
+                    if volatility > 100:
+                        # Calcular Sharpe basado en trades individuales como alternativa
+                        try:
+                            trade_returns = []
+                            for trade in closed_trades:
+                                if trade.pnl and trade.entry_price and trade.quantity:
+                                    if trade.entry_price > 0 and trade.quantity > 0:
+                                        trade_return = (trade.pnl / (trade.entry_price * trade.quantity)) * 100
+                                        trade_returns.append(trade_return)
+                            
+                            if len(trade_returns) >= 2:
+                                avg_trade_return = sum(trade_returns) / len(trade_returns)
+                                std_trade_return = (sum((x - avg_trade_return) ** 2 for x in trade_returns) / len(trade_returns)) ** 0.5
+                                daily_risk_free = risk_free_rate / 252
+                                sharpe_ratio = (avg_trade_return - daily_risk_free) / std_trade_return if std_trade_return > 0 else 0
+                            else:
+                                sharpe_ratio = (total_return - risk_free_rate) / volatility
+                        except:
+                            sharpe_ratio = (total_return - risk_free_rate) / volatility
+                    else:
+                        sharpe_ratio = (total_return - risk_free_rate) / volatility
                 else:
                     sharpe_ratio = 0.0
                 
