@@ -306,6 +306,9 @@ class MetricsCalculator:
                 losing_trades_pnl = abs(sum([t.pnl for t in closed_trades if t.pnl and t.pnl < 0])) or 0.0
                 profit_factor = winning_trades_pnl / max(0.01, losing_trades_pnl) if losing_trades_pnl > 0 else winning_trades_pnl
                 
+                # Calcular Total de Comisiones Pagadas
+                total_fees_paid = self._calculate_total_fees(all_trades)
+                
                 # Calcular PnL No Realizado (suma de todos los unrealized_pnl de trades activos)
                 unrealized_pnl_total = 0.0
                 for trade in active_trades:
@@ -347,6 +350,7 @@ class MetricsCalculator:
                     'volatility_pct': volatility,
                     'sharpe_ratio': sharpe_ratio,
                     'profit_factor': profit_factor,
+                    'total_fees_paid': total_fees_paid,
                     'unrealized_pnl_total': unrealized_pnl_total,
                     'total_trades': total_trades,
                     'trades_today': trades_today,
@@ -482,6 +486,7 @@ class MetricsCalculator:
             'current_drawdown_pct': 0.0,
             'max_drawdown_pct': 0.0,
             'volatility_pct': 0.0,
+            'total_fees_paid': 0.0,
             'unrealized_pnl_total': 0.0,
             'trades_today': 0,
             'total_trades': 0,
@@ -499,6 +504,33 @@ class MetricsCalculator:
             return (current_price - entry_price) * quantity
         else:  # SELL
             return (entry_price - current_price) * quantity
+    
+    def _calculate_total_fees(self, trades: List) -> float:
+        """
+        💰 Calcular el total de comisiones pagadas extrayendo del campo notes
+        
+        Args:
+            trades: Lista de trades de la base de datos
+            
+        Returns:
+            float: Total de comisiones pagadas
+        """
+        import re
+        total_fees = 0.0
+        
+        try:
+            for trade in trades:
+                if trade.notes:
+                    # Buscar patrón "Fee: $X.XXXX" en las notas
+                    fee_match = re.search(r'Fee: \$(\d+\.?\d*)', trade.notes)
+                    if fee_match:
+                        fee_amount = float(fee_match.group(1))
+                        total_fees += fee_amount
+                        
+        except Exception as e:
+            print(f"Error calculando comisiones totales: {e}")
+            
+        return round(total_fees, 4)
     
     def _get_current_price_simple(self, symbol: str, entry_price: float = None) -> float:
         """Obtener precio actual con cache para mejor rendimiento"""
@@ -1757,7 +1789,7 @@ class RealTimeDashboard:
             available_balance = metrics.get('available_balance', GLOBAL_INITIAL_BALANCE)
             emoji = "💵"
             st.metric(
-                f"{emoji} Balance Actual",
+                f"{emoji} USDT Disponibles",
                 f"${available_balance:,.2f}"
             )
         
@@ -1770,10 +1802,8 @@ class RealTimeDashboard:
             
             emoji = "📊" if growth >= 0 else "📉"
             st.metric(
-                f"{emoji} Valor Portfolio",
-                f"${total_value:,.2f}",
-                delta=f"{growth_pct:+.1f}%",
-                delta_color="normal"
+                f"{emoji} Valor Portfolio (USDT)",
+                f"${total_value:,.2f}"
             )
         
         with col3:
@@ -1783,9 +1813,7 @@ class RealTimeDashboard:
             delta_color = "normal" if unrealized_pnl >= 0 else "inverse"
             st.metric(
                 f"{emoji} PnL No Realizado",
-                f"${unrealized_pnl:,.2f}",
-                delta=f"${unrealized_pnl:,.2f}",
-                delta_color=delta_color
+                f"${unrealized_pnl:,.2f}"
             )
         
         with col4:
@@ -1795,13 +1823,11 @@ class RealTimeDashboard:
             delta_color = "normal" if realized_pnl >= 0 else "inverse"
             st.metric(
                 f"{emoji} PnL Realizado",
-                f"${realized_pnl:,.2f}",
-                delta=f"${realized_pnl:,.2f}",
-                delta_color=delta_color
+                f"${realized_pnl:,.2f}"
             )
         
         # Segunda fila: Métricas de performance
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             # Retorno Total
@@ -1809,12 +1835,19 @@ class RealTimeDashboard:
             emoji = "🚀" if metrics['total_return_pct'] > 10 else "📈" if metrics['total_return_pct'] > 0 else "📉"
             st.metric(
                 f"{emoji} Retorno Total",
-                f"{metrics['total_return_pct']:.2f}%",
-                delta=f"{metrics['total_return_pct']:.2f}%",
-                delta_color=delta_color
+                f"{metrics['total_return_pct']:.2f}%"
             )
         
         with col2:
+            # Total de Comisiones Pagadas
+            total_fees = metrics.get('total_fees_paid', 0.0)
+            emoji = "💰"
+            st.metric(
+                f"{emoji} Comisiones Totales",
+                f"{total_fees:.4f}"
+            )
+        
+        with col3:
             # Volatilidad
             st.metric(
                 "📊 Volatilidad",

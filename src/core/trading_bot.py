@@ -186,6 +186,18 @@ class TradingBot:
         
         self.logger.info("🤖 Trading Bot initialized with Position Monitor")
     
+    @property
+    def position_manager(self):
+        """
+        🔗 Acceso al position_manager a través del position_monitor
+        
+        Returns:
+            PositionManager: Instancia del position manager
+        """
+        if hasattr(self, 'position_monitor') and self.position_monitor:
+            return getattr(self.position_monitor, 'position_manager', None)
+        return None
+    
     def set_trade_event_callback(self, callback):
         """
         🔗 Configurar callback para eventos de trades
@@ -1584,30 +1596,90 @@ class TradingBot:
         """
         Ejecuta el cierre automático de posiciones rentables antes del reset
         """
+        start_time = datetime.now()
+        self.logger.info("🔄 INICIANDO CIERRE AUTOMÁTICO PRE-RESET")
+        self.logger.info(f"⏰ Hora de ejecución: {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        
         try:
             from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG
             
+            # Verificar configuración
             if not PRE_RESET_CLOSURE_CONFIG.get('enabled', False):
-                self.logger.info("Cierre pre-reset deshabilitado, saltando ejecución")
+                self.logger.warning("❌ Cierre pre-reset DESHABILITADO en configuración")
+                self.logger.info("💡 Para habilitar, configurar PRE_RESET_CLOSURE_CONFIG['enabled'] = True")
                 return
             
-            self.logger.info("Iniciando cierre automático de posiciones rentables antes del reset")
+            self.logger.info("✅ Cierre pre-reset HABILITADO en configuración")
+            
+            # Log de configuración actual
+            profit_threshold = PRE_RESET_CLOSURE_CONFIG.get('profit_threshold_percent', 0.5)
+            self.logger.info(f"📊 Umbral de ganancia configurado: {profit_threshold}%")
             
             # Verificar si el position_manager está disponible
             if not hasattr(self, 'position_manager') or self.position_manager is None:
-                self.logger.warning("Position manager no disponible para cierre pre-reset")
+                self.logger.error("❌ POSITION MANAGER NO DISPONIBLE")
+                self.logger.error("🔧 Esto indica un problema en la inicialización del TradingBot")
                 return
             
+            self.logger.info("✅ Position Manager disponible")
+            self.logger.info(f"📋 Tipo: {type(self.position_manager).__name__}")
+            
+            # Verificar posiciones antes del cierre
+            try:
+                if hasattr(self.position_manager, 'paper_trader') and self.position_manager.paper_trader:
+                    positions = self.position_manager.paper_trader.get_open_positions()
+                    self.logger.info(f"📈 Posiciones abiertas antes del cierre: {len(positions)}")
+                    
+                    if positions:
+                        for symbol, position in positions.items():
+                            pnl_percent = position.get('pnl_percent', 0)
+                            self.logger.info(f"   • {symbol}: PnL {pnl_percent:.2f}%")
+                    else:
+                        self.logger.info("📭 No hay posiciones abiertas para evaluar")
+                        
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudieron obtener posiciones actuales: {e}")
+            
             # Ejecutar el cierre de posiciones rentables
+            self.logger.info("🚀 Ejecutando cierre de posiciones rentables...")
             result = self.position_manager.close_profitable_positions_before_reset()
+            
+            # Log detallado del resultado
+            if result.get('success', False):
+                closed_count = result.get('closed_positions', 0)
+                skipped_count = result.get('skipped_positions', 0)
+                total_profit = result.get('total_profit_realized', 0)
+                
+                self.logger.info("✅ CIERRE PRE-RESET EXITOSO")
+                self.logger.info(f"📊 Posiciones cerradas: {closed_count}")
+                self.logger.info(f"📊 Posiciones omitidas: {skipped_count}")
+                self.logger.info(f"💰 Ganancia total realizada: ${total_profit:.2f}")
+                
+                if 'closed_details' in result:
+                    self.logger.info("📋 Detalles de posiciones cerradas:")
+                    for detail in result['closed_details']:
+                        symbol = detail.get('symbol', 'N/A')
+                        profit = detail.get('profit', 0)
+                        pnl_percent = detail.get('pnl_percent', 0)
+                        self.logger.info(f"   • {symbol}: ${profit:.2f} ({pnl_percent:.2f}%)")
+                        
+            else:
+                error_msg = result.get('error', 'Error desconocido')
+                self.logger.error(f"❌ FALLO EN CIERRE PRE-RESET: {error_msg}")
             
             # Emitir evento de cierre pre-reset
             self._emit_pre_reset_closure_event(result)
             
-            self.logger.info(f"Cierre pre-reset completado: {result}")
+            # Tiempo total de ejecución
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            self.logger.info(f"⏱️ Cierre pre-reset completado en {duration:.2f} segundos")
             
         except Exception as e:
-            self.logger.error(f"Error durante cierre pre-reset: {e}")
+            self.logger.error(f"💥 ERROR CRÍTICO durante cierre pre-reset: {e}")
+            self.logger.error(f"🔍 Tipo de error: {type(e).__name__}")
+            import traceback
+            self.logger.error(f"📋 Stack trace: {traceback.format_exc()}")
 
     def _emit_pre_reset_closure_event(self, closure_result: dict):
         """

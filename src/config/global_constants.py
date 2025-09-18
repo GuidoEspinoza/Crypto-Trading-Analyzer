@@ -56,6 +56,9 @@ TEST_SYMBOLS: List[str] = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 # - Logging para marcas de tiempo
 TIMEZONE: str = "America/Santiago"
 
+# Alias para compatibilidad con código existente
+CHILE_TZ: str = TIMEZONE
+
 # Horario de reset diario optimizado para trading de criptomonedas en Chile
 # Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
 # Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
