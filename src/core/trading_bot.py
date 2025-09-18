@@ -1,7 +1,4 @@
-"""
-🤖 Universal Trading Analyzer - Trading Bot
-Bot principal que ejecuta estrategias automáticamente 24/7
-"""
+#!/usr/bin/env python
 
 import asyncio
 import logging
@@ -308,6 +305,9 @@ class TradingBot:
         schedule.clear()
         schedule.every(self.analysis_interval).minutes.do(self._run_analysis_cycle)
         
+        # Configurar schedule para cierre pre-reset
+        self._schedule_pre_reset_closure()
+        
         # Iniciar thread de ejecución (sin análisis inicial inmediato)
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.analysis_thread.start()
@@ -443,7 +443,7 @@ class TradingBot:
                 self._cycle_counter = 0
             self._cycle_counter += 1
             
-            # Resetear contador diario si es necesario
+            # Resetear contador diario si es necesito
             self._reset_daily_stats_if_needed()
             
             # Verificar si podemos hacer más trades hoy
@@ -1551,3 +1551,103 @@ class TradingBot:
             pass  # Silenciar errores de eventos
         
         return events
+
+    def _schedule_pre_reset_closure(self):
+        """
+        Programa el cierre automático de posiciones rentables antes del reset diario
+        """
+        from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG, DAILY_RESET_HOUR, DAILY_RESET_MINUTE, CHILE_TZ
+        
+        if not PRE_RESET_CLOSURE_CONFIG.get('enabled', False):
+            self.logger.info("Cierre pre-reset deshabilitado en configuración")
+            return
+        
+        # Calcular el horario de cierre (15 minutos antes del reset)
+        minutes_before = PRE_RESET_CLOSURE_CONFIG.get('minutes_before_reset', 15)
+        closure_hour = DAILY_RESET_HOUR
+        closure_minute = DAILY_RESET_MINUTE - minutes_before
+        
+        # Ajustar si los minutos son negativos
+        if closure_minute < 0:
+            closure_hour -= 1
+            closure_minute += 60
+        
+        # Formatear el tiempo para el scheduler
+        closure_time = f"{closure_hour:02d}:{closure_minute:02d}"
+        
+        # Programar el cierre diario
+        schedule.every().day.at(closure_time).do(self._execute_pre_reset_closure)
+        
+        self.logger.info(f"Cierre pre-reset programado para las {closure_time} CLT (Chile)")
+
+    def _execute_pre_reset_closure(self):
+        """
+        Ejecuta el cierre automático de posiciones rentables antes del reset
+        """
+        try:
+            from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG
+            
+            if not PRE_RESET_CLOSURE_CONFIG.get('enabled', False):
+                self.logger.info("Cierre pre-reset deshabilitado, saltando ejecución")
+                return
+            
+            self.logger.info("Iniciando cierre automático de posiciones rentables antes del reset")
+            
+            # Verificar si el position_manager está disponible
+            if not hasattr(self, 'position_manager') or self.position_manager is None:
+                self.logger.warning("Position manager no disponible para cierre pre-reset")
+                return
+            
+            # Ejecutar el cierre de posiciones rentables
+            result = self.position_manager.close_profitable_positions_before_reset()
+            
+            # Emitir evento de cierre pre-reset
+            self._emit_pre_reset_closure_event(result)
+            
+            self.logger.info(f"Cierre pre-reset completado: {result}")
+            
+        except Exception as e:
+            self.logger.error(f"Error durante cierre pre-reset: {e}")
+
+    def _emit_pre_reset_closure_event(self, closure_result: dict):
+        """
+        Emite un evento con los resultados del cierre pre-reset
+        """
+        try:
+            event = {
+                'type': 'pre_reset_closure',
+                'timestamp': datetime.now().isoformat(),
+                'data': closure_result
+            }
+            
+            # Agregar a la cola de eventos si existe
+            if hasattr(self, 'event_queue'):
+                self.event_queue.put(event)
+                
+        except Exception as e:
+            self.logger.error(f"Error emitiendo evento de cierre pre-reset: {e}")
+
+    def force_pre_reset_closure(self) -> dict:
+        """
+        Fuerza el cierre de posiciones rentables (método manual para testing)
+        """
+        try:
+            self.logger.info("Ejecutando cierre pre-reset manual")
+            
+            if not hasattr(self, 'position_manager') or self.position_manager is None:
+                return {
+                    'success': False,
+                    'error': 'Position manager no disponible'
+                }
+            
+            result = self.position_manager.close_profitable_positions_before_reset()
+            self._emit_pre_reset_closure_event(result)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error en cierre pre-reset manual: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }

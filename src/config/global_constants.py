@@ -13,7 +13,7 @@ Constantes incluidas:
 - Límites y umbrales globales
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 
 # ============================================================================
 # 💰 CONFIGURACIÓN FINANCIERA GLOBAL
@@ -78,6 +78,29 @@ RESET_STRATEGIES: Dict[str, Dict[str, int]] = {
 
 # Estrategia de reset activa (cambiar según perfil de trading)
 ACTIVE_RESET_STRATEGY: str = "AGGRESSIVE"  # Recomendado para máxima rentabilidad
+
+# ═══════════════════════════════════════════════════════════
+# 🔄 CONFIGURACIÓN DE CIERRE PRE-RESET
+# ═══════════════════════════════════════════════════════════
+PRE_RESET_CLOSURE_CONFIG: Dict[str, Union[bool, int, float]] = {
+    # Configuración principal
+    "enabled": True,                    # Habilitar/deshabilitar funcionalidad
+    "minutes_before_reset": 15,         # Minutos antes del reset para cerrar (10:45 AM)
+    "min_profit_threshold": 0.5,        # Ganancia mínima requerida (%)
+    
+    # Configuración de ejecución
+    "max_positions_per_batch": 10,      # Máximo número de posiciones a cerrar por lote
+    "retry_attempts": 3,                # Intentos de reintento por posición
+    "retry_delay_seconds": 30,          # Delay entre reintentos (segundos)
+    
+    # Configuración de logging
+    "log_detailed_operations": True,    # Log detallado de cada operación
+    "send_notifications": True,         # Enviar notificaciones de cierre
+    
+    # Configuración de seguridad
+    "require_manual_confirmation": False, # Requerir confirmación manual
+    "emergency_stop_enabled": True,     # Habilitar parada de emergencia
+}
 
 # ============================================================================
 # 🎯 PERFIL ACTIVO DEL SISTEMA

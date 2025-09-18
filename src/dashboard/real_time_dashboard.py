@@ -330,9 +330,18 @@ class MetricsCalculator:
                         'interpretation': f"{trade.strategy_name} - {trade.symbol}"
                     })
                 
+                # Obtener balance real de USDT usando PaperTrader
+                try:
+                    paper_trader = PaperTrader()
+                    real_usdt_balance = paper_trader.get_balance('USDT')
+                except Exception as e:
+                    # Fallback al valor del portfolio summary si hay error
+                    real_usdt_balance = portfolio_summary.get('available_balance', GLOBAL_INITIAL_BALANCE)
+                
                 return {
                     'total_return_pct': total_return,
                     'current_equity': current_equity,
+                    'available_balance': real_usdt_balance,
                     'current_drawdown_pct': current_drawdown,
                     'max_drawdown_pct': max_drawdown,
                     'volatility_pct': volatility,
@@ -1744,26 +1753,27 @@ class RealTimeDashboard:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # Valor Actual (Equity Actual)
-            initial_balance = GLOBAL_INITIAL_BALANCE
-            growth = metrics['current_equity'] - initial_balance
-            growth_pct = (growth / initial_balance) * 100 if initial_balance > 0 else 0
-            
-            emoji = "💰" if growth > 0 else "💸" if growth < 0 else "💵"
+            # Balance Actual (USDT disponible sin invertir)
+            available_balance = metrics.get('available_balance', GLOBAL_INITIAL_BALANCE)
+            emoji = "💵"
             st.metric(
-                f"{emoji} Valor Actual",
-                f"${metrics['current_equity']:,.2f}",
-                delta=f"{growth_pct:.1f}%",
-                delta_color="normal"
+                f"{emoji} Balance Actual",
+                f"${available_balance:,.2f}"
             )
         
         with col2:
-            # Valor Total (Balance inicial + ganancias/pérdidas)
+            # Valor Portfolio (Valor total incluyendo posiciones y PnL)
             total_value = metrics['current_equity']
-            emoji = "📊"
+            initial_balance = GLOBAL_INITIAL_BALANCE
+            growth = total_value - initial_balance
+            growth_pct = (growth / initial_balance) * 100 if initial_balance > 0 else 0
+            
+            emoji = "📊" if growth >= 0 else "📉"
             st.metric(
-                f"{emoji} Valor Total",
-                f"${total_value:,.2f}"
+                f"{emoji} Valor Portfolio",
+                f"${total_value:,.2f}",
+                delta=f"{growth_pct:+.1f}%",
+                delta_color="normal"
             )
         
         with col3:

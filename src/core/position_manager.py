@@ -11,7 +11,7 @@ Este módulo implementa:
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
@@ -1063,3 +1063,224 @@ class PositionManager:
             return max(0.0, loss_pct)
         except Exception:
             return 0.0
+    
+    def close_profitable_positions_before_reset(self, market_data: Dict[str, float] = None) -> Dict[str, Any]:
+        """🔄 Cerrar posiciones rentables antes del reset diario
+        
+        Esta función se ejecuta automáticamente 15 minutos antes del reset diario
+        para cristalizar ganancias y empezar el nuevo día con un balance limpio.
+        
+        Args:
+            market_data: Diccionario con precios actuales {symbol: price}
+            
+        Returns:
+            Diccionario con estadísticas de la operación
+        """
+        from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
+        import pytz
+        from datetime import datetime, timedelta
+        
+        # Verificar si la funcionalidad está habilitada
+        if not PRE_RESET_CLOSURE_CONFIG.get("enabled", False):
+            logger.info("🔄 Pre-reset closure is disabled")
+            return {"status": "disabled", "positions_closed": 0}
+        
+        try:
+            # Configuración
+            min_profit_threshold = PRE_RESET_CLOSURE_CONFIG.get("min_profit_threshold", 0.5)
+            max_positions_per_batch = PRE_RESET_CLOSURE_CONFIG.get("max_positions_per_batch", 10)
+            retry_attempts = PRE_RESET_CLOSURE_CONFIG.get("retry_attempts", 3)
+            retry_delay = PRE_RESET_CLOSURE_CONFIG.get("retry_delay_seconds", 30)
+            log_detailed = PRE_RESET_CLOSURE_CONFIG.get("log_detailed_operations", True)
+            
+            # Verificar si estamos en el momento correcto para ejecutar
+            chile_tz = pytz.timezone("America/Santiago")
+            current_time = datetime.now(chile_tz)
+            
+            # Calcular tiempo de reset
+            reset_time = current_time.replace(
+                hour=DAILY_RESET_HOUR, 
+                minute=DAILY_RESET_MINUTE, 
+                second=0, 
+                microsecond=0
+            )
+            
+            # Calcular tiempo de cierre (15 minutos antes del reset)
+            minutes_before = PRE_RESET_CLOSURE_CONFIG.get("minutes_before_reset", 15)
+            closure_time = reset_time - timedelta(minutes=minutes_before)
+            
+            # Verificar si estamos en la ventana de cierre (±2 minutos de tolerancia)
+            time_diff = abs((current_time - closure_time).total_seconds())
+            if time_diff > 120:  # 2 minutos de tolerancia
+                if log_detailed:
+                    logger.debug(f"🔄 Not in closure window. Current: {current_time.strftime('%H:%M:%S')}, Target: {closure_time.strftime('%H:%M:%S')}")
+                return {"status": "not_in_window", "positions_closed": 0}
+            
+            logger.info(f"🔄 Starting pre-reset closure at {current_time.strftime('%H:%M:%S CLT')}")
+            logger.info(f"🎯 Target: Close profitable positions before reset at {reset_time.strftime('%H:%M:%S CLT')}")
+            
+            # Obtener posiciones activas
+            active_positions = self.get_active_positions()
+            if not active_positions:
+                logger.info("🔄 No active positions to close")
+                return {"status": "no_positions", "positions_closed": 0}
+            
+            # Obtener precios actuales si no se proporcionaron
+            if market_data is None:
+                market_data = {}
+                for position in active_positions:
+                    try:
+                        # Aquí deberías usar tu método de obtención de precios
+                        # Por ahora usamos el precio actual de la posición
+                        market_data[position.symbol] = position.current_price
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not get current price for {position.symbol}: {e}")
+                        continue
+            
+            # Filtrar posiciones rentables
+            profitable_positions = []
+            for position in active_positions:
+                if position.symbol not in market_data:
+                    continue
+                
+                current_price = market_data[position.symbol]
+                
+                # Calcular ganancia actual
+                if position.trade_type == "BUY":
+                    profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                else:  # SELL
+                    profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                
+                # Solo incluir posiciones con ganancia superior al umbral
+                if profit_pct >= min_profit_threshold:
+                    profitable_positions.append({
+                        "position": position,
+                        "current_price": current_price,
+                        "profit_pct": profit_pct
+                    })
+            
+            if not profitable_positions:
+                logger.info(f"🔄 No profitable positions found (min threshold: {min_profit_threshold}%)")
+                return {"status": "no_profitable_positions", "positions_closed": 0}
+            
+            # Ordenar por ganancia (mayor ganancia primero)
+            profitable_positions.sort(key=lambda x: x["profit_pct"], reverse=True)
+            
+            # Limitar el número de posiciones por lote
+            positions_to_close = profitable_positions[:max_positions_per_batch]
+            
+            logger.info(f"🎯 Found {len(profitable_positions)} profitable positions, closing {len(positions_to_close)}")
+            
+            # Cerrar posiciones
+            closed_count = 0
+            failed_count = 0
+            total_profit = 0.0
+            closure_details = []
+            
+            for pos_data in positions_to_close:
+                position = pos_data["position"]
+                current_price = pos_data["current_price"]
+                profit_pct = pos_data["profit_pct"]
+                
+                success = False
+                for attempt in range(retry_attempts):
+                    try:
+                        # Intentar cerrar la posición
+                        if self.close_position(position.trade_id, current_price, "PRE_RESET_CLOSURE"):
+                            success = True
+                            closed_count += 1
+                            
+                            # Calcular profit en USDT
+                            profit_usdt = (profit_pct / 100) * position.entry_value
+                            total_profit += profit_usdt
+                            
+                            closure_details.append({
+                                "symbol": position.symbol,
+                                "trade_id": position.trade_id,
+                                "profit_pct": profit_pct,
+                                "profit_usdt": profit_usdt,
+                                "entry_price": position.entry_price,
+                                "exit_price": current_price
+                            })
+                            
+                            if log_detailed:
+                                logger.info(
+                                    f"✅ Closed {position.symbol} (ID: {position.trade_id}) | "
+                                    f"Profit: {profit_pct:.2f}% (${profit_usdt:.2f}) | "
+                                    f"Entry: ${position.entry_price:.4f} → Exit: ${current_price:.4f}"
+                                )
+                            break
+                        else:
+                            if attempt < retry_attempts - 1:
+                                logger.warning(f"⚠️ Failed to close {position.symbol} (attempt {attempt + 1}), retrying in {retry_delay}s...")
+                                time.sleep(retry_delay)
+                            
+                    except Exception as e:
+                        logger.error(f"❌ Error closing position {position.trade_id}: {e}")
+                        if attempt < retry_attempts - 1:
+                            time.sleep(retry_delay)
+                
+                if not success:
+                    failed_count += 1
+                    logger.error(f"❌ Failed to close {position.symbol} after {retry_attempts} attempts")
+            
+            # Logging final
+            logger.info("🔄 ═══════════════════════════════════════════════════════════")
+            logger.info("🔄 PRE-RESET CLOSURE COMPLETED")
+            logger.info("🔄 ═══════════════════════════════════════════════════════════")
+            logger.info(f"✅ Positions closed: {closed_count}")
+            logger.info(f"❌ Failed closures: {failed_count}")
+            logger.info(f"💰 Total profit crystallized: ${total_profit:.2f}")
+            logger.info(f"📊 Average profit per position: {(sum(d['profit_pct'] for d in closure_details) / len(closure_details)):.2f}%" if closure_details else "N/A")
+            logger.info("🔄 ═══════════════════════════════════════════════════════════")
+            
+            return {
+                "status": "completed",
+                "positions_closed": closed_count,
+                "positions_failed": failed_count,
+                "total_profit_usdt": total_profit,
+                "closure_details": closure_details,
+                "execution_time": current_time.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error in pre-reset closure: {e}")
+            return {"status": "error", "error": str(e), "positions_closed": 0}
+    
+    def should_execute_pre_reset_closure(self) -> bool:
+        """🕐 Verificar si es momento de ejecutar el cierre pre-reset
+        
+        Returns:
+            True si es momento de ejecutar el cierre
+        """
+        from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
+        import pytz
+        from datetime import datetime, timedelta
+        
+        # Verificar si está habilitado
+        if not PRE_RESET_CLOSURE_CONFIG.get("enabled", False):
+            return False
+        
+        try:
+            chile_tz = pytz.timezone("America/Santiago")
+            current_time = datetime.now(chile_tz)
+            
+            # Calcular tiempo de reset
+            reset_time = current_time.replace(
+                hour=DAILY_RESET_HOUR, 
+                minute=DAILY_RESET_MINUTE, 
+                second=0, 
+                microsecond=0
+            )
+            
+            # Calcular tiempo de cierre
+            minutes_before = PRE_RESET_CLOSURE_CONFIG.get("minutes_before_reset", 15)
+            closure_time = reset_time - timedelta(minutes=minutes_before)
+            
+            # Verificar si estamos en la ventana de cierre (±1 minuto de tolerancia)
+            time_diff = abs((current_time - closure_time).total_seconds())
+            return time_diff <= 60  # 1 minuto de tolerancia
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking pre-reset closure timing: {e}")
+            return False
