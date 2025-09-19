@@ -14,7 +14,7 @@ try:
     from ..config.global_constants import GLOBAL_INITIAL_BALANCE
 except ImportError:
     # Fallback en caso de importación circular
-    GLOBAL_INITIAL_BALANCE = 1000.0
+    GLOBAL_INITIAL_BALANCE = 500.0
 
 Base = declarative_base()
 
@@ -49,7 +49,6 @@ class Trade(Base):
     # Risk management
     stop_loss = Column(Float, nullable=True)
     take_profit = Column(Float, nullable=True)
-    trailing_stop = Column(Float, nullable=True)  # Trailing stop dinámico
     
     # Metadatos
     timeframe = Column(String(10), nullable=False)  # 1h, 4h, 1d

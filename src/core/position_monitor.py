@@ -64,7 +64,6 @@ class PositionStatus:
     quantity: float
     stop_loss: Optional[float]
     take_profit: Optional[float]
-    trailing_stop: Optional[float]
     unrealized_pnl: float
     unrealized_pnl_percentage: float
     should_close: bool
@@ -251,16 +250,8 @@ class PositionMonitor:
                     if current_price is not None:
                         market_data[position.symbol] = current_price
                 
-                # Actualizar trailing stops dinámicos
+                # Actualizar take profits dinámicos
                 if market_data:
-                    try:
-                        updated_count = self.position_manager.update_trailing_stops(market_data)
-                        if updated_count > 0:
-                            logger.debug(f"🎯 Updated {updated_count} trailing stops")
-                    except Exception as e:
-                        logger.error(f"❌ Error updating trailing stops: {e}")
-                    
-                    # Actualizar take profits dinámicos
                     try:
                         updated_tp_count = self.position_manager.update_dynamic_take_profits(market_data)
                         if updated_tp_count > 0:
@@ -410,7 +401,7 @@ class PositionMonitor:
                 with self._stats_lock:
                     if close_reason == "TAKE_PROFIT":
                         self.stats["tp_executed"] += 1
-                    elif close_reason in ["STOP_LOSS", "TRAILING_STOP"]:
+                    elif close_reason == "STOP_LOSS":
                         self.stats["sl_executed"] += 1
             else:
                 # Incrementar contador de intentos fallidos
@@ -532,7 +523,6 @@ class PositionMonitor:
             quantity=quantity,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            trailing_stop=self._calculate_trailing_stop(position, current_price),
             unrealized_pnl=unrealized_pnl,
             unrealized_pnl_percentage=unrealized_pnl_percentage,
             should_close=should_close,
@@ -639,54 +629,7 @@ class PositionMonitor:
         self.failed_close_attempts.clear()
         logger.info("✅ Processed trades reset completed")
     
-    def _calculate_trailing_stop(self, position: Dict, current_price: float) -> Optional[float]:
-        """📈 Calcular trailing stop dinámico"""
-        try:
-            entry_price = position["entry_price"]
-            trade_type = position["trade_type"]
-            
-            # Configuración de trailing stop desde config
-            trailing_percentage = self.risk_config["trailing_stop_percentage"]
-            
-            if trade_type == "BUY":
-                # Para posiciones largas, trailing stop se mueve hacia arriba
-                trailing_stop = current_price * (1 - trailing_percentage / 100)
-                # Solo actualizar si es mayor que el stop loss actual
-                current_sl = position.get("stop_loss")
-                if current_sl is None or trailing_stop > current_sl:
-                    return trailing_stop
-            else:  # SELL
-                # Para posiciones cortas, trailing stop se mueve hacia abajo
-                trailing_stop = current_price * (1 + trailing_percentage / 100)
-                # Solo actualizar si es menor que el stop loss actual
-                current_sl = position.get("stop_loss")
-                if current_sl is None or trailing_stop < current_sl:
-                    return trailing_stop
-            
-            return None
-        except Exception as e:
-            logger.error(f"❌ Error calculando trailing stop: {e}")
-            return None
-    
-    def _update_trailing_stop(self, status: PositionStatus):
-        """📈 Actualizar trailing stop dinámico"""
-        try:
-            position_dict = {
-                "entry_price": status.entry_price,
-                "trade_type": status.trade_type,
-                "stop_loss": status.stop_loss
-            }
-            
-            trailing_stop = self._calculate_trailing_stop(position_dict, status.current_price)
-            if trailing_stop:
-                # Actualizar el trailing stop usando PositionManager
-                success = self.position_manager.update_position_stop_loss(status.trade_id, trailing_stop)
-                if success:
-                    logger.info(f"📈 Trailing stop actualizado para {status.symbol}: ${trailing_stop:.4f}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error actualizando trailing stop: {e}")
-    
+
     def get_monitoring_status(self) -> Dict:
         """📊 Obtener estado del monitoreo con métricas avanzadas"""
         # Obtener estadísticas del PositionManager
@@ -735,7 +678,6 @@ class PositionMonitor:
                 "positions_managed": position_stats["positions_managed"],
                 "take_profits_executed": position_stats["take_profits_executed"],
                 "stop_losses_executed": position_stats["stop_losses_executed"],
-                "trailing_stops_activated": position_stats["trailing_stops_activated"],
                 "total_realized_pnl": position_stats["total_realized_pnl"]
             }
         }

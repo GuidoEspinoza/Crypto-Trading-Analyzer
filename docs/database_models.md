@@ -51,7 +51,7 @@ class Trade(Base):
 ##### Risk Management
 - `stop_loss`: Nivel de stop loss
 - `take_profit`: Nivel de take profit
-- `trailing_stop`: Stop loss dinámico
+
 
 ##### Metadatos
 - `timeframe`: Marco temporal ("1h", "4h", "1d")

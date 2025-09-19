@@ -39,6 +39,7 @@ from src.config.config_manager import ConfigManager
 from src.config.global_constants import GLOBAL_INITIAL_BALANCE
 from src.core.paper_trader import PaperTrader
 
+
 # Configuración del modo de trading
 config = ConfigManager.get_consolidated_config()
 USE_PAPER_TRADING = config.get("trading_bot", {}).get("use_paper_trading", True)
@@ -77,6 +78,14 @@ class MetricsCalculator:
         self.equity_history = deque(maxlen=max_history)
         self.trade_history = deque(maxlen=max_history)
         self.signal_history = deque(maxlen=max_history)
+        # Cache de PaperTrader para evitar múltiples inicializaciones
+        self._paper_trader_cache = None
+    
+    def _get_paper_trader(self) -> PaperTrader:
+        """Obtener instancia cached de PaperTrader para evitar múltiples inicializaciones"""
+        if self._paper_trader_cache is None:
+            self._paper_trader_cache = PaperTrader()
+        return self._paper_trader_cache
     
     def _get_trade_filter(self) -> bool:
         """Determinar qué tipo de trades mostrar según la configuración"""
@@ -355,9 +364,9 @@ class MetricsCalculator:
                         'interpretation': f"{trade.strategy_name} - {trade.symbol}"
                     })
                 
-                # Obtener balance real de USDT usando PaperTrader
+                # Obtener balance real de USDT usando PaperTrader (cached)
                 try:
-                    paper_trader = PaperTrader()
+                    paper_trader = self._get_paper_trader()
                     real_usdt_balance = paper_trader.get_balance('USDT')
                 except Exception as e:
                     # Fallback al valor del portfolio summary si hay error
@@ -1386,6 +1395,19 @@ class ChartGenerator:
         
         return fig
     
+
+    
+
+    
+    def _get_gauge_color(self, value: float, warning_threshold: float, critical_threshold: float) -> str:
+        """Obtener color del medidor basado en umbrales"""
+        if value >= critical_threshold:
+            return "red"
+        elif value >= warning_threshold:
+            return "orange"
+        else:
+            return "green"
+    
     def _empty_chart(self, title: str) -> go.Figure:
         """Crear gráfico vacío"""
         fig = go.Figure()
@@ -1410,7 +1432,12 @@ class RealTimeDashboard:
     
     def __init__(self, config: DashboardConfig = None):
         self.config = config or DashboardConfig()
-        self.metrics_calc = MetricsCalculator()
+        
+        # Usar singleton para MetricsCalculator para evitar múltiples PaperTrader
+        if 'metrics_calculator' not in st.session_state:
+            st.session_state.metrics_calculator = MetricsCalculator()
+        self.metrics_calc = st.session_state.metrics_calculator
+        
         self.chart_gen = ChartGenerator(self.config)
         
         # Inicializar session state si no existe
@@ -2020,7 +2047,9 @@ class RealTimeDashboard:
         try:
             # Usar configuración actual del proyecto
             trading_config = config.get("trading_bot", {})
-            profile = config.get("trading_bot", {}).get("profile", "ÓPTIMO")
+            # Obtener el perfil activo desde ConfigManager
+            from src.config.config_manager import ConfigManager
+            profile = ConfigManager.get_active_profile()
             
             return {
                 'mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
@@ -2032,9 +2061,11 @@ class RealTimeDashboard:
             }
         except Exception as e:
             print(f"Error obteniendo trading mode info: {e}")
+            # Importar ACTIVE_TRADING_PROFILE como fallback
+            from src.config.global_constants import ACTIVE_TRADING_PROFILE
             return {
                 'mode': 'PAPER_TRADING',
-                'profile': 'ÓPTIMO',
+                'profile': ACTIVE_TRADING_PROFILE,
                 'description': 'Modo de trading virtual para pruebas',
                 'risk_level': 'MEDIUM',
                 'max_positions': 5,
@@ -2257,6 +2288,8 @@ class RealTimeDashboard:
                 st.write(f"• Tamaño: {risk_config.get('position_size_pct', 20.0):.1f}% del balance")
                 st.write(f"• Posiciones máximas: {config.get('trading_bot', {}).get('max_concurrent_positions', 5)}")
                 st.write(f"• Estado: {'Activo' if USE_PAPER_TRADING else 'Inactivo'}")
+
+
 
 # Función principal para ejecutar el dashboard
 def main():

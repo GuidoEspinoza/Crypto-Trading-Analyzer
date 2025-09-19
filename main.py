@@ -531,16 +531,34 @@ async def get_enhanced_risk_analysis(symbol: str, timeframe: str = None):
 
 # 🎭 Paper Trading Endpoints
 @app.get("/paper-trading/summary")
-async def get_paper_trading_summary():
+async def get_paper_trading_summary(force_refresh: bool = False):
     """
     📊 Obtener resumen del portfolio de paper trading
+    
+    Args:
+        force_refresh: Si es True, fuerza la actualización del caché
     """
     try:
+        # Verificar si los datos están en caché ANTES de llamar al método
+        cache_key = "portfolio_summary_True"
+        was_cached = (not force_refresh and 
+                     hasattr(db_manager, '_query_cache') and 
+                     cache_key in db_manager._query_cache and
+                     db_manager._is_cache_valid(cache_key))
+        
+        # Si se solicita forzar actualización, invalidar caché específico
+        if force_refresh:
+            if hasattr(db_manager, '_query_cache') and cache_key in db_manager._query_cache:
+                del db_manager._query_cache[cache_key]
+            if hasattr(db_manager, '_cache_timestamps') and cache_key in db_manager._cache_timestamps:
+                del db_manager._cache_timestamps[cache_key]
+        
         summary = db_manager.get_portfolio_summary(is_paper=True)
         return {
             "status": "success",
             "portfolio": summary,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "from_cache": was_cached
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -589,11 +607,22 @@ async def reset_paper_trading():
         result = bot.paper_trader.reset_portfolio()
         
         if result["success"]:
+            # Forzar invalidación inmediata del caché específico del portfolio summary
+            cache_key = "portfolio_summary_True"
+            if hasattr(db_manager, '_query_cache') and cache_key in db_manager._query_cache:
+                del db_manager._query_cache[cache_key]
+            if hasattr(db_manager, '_cache_timestamps') and cache_key in db_manager._cache_timestamps:
+                del db_manager._cache_timestamps[cache_key]
+            
+            # Limpiar todo el caché para asegurar consistencia
+            db_manager.clear_cache()
+            
             return {
                 "status": "success",
                 "message": result["message"],
                 "initial_balance": config.paper_trading.initial_balance,
-                "timestamp": result["timestamp"]
+                "timestamp": result["timestamp"],
+                "cache_cleared": True
             }
         else:
             raise HTTPException(status_code=500, detail=result["message"])

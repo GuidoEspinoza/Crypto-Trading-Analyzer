@@ -27,7 +27,6 @@ try:
 except Exception as e:
     # Configuración de fallback en caso de error
     config = {
-        'risk_manager': {'trailing_stop_activation': 5.0},
         'trading': {'usdt_base_price': 1.0},
         'paper_trader': {'max_slippage': 0.001, 'simulation_fees': 0.001},
         'advanced_indicators': {'fibonacci_lookback': 50},
@@ -57,7 +56,6 @@ class PositionInfo:
     unrealized_pnl_percentage: float
     stop_loss: Optional[float]  # Puede ser None
     take_profit: Optional[float]  # Puede ser None
-    trailing_stop: Optional[float]
     entry_time: datetime
     strategy_name: str
     confidence_score: float
@@ -74,9 +72,8 @@ class PositionInfo:
 class PositionUpdate:
     """🔄 Actualización de posición"""
     trade_id: int
-    action: str  # UPDATE_PRICE, UPDATE_TRAILING, CLOSE_POSITION
+    action: str  # UPDATE_PRICE, CLOSE_POSITION
     new_price: Optional[float] = None
-    new_trailing_stop: Optional[float] = None
     close_reason: Optional[str] = None
     timestamp: datetime = None
     
@@ -114,21 +111,10 @@ class PositionManager:
             profile = TradingProfiles.get_current_profile()
             self.cache_duration = profile.get('position_check_interval', 30)  # segundos
             self.seconds_per_day = profile.get('seconds_per_day', 86400)  # Configurable para tests
-            self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
         except Exception as e:
             logger.warning(f"⚠️ Error loading trading profile, using defaults: {e}")
             self.cache_duration = 30  # segundos
             self.seconds_per_day = 86400  # Configurable para tests
-            self.trailing_stop_distance = 1.0 / 100  # Default 1.0% convertir de % a decimal
-        
-        # Configuración de trailing stops desde configuración centralizada
-        try:
-            from src.config.config import RiskManagerConfig
-            risk_config = RiskManagerConfig()
-            self.trailing_stop_activation = risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
-        except Exception as e:
-            logger.warning(f"⚠️ Error loading risk config, using default: {e}")
-            self.trailing_stop_activation = config.get("risk_manager", {}).get("trailing_stop_activation", 5.0) / 100  # Convertir de % a decimal
         
         # Configuraciones adicionales del perfil
         try:
@@ -152,7 +138,6 @@ class PositionManager:
             "positions_managed": 0,
             "tp_executed": 0,
             "sl_executed": 0,
-            "trailing_stops_activated": 0,
             "total_pnl": 0.0
         }
         
@@ -300,7 +285,6 @@ class PositionManager:
                 unrealized_pnl_percentage=unrealized_pnl_percentage,
                 stop_loss=trade.stop_loss,
                 take_profit=trade.take_profit,
-                trailing_stop=getattr(trade, 'trailing_stop', None),
                 entry_time=trade.entry_time,
                 strategy_name=trade.strategy_name,
                 confidence_score=trade.confidence_score,
@@ -344,9 +328,6 @@ class PositionManager:
                 
                 position.unrealized_pnl_percentage = (position.unrealized_pnl / position.entry_value) * 100 if position.entry_value > 0 else 0
                 
-                # Actualizar trailing stop si aplica
-                self._update_trailing_stop(position)
-                
                 # Actualizar cache con la posición modificada
                 self.update_cache_entry(position)
                 
@@ -358,38 +339,7 @@ class PositionManager:
         
         return False
     
-    def _update_trailing_stop(self, position: PositionInfo):
-        """📈 Actualizar trailing stop de una posición
-        
-        Args:
-            position: Información de la posición
-        """
-        try:
-            # Solo para posiciones BUY por ahora
-            if position.trade_type != "BUY":
-                return
-            
-            # Verificar si la posición está en ganancia suficiente para activar trailing
-            profit_percentage = position.unrealized_pnl_percentage
-            
-            if profit_percentage >= (self.trailing_stop_activation * 100):
-                # Calcular nuevo trailing stop
-                new_trailing = position.current_price * (1 - self.trailing_stop_distance)
-                
-                # Solo actualizar si es mejor que el trailing actual
-                if position.trailing_stop is None or new_trailing > position.trailing_stop:
-                    old_trailing = position.trailing_stop
-                    position.trailing_stop = new_trailing
-                    
-                    if old_trailing is None:
-                        self.stats["trailing_stops_activated"] += 1
-                        logger.info(f"📈 Trailing stop activated for {position.symbol}: ${new_trailing:.4f}")
-                    else:
-                        logger.debug(f"📈 Trailing stop updated for {position.symbol}: ${old_trailing:.4f} -> ${new_trailing:.4f}")
-                        
-        except Exception as e:
-            logger.error(f"❌ Error updating trailing stop for position {position.trade_id}: {e}")
-    
+
     def check_exit_conditions(self, position: PositionInfo) -> Optional[str]:
         """🎯 Verificar si una posición debe cerrarse
         
@@ -410,10 +360,6 @@ class PositionManager:
                 # Verificar Stop Loss (solo si está configurado)
                 if position.stop_loss is not None and current_price <= position.stop_loss:
                     return "STOP_LOSS"
-                
-                # Verificar Trailing Stop
-                if position.trailing_stop is not None and current_price <= position.trailing_stop:
-                    return "TRAILING_STOP"
                     
             else:  # SELL
                 # Verificar Take Profit (solo si está configurado)
@@ -619,7 +565,7 @@ class PositionManager:
                 # Actualizar estadísticas
                 if reason == "TAKE_PROFIT":
                     self.stats["tp_executed"] += 1
-                elif reason in ["STOP_LOSS", "TRAILING_STOP"]:
+                elif reason == "STOP_LOSS":
                     self.stats["sl_executed"] += 1
                 
                 self.stats["total_pnl"] += pnl
@@ -634,8 +580,6 @@ class PositionManager:
                 
                 # Determinar tipo de activación para el log
                 activation_type = "📈 TAKE PROFIT" if reason == "TAKE_PROFIT" else "📉 STOP LOSS"
-                if reason == "TRAILING_STOP":
-                    activation_type = "🎯 TRAILING STOP"
                 
                 # Determinar si es ganancia o pérdida
                 result_type = "💰 GANANCIA" if pnl > 0 else "💸 PÉRDIDA"
@@ -750,156 +694,12 @@ class PositionManager:
             "positions_managed": self.stats["positions_managed"],
             "take_profits_executed": self.stats["tp_executed"],
             "stop_losses_executed": self.stats["sl_executed"],
-            "trailing_stops_activated": self.stats["trailing_stops_activated"],
             "total_realized_pnl": self.stats["total_pnl"],
             "cache_size": len(self.positions_cache),
             "last_cache_update": datetime.fromtimestamp(self.last_cache_update).isoformat() if self.last_cache_update > 0 else None
         }
     
-    def calculate_atr_trailing_stop(self, symbol: str, current_price: float, trade_type: str, atr_multiplier: Optional[float] = None) -> Optional[float]:
-        """📊 Calcular trailing stop dinámico basado en ATR
-        
-        Args:
-            symbol: Símbolo del activo
-            current_price: Precio actual
-            trade_type: Tipo de trade (BUY/SELL)
-            atr_multiplier: Multiplicador del ATR para el trailing stop (usa configuración si es None)
-            
-        Returns:
-            Precio del trailing stop o None si hay error
-        """
-        try:
-            # Usar configuración dinámica si no se especifica multiplicador
-            if atr_multiplier is None:
-                # Obtener atr_multiplier del perfil de trading
-                try:
-                    from src.config.config import TradingProfiles
-                    profile = TradingProfiles.get_current_profile()
-                    atr_multiplier = profile.get('atr_multiplier', 2.0)
-                except Exception:
-                    atr_multiplier = 2.0  # Default fallback
-            
-            # Obtener datos históricos para calcular ATR
-            # Por ahora usamos un ATR estimado basado en el precio
-            # En una implementación completa, se obtendría data histórica real
-            estimated_atr = current_price * self.atr_estimation_pct
-            
-            if trade_type == "BUY":
-                # Para posiciones largas, trailing stop debajo del precio
-                trailing_stop = current_price - (estimated_atr * atr_multiplier)
-            else:  # SELL
-                # Para posiciones cortas, trailing stop arriba del precio
-                trailing_stop = current_price + (estimated_atr * atr_multiplier)
-            
-            return trailing_stop
-            
-        except Exception as e:
-            logger.error(f"❌ Error calculating ATR trailing stop for {symbol}: {e}")
-            return None
-    
-    def update_trailing_stops(self, market_data: Dict[str, float]) -> int:
-        """🎯 Actualizar trailing stops para todas las posiciones activas
-        
-        Args:
-            market_data: Diccionario con precios actuales {symbol: price}
-            
-        Returns:
-            Número de trailing stops actualizados
-        """
-        updated_count = 0
-        
-        try:
-            positions = self.get_active_positions()
-            
-            if not positions:
-                return 0
-            
-            with db_manager.get_db_session() as session:
-                for position in positions:
-                    if position.symbol not in market_data:
-                        continue
-                    
-                    current_price = market_data[position.symbol]
-                    
-                    # Calcular nuevo trailing stop
-                    new_trailing_stop = self.calculate_atr_trailing_stop(
-                        position.symbol, 
-                        current_price, 
-                        position.trade_type
-                    )
-                    
-                    if new_trailing_stop is None:
-                        continue
-                    
-                    # Obtener trade de la base de datos
-                    trade = session.query(Trade).filter(
-                        Trade.id == position.trade_id,
-                        Trade.status == "OPEN"
-                    ).first()
-                    
-                    if not trade:
-                        continue
-                    
-                    # Verificar si la posición tiene suficiente ganancia para activar trailing stop
-                    profit_pct = 0
-                    if position.trade_type == "BUY":
-                        profit_pct = (current_price - position.entry_price) / position.entry_price
-                    else:  # SELL
-                        profit_pct = (position.entry_price - current_price) / position.entry_price
-                    
-                    # Solo activar trailing stop si hay ganancia suficiente
-                    if profit_pct < self.trailing_stop_activation:
-                        logger.debug(f"Trailing stop not activated for {position.symbol}: profit {profit_pct:.2%} < activation threshold {self.trailing_stop_activation:.2%}")
-                        continue
-                    
-                    # Verificar si necesita actualizar trailing stop
-                    should_update = False
-                    
-                    if position.trade_type == "BUY":
-                        # Para posiciones largas, solo subir el trailing stop
-                        if (not hasattr(trade, 'trailing_stop') or 
-                            trade.trailing_stop is None or 
-                            new_trailing_stop > trade.trailing_stop):
-                            should_update = True
-                    else:  # SELL
-                        # Para posiciones cortas, solo bajar el trailing stop
-                        if (not hasattr(trade, 'trailing_stop') or 
-                            trade.trailing_stop is None or 
-                            new_trailing_stop < trade.trailing_stop):
-                            should_update = True
-                    
-                    if should_update:
-                        # Actualizar trailing stop en la base de datos
-                        if not hasattr(trade, 'trailing_stop'):
-                            # Añadir columna si no existe (para compatibilidad)
-                            pass
-                        
-                        trade.trailing_stop = new_trailing_stop
-                        
-                        # Actualizar cache
-                        if position.trade_id in self.positions_cache:
-                            self.positions_cache[position.trade_id].trailing_stop = new_trailing_stop
-                        
-                        updated_count += 1
-                        
-                        logger.debug(
-                            f"📊 Updated trailing stop for {position.symbol}: "
-                            f"${new_trailing_stop:.4f} (Price: ${current_price:.4f})"
-                        )
-                
-                session.commit()
-                
-                if updated_count > 0:
-                    self.stats["trailing_stops_activated"] += updated_count
-                    logger.info(f"🎯 Updated {updated_count} trailing stops")
-                    # Invalidar caché para reflejar los nuevos trailing stops
-                    self.positions_cache.clear()
-                
-        except Exception as e:
-            logger.error(f"❌ Error updating trailing stops: {e}")
-        
-        return updated_count
-    
+
     def update_dynamic_take_profits(self, market_data: Dict[str, float], risk_manager=None) -> int:
         """🎯 Actualizar take profits dinámicos para todas las posiciones activas
         

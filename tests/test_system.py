@@ -1045,7 +1045,7 @@ class SystemTester:
             config_sync = (
                 self.consolidated_config is not None and
                 self.bot_config is not None and
-                TRADING_PROFILE in ["RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"]
+                TRADING_PROFILE in ["AGRESIVO", "OPTIMO", "CONSERVADOR"]
             )
             self.log_success(f"6. Configuraciones sincronizadas: {config_sync}")
             

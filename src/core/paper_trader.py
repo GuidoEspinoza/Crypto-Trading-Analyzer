@@ -15,6 +15,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config.config_manager import ConfigManager
+from src.config.global_constants import GLOBAL_INITIAL_BALANCE
 
 # Inicializar configuración centralizada
 try:
@@ -98,7 +99,7 @@ class PaperTrader:
             initial_balance: Balance inicial en USDT (opcional, usa config si no se especifica)
         """
         # Configuración del paper trader desde archivo centralizado
-        self.initial_balance = initial_balance if initial_balance is not None else self._get_config_value("paper_trader.initial_balance", 1000.0)
+        self.initial_balance = initial_balance if initial_balance is not None else self._get_config_value("paper_trader.initial_balance", GLOBAL_INITIAL_BALANCE)
         self.max_position_size = self._get_config_value("paper_trader.max_position_size", 0.8)  # 80% del balance
         self.max_total_exposure = self._get_config_value("paper_trader.max_total_exposure", 50000.0)
         self.min_trade_value = self._get_config_value("paper_trader.min_trade_value", 10.0)
@@ -142,7 +143,15 @@ class PaperTrader:
                 
                 session.commit()
                 
-                # Invalidar caché del portfolio summary
+                # Invalidar caché específico del portfolio summary
+                cache_key = "portfolio_summary_True"
+                if hasattr(db_manager, '_query_cache') and cache_key in db_manager._query_cache:
+                    del db_manager._query_cache[cache_key]
+                    self.logger.debug(f"🗑️ Specific cache key removed: {cache_key}")
+                if hasattr(db_manager, '_cache_timestamps') and cache_key in db_manager._cache_timestamps:
+                    del db_manager._cache_timestamps[cache_key]
+                
+                # Limpiar todo el caché para asegurar consistencia completa
                 db_manager.clear_cache()
                 
                 self.logger.info(f"🔄 Portfolio reset to initial balance: ${self.initial_balance:,.2f}")

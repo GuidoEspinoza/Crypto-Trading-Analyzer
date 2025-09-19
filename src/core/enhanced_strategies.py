@@ -670,11 +670,7 @@ class EnhancedTradingStrategy(TradingStrategy):
             # Ajustar según el perfil activo
             profile_name = ConfigManager.get_active_profile()
             
-            if profile_name == "RAPIDO":
-                # Perfil rápido: reducir tiempos en 40%
-                expected_duration *= 0.6
-                max_hold_time *= 0.6
-            elif profile_name == "AGRESIVO":
+            if profile_name == "AGRESIVO":
                 # Perfil agresivo: reducir tiempos en 20%
                 expected_duration *= 0.8
                 max_hold_time *= 0.8

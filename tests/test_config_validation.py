@@ -35,7 +35,7 @@ def test_trading_bot_config():
     from src.config.config import get_trading_bot_config
     
     # Probar cada perfil
-    profiles = ["RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"]
+    profiles = ["AGRESIVO", "OPTIMO", "CONSERVADOR"]
     
     for profile in profiles:
         config = get_trading_bot_config(profile)
@@ -48,9 +48,7 @@ def test_trading_bot_config():
             print(f"  📊 Timeframes: {timeframes}")
             
             # Verificar que los timeframes están optimizados
-            if profile == "RAPIDO" and "1m" in timeframes and "3m" in timeframes:
-                print("  ✅ Timeframes RAPIDO optimizados correctamente")
-            elif profile == "AGRESIVO" and "5m" in timeframes and "15m" in timeframes:
+            if profile == "AGRESIVO" and "5m" in timeframes and "15m" in timeframes:
                 print("  ✅ Timeframes AGRESIVO optimizados correctamente")
             elif profile == "OPTIMO" and "30m" in timeframes and "1h" in timeframes:
                 print("  ✅ Timeframes OPTIMO optimizados correctamente")
@@ -66,7 +64,6 @@ def test_trading_bot_config():
             
             # Verificar coherencia con timeframes
             expected_intervals = {
-                "RAPIDO": 30,
                 "AGRESIVO": 45,
                 "OPTIMO": 60,
                 "CONSERVADOR": 120

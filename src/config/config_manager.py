@@ -6,7 +6,7 @@ eliminando dependencias circulares y garantizando configuraciones 100% consolida
 
 🔧 CARACTERÍSTICAS:
 - ✅ Configuración centralizada y validada automáticamente
-- ✅ Perfiles de trading robustos (RAPIDO, AGRESIVO, OPTIMO, CONSERVADOR)
+- ✅ Perfiles de trading robustos (AGRESIVO, OPTIMO, CONSERVADOR)
 - ✅ Fallbacks automáticos para evitar valores N/A
 - ✅ Validación en tiempo real de todas las configuraciones
 - ✅ Eliminación de dependencias circulares
@@ -46,7 +46,6 @@ logger = logging.getLogger(__name__)
 
 class TradingProfile(Enum):
     """Perfiles de trading disponibles"""
-    RAPIDO = "RAPIDO"
     AGRESIVO = "AGRESIVO" 
     OPTIMO = "OPTIMO"
     CONSERVADOR = "CONSERVADOR"
@@ -107,189 +106,7 @@ class ConfigManager:
     def _load_all_profiles(cls) -> None:
         """📋 Carga todas las configuraciones de perfiles"""
         
-        # Perfil RAPIDO - Ultra-rápido Optimizado para Scalping
-        cls._profiles_cache[TradingProfile.RAPIDO] = ProfileConfig(
-            name="🚀 Ultra-Rápido Optimizado",
-            description="Timeframes 1m-15m optimizados para scalping ultra-rápido con máxima frecuencia",
-            timeframes=["1m", "5m", "15m"],  # Timeframes ultra-cortos para scalping
-            risk_level="high",
-            frequency="ultra_high",
-            trading_bot={
-                'analysis_interval': 15,  # Análisis ultra-frecuente para scalping
-                'min_confidence': 72.0,  # Reducir umbral para más oportunidades de scalping
-                'max_positions': 12,  # Más posiciones para aprovechar micro-movimientos
-                'max_daily_trades': 80,  # Aumentar límite para scalping intensivo
-                'max_concurrent_positions': 12,  # Más posiciones concurrentes
-                'symbols': ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'BNBUSDT'],  # Más símbolos líquidos
-                'position_timeout': 180,  # Timeout más corto para scalping
-                'quick_exit_enabled': True,
-                'scalping_mode': True,  # Modo scalping activado
-                'micro_scalping_enabled': True  # Activar micro-scalping para 1m
-            },
-            risk_manager={
-                'max_risk_per_trade': 0.02,  # Riesgo más controlado para alta frecuencia
-                'risk_per_trade': 2.0,
-                'max_daily_risk': 0.15,  # Mayor límite diario para scalping intensivo
-                'max_drawdown_threshold': 0.20,  # Tolerancia ajustada para micro-movimientos
-                'max_drawdown': 20.0,
-                'stop_loss_percentage': 1.2,  # SL ultra-ajustado para scalping 1m-15m
-                'take_profit_percentage': 2.4,  # TP optimizado para micro-ganancias (ratio 2:1)
-                'correlation_threshold': 0.80,  # Correlación estricta pero realista
-                'min_position_size': 4.0,  # Posiciones más pequeñas para diversificación
-                'max_position_size': 0.06,  # 6% del balance - Tamaño máximo controlado
-                'kelly_fraction': 0.40,  # Sizing más agresivo para scalping
-                'position_size_multiplier': 0.8,  # Multiplicador conservador
-                'volatility_adjustment_factor': 1.8,  # Mayor sensibilidad a volatilidad
-                'atr_multiplier': 1.2,  # ATR ultra-ajustado para timeframes cortos
-                'trailing_stop_activation': 0.008,  # Activación ultra-temprana del trailing
-                'profit_target_multiplier': 2.0,  # Ratio R/R 2:1 para scalping
-                'dynamic_sizing_enabled': True,  # Sizing dinámico esencial
-                'risk_scaling_factor': 0.9,  # Factor de escalado conservador
-                # 🚀 TRAILING STOP ULTRA-OPTIMIZADO PARA SCALPING
-                'trailing_stop': {
-                    'activation_threshold': 0.008,  # 0.8% - Activación ultra-temprana para scalping
-                    'base_distance': 0.004,  # 0.4% - Distancia base ultra-ajustada
-                    'volatility_multiplier': 2.0,  # Mayor ajuste por volatilidad para scalping
-                    'momentum_multiplier': 1.5,  # Mayor respuesta al momentum
-                    'volume_multiplier': 1.3,  # Mayor ajuste por volumen
-                    'min_distance': 0.002,  # 0.2% distancia mínima ultra-ajustada
-                    'max_distance': 0.012,  # 1.2% distancia máxima para scalping
-                    'acceleration_factor': 0.035,  # Factor de aceleración mayor para scalping
-                    'max_acceleration': 0.35,  # Aceleración máxima mayor
-                    'profit_protection': 0.5,  # Proteger 50% de ganancias (más agresivo)
-                    'adaptive_enabled': True,  # Activar adaptación dinámica
-                    'market_regime_adjustment': True,  # Ajuste por régimen de mercado
-                    'micro_scalping_mode': True,  # Modo micro-scalping para 1m
-                    'ultra_fast_adjustment': True,  # Ajuste ultra-rápido
-                    'tick_based_trailing': True  # Trailing basado en ticks para 1m
-                }
-            },
-            paper_trader={
-                'initial_balance': 1000.0,
-                'max_position_size': 0.08,  # 8% del balance
-                'max_total_exposure': 400.0,
-                'min_trade_value': 8.0,
-                'min_trade_amount': 8.0,
-                'commission_rate': 0.001,
-                'paper_min_confidence': 70.0,
-                'max_slippage': 0.002,
-                'trading_fees': 0.001
-            },
-            strategies={
-                'rsi_oversold': 15,  # Ultra-agresivo para capturar micro-reversiones
-                'rsi_overbought': 85,  # Ultra-agresivo para ventas rápidas
-                'rsi_period': 4,  # Ultra-sensible para scalping 1m-15m
-                'confidence_boost_factor': 1.6,  # Mayor boost para señales de scalping
-                'timeframes': ["1m", "5m", "15m"],
-                'macd_fast': 3,  # Ultra-rápido para señales inmediatas
-                'macd_slow': 8,
-                'macd_signal': 3,
-                'bb_period': 8,  # Bandas ultra-reactivas para scalping
-                'bb_std': 1.4,  # Bandas más estrechas para micro-movimientos
-                'volume_threshold': 1.8,  # Umbral de volumen más alto para liquidez
-                'momentum_threshold': 0.015,  # Momentum ultra-sensible
-                'trend_strength_threshold': 0.4,  # Filtro de tendencia más permisivo
-                'multi_timeframe_confirmation': True,  # Confirmación multi-timeframe
-                'scalping_mode_enabled': True,  # Modo scalping específico
-                'micro_trend_detection': True  # Detección de micro-tendencias
-            },
-            indicators={
-                'rsi_period': 4,  # Ultra-sensible para movimientos rápidos
-                'macd_periods': [3, 8, 3],  # Períodos ultra-cortos para señales inmediatas
-                'bb_period': 8,  # Bandas ultra-reactivas
-                'volume_sma_period': 5,  # Volumen ultra-sensible
-                'atr_period': 4,  # ATR ultra-reactivo para stops dinámicos
-                'stoch_k_period': 5,  # Stochastic ultra-sensible
-                'stoch_d_period': 2,
-                'williams_r_period': 5,  # Williams %R ultra-optimizado
-                'cci_period': 8,  # CCI para momentum ultra-rápido
-                'fibonacci_lookback': 20,  # Fibonacci ultra-corto para scalping
-                'ema_fast_period': 3,  # EMA ultra-rápida
-                'ema_slow_period': 8,  # EMA lenta optimizada
-                'tick_volume_period': 3,  # Volumen por tick para 1m
-                'price_action_sensitivity': 0.8  # Alta sensibilidad a price action
-            },
-            advanced_optimizations={
-                # 🎯 OPTIMIZACIONES DE WIN RATE
-                'win_rate_target': 87.7,  # Win rate objetivo optimizado
-                'confirmation_filters': {
-                    'enabled': True,
-                    'min_confirmations': 3,  # Mínimo 3 indicadores deben coincidir
-                    'rsi_confluence': True,  # RSI debe confirmar
-                    'macd_confluence': True,  # MACD debe confirmar
-                    'volume_confluence': True,  # Volumen debe confirmar
-                    'trend_confluence': True,  # Tendencia debe confirmar
-                    'volatility_filter': True,  # Filtrar alta volatilidad
-                    'max_volatility_threshold': 0.05  # Máximo 5% de volatilidad
-                },
-                
-                # 📈 TAKE PROFIT DINÁMICO
-                'dynamic_take_profit': {
-                    'enabled': True,
-                    'base_multiplier': 2.0,  # Multiplicador base R:R
-                    'atr_based': True,  # Usar ATR para cálculo
-                    'trend_adjustment': True,  # Ajustar según tendencia
-                    'volatility_adjustment': True,  # Ajustar según volatilidad
-                    'max_tp_multiplier': 3.5,  # Máximo multiplicador
-                    'min_tp_multiplier': 1.5,  # Mínimo multiplicador
-                    'scaling_levels': [0.5, 0.3, 0.2]  # Escalado de salidas
-                },
-                
-                # 🛡️ TRAILING STOP INTELIGENTE
-                'intelligent_trailing': {
-                    'enabled': True,
-                    'activation_threshold': 0.015,  # Activar al 1.5% de ganancia
-                    'trail_distance_atr': 1.5,  # Distancia en ATR
-                    'acceleration_factor': 0.02,  # Factor de aceleración
-                    'max_acceleration': 0.2,  # Máxima aceleración
-                    'trend_based_adjustment': True,  # Ajustar según tendencia
-                    'volatility_based_adjustment': True  # Ajustar según volatilidad
-                },
-                
-                # ⚖️ GESTIÓN DE POSICIÓN ADAPTATIVA
-                'adaptive_position_sizing': {
-                    'enabled': True,
-                    'base_risk_percent': 2.5,  # Riesgo base por trade
-                    'volatility_adjustment': True,  # Ajustar por volatilidad
-                    'confidence_scaling': True,  # Escalar por confianza
-                    'market_condition_adjustment': True,  # Ajustar por condiciones
-                    'max_position_multiplier': 1.5,  # Máximo multiplicador
-                    'min_position_multiplier': 0.5,  # Mínimo multiplicador
-                    'kelly_criterion_enabled': True  # Usar criterio de Kelly
-                },
-                
-                # ⏰ SALIDAS BASADAS EN TIEMPO - OPTIMIZADAS PARA TRADING ACTIVO
-                'time_based_exits': {
-                    'enabled': True,  # Habilitar salidas temporales
-                    'signal_type_multiplier': {
-                        'BUY': 0.8,  # Tiempo reducido para compras en trading activo
-                        'SELL': 0.7  # Tiempo aún más reducido para ventas
-                    },
-                    'profit_threshold_for_early_exit': 0.018,  # 1.8% ganancia para salida temprana (más agresivo)
-                    'loss_threshold_for_early_exit': -0.012,  # 1.2% pérdida para salida temprana (más estricto)
-                    'time_decay_factor': 0.15,  # Mayor decaimiento temporal para trading rápido
-                    'max_time_extension_multiplier': 1.3,  # Menor extensión de tiempo
-                    'timeframe_multipliers': {  # Multiplicadores específicos por timeframe
-                        '5m': 0.6,   # Muy rápido para 5m
-                        '15m': 0.8,  # Rápido para 15m
-                        '30m': 1.0   # Estándar para 30m
-                    },
-                    'volatility_adjustment': True,  # Ajustar por volatilidad del mercado
-                    'volume_threshold_multiplier': 1.2  # Ajuste por volumen
-                },
-                
-                # 📊 MÉTRICAS DE OPTIMIZACIÓN
-                'optimization_metrics': {
-                    'target_profit_factor': 4.19,  # Profit factor objetivo
-                    'target_sharpe_ratio': 2.5,  # Sharpe ratio objetivo
-                    'max_drawdown_limit': 15.0,  # Máximo drawdown permitido
-                    'min_win_rate': 85.0,  # Win rate mínimo
-                    'rebalance_frequency': 'daily'  # Frecuencia de rebalanceo
-                }
-            }
-        )
-        
-        # Perfil AGRESIVO - Optimizado para Trading Activo
+        # Perfil AGRESIVO - Balanceado Optimizado
         cls._profiles_cache[TradingProfile.AGRESIVO] = ProfileConfig(
             name="⚡ Agresivo Optimizado",
             description="Timeframes 5m-30m optimizados para trading activo con alta frecuencia",
@@ -322,34 +139,19 @@ class ConfigManager:
                 'position_size_multiplier': 1.0,  # Multiplicador neutral
                 'volatility_adjustment_factor': 1.5,  # Mayor ajuste por volatilidad
                 'atr_multiplier': 1.5,  # ATR ajustado para timeframes cortos
-                'trailing_stop_activation': 0.012,  # Activación más temprana del trailing
                 'profit_target_multiplier': 2.0,  # Ratio R/R 2:1 para trading activo
                 'dynamic_sizing_enabled': True,  # Sizing dinámico
-                'risk_scaling_factor': 1.1,  # Factor de escalado más conservador
-                'trailing_stop': {
-                    'activation_threshold': 0.012,  # 1.2% ganancia para activar (más temprano)
-                    'base_distance': 0.008,  # 0.8% distancia base (más ajustado)
-                    'volatility_multiplier': 1.4,  # Mayor ajuste por volatilidad
-                    'momentum_multiplier': 1.3,  # Mayor respuesta al momentum
-                    'volume_multiplier': 1.2,  # Mayor ajuste por volumen
-                    'min_distance': 0.005,  # 0.5% distancia mínima (más ajustado)
-                    'max_distance': 0.020,  # 2.0% distancia máxima (más conservador)
-                    'acceleration_factor': 0.025,  # Factor de aceleración mayor
-                    'max_acceleration': 0.25,  # Aceleración máxima mayor
-                    'profit_protection': 0.6,  # Proteger 60% de ganancias (más conservador)
-                    'adaptive_enabled': True,  # Activar adaptación dinámica
-                    'market_regime_adjustment': True  # Ajuste por régimen de mercado
-                }
+                'risk_scaling_factor': 1.1  # Factor de escalado más conservador
             },
             paper_trader={
-                'initial_balance': 1000.0,
+                'initial_balance': GLOBAL_INITIAL_BALANCE,
                 'max_position_size': 0.08,  # 8% del balance
-                'max_total_exposure': 500.0,
-                'min_trade_value': 10.0,
-                'min_trade_amount': 10.0,
+                'max_total_exposure': 400.0,
+                'min_trade_value': 8.0,
+                'min_trade_amount': 8.0,
                 'commission_rate': 0.001,
-                'paper_min_confidence': 65.0,
-                'max_slippage': 0.001,
+                'paper_min_confidence': 70.0,
+                'max_slippage': 0.002,
                 'trading_fees': 0.001
             },
             strategies={
@@ -406,17 +208,6 @@ class ConfigManager:
                     'max_tp_multiplier': 4.0,  # Máximo multiplicador
                     'min_tp_multiplier': 2.0,  # Mínimo multiplicador
                     'scaling_levels': [0.4, 0.3, 0.3]  # Escalado de salidas
-                },
-                
-                # 🛡️ TRAILING STOP INTELIGENTE
-                'intelligent_trailing': {
-                    'enabled': True,
-                    'activation_threshold': 0.02,  # Activar al 2% de ganancia
-                    'trail_distance_atr': 1.8,  # Distancia en ATR
-                    'acceleration_factor': 0.025,  # Factor de aceleración
-                    'max_acceleration': 0.25,  # Máxima aceleración
-                    'trend_based_adjustment': True,  # Ajustar según tendencia
-                    'volatility_based_adjustment': True  # Ajustar según volatilidad
                 },
                 
                 # ⚖️ GESTIÓN DE POSICIÓN ADAPTATIVA
@@ -482,31 +273,14 @@ class ConfigManager:
                 'position_size_multiplier': 1.2,  # Multiplicador optimizado para swings
                 'volatility_adjustment_factor': 1.3,  # Mayor ajuste por volatilidad
                 'atr_multiplier': 2.2,  # ATR optimizado para swing trading
-                'trailing_stop_activation': 0.025,  # Trailing stop optimizado para swings
                 'profit_target_multiplier': 3.0,  # Ratio R/R 3:1 para swing trading
                 'dynamic_sizing_enabled': True,  # Sizing dinámico
                 'risk_scaling_factor': 1.1,  # Factor de escalado optimizado
                 'quality_filter_enabled': True,  # Filtro de calidad habilitado
-                'swing_risk_adjustment': True,  # Ajuste específico para swing trading
-                'trailing_stop': {
-                    'activation_threshold': 0.025,  # 2.5% ganancia para activar (swing trading)
-                    'base_distance': 0.018,  # 1.8% distancia base optimizada
-                    'volatility_multiplier': 1.2,  # Mayor ajuste por volatilidad para swings
-                    'momentum_multiplier': 1.1,  # Multiplicador por momentum para swings
-                    'volume_multiplier': 1.05,  # Ligero ajuste por volumen
-                    'min_distance': 0.012,  # 1.2% distancia mínima para swings
-                    'max_distance': 0.040,  # 4.0% distancia máxima para swings largos
-                    'acceleration_factor': 0.018,  # Factor de aceleración balanceado
-                    'max_acceleration': 0.18,  # Aceleración máxima balanceada
-                    'profit_protection': 0.65,  # Proteger 65% de ganancias en swings
-                    'adaptive_enabled': True,  # Activar adaptación dinámica
-                    'market_regime_adjustment': True,  # Ajuste por régimen de mercado
-                    'swing_mode_enabled': True,  # Modo específico para swing trading
-                    'trend_strength_multiplier': 1.15  # Multiplicador por fuerza de tendencia
-                }
+                'swing_risk_adjustment': True  # Ajuste específico para swing trading
             },
             paper_trader={
-                'initial_balance': 1000.0,
+                'initial_balance': GLOBAL_INITIAL_BALANCE,
                 'max_position_size': 0.12,  # 12% del balance por posición
                 'max_total_exposure': 600.0,
                 'min_trade_value': 15.0,
@@ -592,19 +366,7 @@ class ConfigManager:
                     'trend_strength_multiplier': 1.2  # Multiplicador por fuerza de tendencia
                 },
                 
-                # 🛡️ TRAILING STOP INTELIGENTE PARA SWING TRADING
-                'intelligent_trailing': {
-                    'enabled': True,
-                    'activation_threshold': 0.03,  # Activar al 3% de ganancia para swings
-                    'trail_distance_atr': 2.2,  # Distancia en ATR optimizada para swings
-                    'acceleration_factor': 0.025,  # Factor de aceleración balanceado
-                    'max_acceleration': 0.25,  # Máxima aceleración para swings
-                    'trend_based_adjustment': True,  # Ajustar según tendencia
-                    'volatility_based_adjustment': True,  # Ajustar según volatilidad
-                    'fibonacci_levels': True,  # Usar niveles de Fibonacci
-                    'swing_high_low_adjustment': True,  # Ajuste por máximos/mínimos de swing
-                    'market_structure_awareness': True  # Conciencia de estructura de mercado
-                },
+
                 
                 # ⚖️ GESTIÓN DE POSICIÓN ADAPTATIVA PARA SWING TRADING
                 'adaptive_position_sizing': {
@@ -684,33 +446,15 @@ class ConfigManager:
                 'position_size_multiplier': 1.0,  # Multiplicador neutro
                 'volatility_adjustment_factor': 0.8,  # Ajuste muy conservador
                 'atr_multiplier': 3.0,  # ATR más amplio para holding
-                'trailing_stop_activation': 0.05,  # Trailing stop más amplio
                 'profit_target_multiplier': 4.0,  # Ratio R/R para holding
                 'dynamic_sizing_enabled': True,  # Sizing dinámico
                 'risk_scaling_factor': 0.6,  # Factor muy conservador
                 'quality_filter_enabled': True,  # Filtro de calidad obligatorio
                 'max_concurrent_positions': 2,  # Límite de posiciones concurrentes
-                'holding_risk_adjustment': 0.7,  # Ajuste específico para holding
-                'trailing_stop': {
-                    'activation_threshold': 0.06,  # 6% ganancia para activar (holding)
-                    'base_distance': 0.035,  # 3.5% distancia base para holding
-                    'volatility_multiplier': 0.8,  # Multiplicador conservador por volatilidad
-                    'momentum_multiplier': 0.7,  # Multiplicador muy conservador por momentum
-                    'volume_multiplier': 0.8,  # Multiplicador conservador por volumen
-                    'min_distance': 0.025,  # 2.5% distancia mínima para holding
-                    'max_distance': 0.08,  # 8.0% distancia máxima para holding
-                    'acceleration_factor': 0.005,  # Factor de aceleración ultra conservador
-                    'max_acceleration': 0.05,  # Aceleración máxima ultra conservadora
-                    'profit_protection': 0.8,  # Proteger 80% de ganancias
-                    'adaptive_enabled': True,  # Activar adaptación dinámica
-                    'market_regime_adjustment': True,  # Ajuste por régimen de mercado
-                    'holding_mode_enabled': True,  # Modo holding habilitado
-                    'long_term_trend_adjustment': True,  # Ajuste por tendencia de largo plazo
-                    'fundamental_event_protection': True  # Protección por eventos fundamentales
-                }
+                'holding_risk_adjustment': 0.7  # Ajuste específico para holding
             },
             paper_trader={
-                'initial_balance': 1000.0,
+                'initial_balance': GLOBAL_INITIAL_BALANCE,
                 'max_position_size': 0.15,  # 15% del balance
                 'max_total_exposure': 700.0,
                 'min_trade_value': 20.0,
@@ -809,21 +553,7 @@ class ConfigManager:
                     'fundamental_event_targets': True  # Objetivos por eventos fundamentales
                 },
                 
-                # 🛡️ TRAILING STOP INTELIGENTE PARA HOLDING ESTRATÉGICO
-                'intelligent_trailing': {
-                    'enabled': True,
-                    'activation_threshold': 0.08,  # Activar al 8% de ganancia para holding
-                    'trail_distance_atr': 3.5,  # Distancia en ATR muy amplia para holding
-                    'acceleration_factor': 0.008,  # Factor de aceleración ultra conservador
-                    'max_acceleration': 0.08,  # Máxima aceleración muy conservadora
-                    'trend_based_adjustment': True,  # Ajustar según tendencia
-                    'volatility_based_adjustment': True,  # Ajustar según volatilidad
-                    'fibonacci_levels': True,  # Usar niveles de Fibonacci
-                    'support_resistance_levels': True,  # Usar niveles de soporte/resistencia
-                    'long_term_structure_awareness': True,  # Conciencia de estructura de largo plazo
-                    'cycle_based_adjustment': True,  # Ajuste basado en ciclos
-                    'fundamental_event_protection': True  # Protección por eventos fundamentales
-                },
+
                 
                 # ⚖️ GESTIÓN DE POSICIÓN ADAPTATIVA PARA HOLDING ESTRATÉGICO
                 'adaptive_position_sizing': {

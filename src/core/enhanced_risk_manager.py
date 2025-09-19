@@ -58,12 +58,10 @@ class DynamicStopLoss:
     """Stop loss dinámico"""
     initial_stop: float
     current_stop: float
-    trailing_stop: float
     atr_multiplier: float
-    stop_type: str  # FIXED, TRAILING, ATR_BASED
+    stop_type: str  # FIXED, ATR_BASED
     last_update: datetime
     stop_loss_price: float = 0.0  # Precio actual del stop loss
-    trailing_distance: float = 0.0  # Distancia del trailing stop
 
 @dataclass
 class DynamicTakeProfit:
@@ -114,7 +112,6 @@ class EnhancedRiskManager:
         
         # Stop loss dinámico profesional con valores por defecto
         self.atr_multiplier_range = (1.5, 3.0)  # Rango de multiplicadores ATR
-        self.trailing_stop_activation = 0.02  # 2% de ganancia para activar trailing stop
         self.breakeven_stop_threshold = 0.01  # 1% para mover stop a breakeven
         
         # Configuración adicional con valores por defecto
@@ -356,12 +353,10 @@ class EnhancedRiskManager:
             return DynamicStopLoss(
                 initial_stop=round(initial_stop, 2),
                 current_stop=round(initial_stop, 2),
-                trailing_stop=round(initial_stop, 2),
                 atr_multiplier=atr_multiplier,
                 stop_type="ATR_BASED",
                 last_update=datetime.now(),
-                stop_loss_price=round(initial_stop, 2),
-                trailing_distance=round(trailing_distance, 2)
+                stop_loss_price=round(initial_stop, 2)
             )
             
         except Exception as e:
@@ -371,12 +366,10 @@ class EnhancedRiskManager:
             return DynamicStopLoss(
                 initial_stop=stop_price,
                 current_stop=stop_price,
-                trailing_stop=stop_price,
                 atr_multiplier=2.0,  # Multiplicador ATR por defecto
                 stop_type="FIXED",
                 last_update=datetime.now(),
-                stop_loss_price=stop_price,
-                trailing_distance=round(trailing_distance, 2)
+                stop_loss_price=stop_price
             )
     
     def _configure_dynamic_take_profit(self, signal: EnhancedSignal) -> DynamicTakeProfit:
@@ -746,12 +739,10 @@ class EnhancedRiskManager:
             dynamic_stop_loss=DynamicStopLoss(
                 initial_stop=default_stop_price,
                 current_stop=default_stop_price,
-                trailing_stop=default_stop_price,
                 atr_multiplier=2.0,
                 stop_type="FIXED",
                 last_update=datetime.now(),
-                stop_loss_price=default_stop_price,
-                trailing_distance=round(default_trailing_distance, 2)
+                stop_loss_price=default_stop_price
             ),
             dynamic_take_profit=DynamicTakeProfit(
                 initial_tp=default_tp_price,
@@ -784,17 +775,7 @@ class EnhancedRiskManager:
                 # Obtener datos de mercado actuales para análisis avanzado
                 market_data = self._get_current_market_data(symbol, current_price)
                 
-                # Actualizar stop loss trailing inteligente
-                updated_stop = self._update_intelligent_trailing_stop(
-                    position, current_price, market_data
-                )
-                
-                if updated_stop:
-                    position["current_stop"] = updated_stop["new_stop"]
-                    position["stop_type"] = updated_stop["stop_type"]
-                    position["trailing_reason"] = updated_stop["reason"]
-                    logger.info(f"Updated intelligent trailing stop for {symbol}: {updated_stop['new_stop']} - {updated_stop['reason']}")
-                
+                # Actualizar métricas básicas de stop loss
                 # Actualizar métricas de la posición
                 position["current_price"] = current_price
                 position["unrealized_pnl"] = self._calculate_unrealized_pnl(position, current_price)
@@ -830,173 +811,7 @@ class EnhancedRiskManager:
             return {"volatility": 0.02, "volume_ratio": 1.0, "trend_strength": 0.5, 
                    "support_distance": 0.02, "resistance_distance": 0.02, "momentum": 0.5}
     
-    def _update_intelligent_trailing_stop(self, position: Dict, current_price: float, market_data: Dict) -> Dict:
-        """Actualizar trailing stop usando lógica inteligente optimizada
-        
-        Implementa trailing stop adaptativo basado en:
-        - Configuraciones dinámicas del ConfigManager
-        - Análisis de volatilidad y momentum
-        - Win rate histórico y condiciones de mercado
-        - Gestión de riesgo adaptativa
-        """
-        try:
-            # Obtener configuraciones optimizadas
-            config = ConfigManager.get_module_config('risk_manager')
-            trailing_config = config.get('trailing_stop', {})
-            
-            signal_type = position.get("signal_type")
-            entry_price = position.get("entry_price", 0)
-            current_stop = position.get("current_stop", 0)
-            symbol = position.get("symbol", "")
-            
-            # Configuración base optimizada
-            base_activation = trailing_config.get('activation_threshold', 0.015)  # 1.5%
-            base_distance = trailing_config.get('base_distance', 0.008)  # 0.8%
-            atr_multiplier = trailing_config.get('atr_multiplier', 1.8)
-            
-            # Calcular ganancia actual
-            if signal_type == "BUY":
-                profit_pct = (current_price - entry_price) / entry_price
-                
-                # Activación dinámica basada en condiciones de mercado
-                activation_threshold = self._calculate_dynamic_activation_threshold(
-                    base_activation, market_data, trailing_config
-                )
-                
-                if profit_pct >= activation_threshold:
-                    # Calcular distancia optimizada
-                    trailing_distance = self._calculate_optimized_trailing_distance(
-                        base_distance, atr_multiplier, market_data, profit_pct, trailing_config
-                    )
-                    
-                    # Calcular nuevo stop con protección de ganancias
-                    new_stop = current_price * (1 - trailing_distance)
-                    
-                    # Aplicar protección mínima de ganancias
-                    min_profit_protection = trailing_config.get('min_profit_protection', 0.005)  # 0.5%
-                    min_protected_stop = entry_price * (1 + min_profit_protection)
-                    new_stop = max(new_stop, min_protected_stop)
-                    
-                    # Solo actualizar si es mejor que el stop actual
-                    if new_stop > current_stop:
-                        return {
-                            "new_stop": round(new_stop, 6),
-                            "stop_type": "INTELLIGENT_TRAILING_OPTIMIZED",
-                            "reason": f"Profit:{profit_pct:.3f}, Dist:{trailing_distance:.4f}, Protected:{min_protected_stop:.6f}",
-                            "activation_threshold": activation_threshold,
-                            "trailing_distance": trailing_distance
-                        }
-            
-            elif signal_type == "SELL":
-                profit_pct = (entry_price - current_price) / entry_price
-                
-                activation_threshold = self._calculate_dynamic_activation_threshold(
-                    base_activation, market_data, trailing_config
-                )
-                
-                if profit_pct >= activation_threshold:
-                    trailing_distance = self._calculate_optimized_trailing_distance(
-                        base_distance, atr_multiplier, market_data, profit_pct, trailing_config
-                    )
-                    
-                    new_stop = current_price * (1 + trailing_distance)
-                    
-                    # Protección mínima para shorts
-                    min_profit_protection = trailing_config.get('min_profit_protection', 0.005)
-                    max_protected_stop = entry_price * (1 - min_profit_protection)
-                    new_stop = min(new_stop, max_protected_stop)
-                    
-                    if new_stop < current_stop:
-                        return {
-                            "new_stop": round(new_stop, 6),
-                            "stop_type": "INTELLIGENT_TRAILING_OPTIMIZED",
-                            "reason": f"Profit:{profit_pct:.3f}, Dist:{trailing_distance:.4f}, Protected:{max_protected_stop:.6f}",
-                            "activation_threshold": activation_threshold,
-                            "trailing_distance": trailing_distance
-                        }
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error updating intelligent trailing stop: {e}")
-            return None
-    
-    def _calculate_dynamic_activation_threshold(self, base_threshold: float, market_data: Dict, config: Dict) -> float:
-        """Calcular umbral de activación dinámico basado en condiciones de mercado"""
-        try:
-            # Ajustes basados en volatilidad
-            volatility = market_data.get("volatility", 0.02)
-            volatility_adjustment = config.get('volatility_adjustment', 0.3)
-            
-            # Ajustes basados en momentum
-            momentum = market_data.get("momentum", 0.5)
-            momentum_adjustment = config.get('momentum_adjustment', 0.2)
-            
-            # Ajustes basados en volumen
-            volume_ratio = market_data.get("volume_ratio", 1.0)
-            volume_adjustment = config.get('volume_adjustment', 0.1)
-            
-            # Calcular threshold dinámico
-            volatility_factor = 1 + (volatility - 0.02) * volatility_adjustment
-            momentum_factor = 1 - abs(momentum - 0.5) * momentum_adjustment
-            volume_factor = 1 + (volume_ratio - 1.0) * volume_adjustment
-            
-            dynamic_threshold = base_threshold * volatility_factor * momentum_factor * volume_factor
-            
-            # Límites de seguridad
-            min_threshold = config.get('min_activation_threshold', 0.008)  # 0.8%
-            max_threshold = config.get('max_activation_threshold', 0.025)  # 2.5%
-            
-            return max(min_threshold, min(max_threshold, dynamic_threshold))
-            
-        except Exception as e:
-            logger.error(f"Error calculating dynamic activation threshold: {e}")
-            return base_threshold
-    
-    def _calculate_optimized_trailing_distance(self, base_distance: float, atr_multiplier: float, 
-                                             market_data: Dict, profit_pct: float, config: Dict) -> float:
-        """Calcular distancia de trailing optimizada"""
-        try:
-            # Obtener métricas de mercado
-            volatility = market_data.get("volatility", 0.02)
-            momentum = market_data.get("momentum", 0.5)
-            trend_strength = market_data.get("trend_strength", 0.5)
-            volume_ratio = market_data.get("volume_ratio", 1.0)
-            
-            # Ajuste base por volatilidad (más espacio en alta volatilidad)
-            volatility_multiplier = config.get('volatility_multiplier', 1.5)
-            volatility_factor = 1 + (volatility - 0.02) * volatility_multiplier
-            
-            # Ajuste por momentum (menos espacio con momentum fuerte)
-            momentum_multiplier = config.get('momentum_multiplier', 0.8)
-            momentum_factor = 1 - abs(momentum - 0.5) * momentum_multiplier
-            
-            # Ajuste por fuerza de tendencia (menos espacio en tendencias fuertes)
-            trend_multiplier = config.get('trend_multiplier', 0.6)
-            trend_factor = 1 - (trend_strength - 0.5) * trend_multiplier
-            
-            # Ajuste por volumen (menos espacio con alto volumen)
-            volume_multiplier = config.get('volume_multiplier', 0.4)
-            volume_factor = 1 - (volume_ratio - 1.0) * volume_multiplier
-            
-            # Ajuste por nivel de ganancia (más conservador con más ganancia)
-            profit_adjustment = config.get('profit_adjustment', 0.5)
-            profit_factor = 1 - min(profit_pct, 0.1) * profit_adjustment
-            
-            # Calcular distancia final
-            optimized_distance = (base_distance * atr_multiplier * 
-                                volatility_factor * momentum_factor * 
-                                trend_factor * volume_factor * profit_factor)
-            
-            # Límites de seguridad
-            min_distance = config.get('min_trailing_distance', 0.003)  # 0.3%
-            max_distance = config.get('max_trailing_distance', 0.02)   # 2.0%
-            
-            return max(min_distance, min(max_distance, optimized_distance))
-            
-        except Exception as e:
-            logger.error(f"Error calculating optimized trailing distance: {e}")
-            return base_distance
+
     
     def _evaluate_dynamic_position_sizing(self, position: Dict, market_data: Dict):
         """Evaluar si se necesita ajuste dinámico del tamaño de posición"""

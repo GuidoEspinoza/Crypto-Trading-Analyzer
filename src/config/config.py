@@ -12,7 +12,6 @@ configuraciones 100% consolidadas y robustas.
 - ✅ Compatibilidad total con código existente
 
 🎯 PERFILES DISPONIBLES:
-- 🚀 RAPIDO: Ultra-rápido (1m-15m) - Máxima frecuencia
 - ⚡ AGRESIVO: Balanceado (15m-1h) - Velocidad + Control  
 - 🛡️ OPTIMO: Conservador (1h-1d) - Calidad + Preservación
 - 🔒 CONSERVADOR: Máxima preservación (4h-1w)
@@ -123,7 +122,7 @@ try:
     TRADING_PROFILE = ConfigManager.get_active_profile()
 except Exception:
     # Fallback si no se pudo obtener desde ConfigManager
-    TRADING_PROFILE = "AGRESIVO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
+    TRADING_PROFILE = "AGRESIVO"  # Opciones: "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # ============================================================================
 # 🔧 FUNCIONES DE CONSOLIDACIÓN DE CONFIGURACIONES MODULARES
@@ -133,7 +132,7 @@ def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
     """🎯 Obtiene configuración consolidada usando el nuevo ConfigManager.
     
     Args:
-        profile: Perfil de trading a usar (RAPIDO, AGRESIVO, OPTIMO, CONSERVADOR)
+        profile: Perfil de trading a usar (AGRESIVO, OPTIMO, CONSERVADOR)
         
     Returns:
         Dict: Configuración consolidada de todos los módulos (100% robusta)
@@ -158,7 +157,7 @@ def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
                 'risk_level': 'medium_high',
                 'frequency': 'high'
             },
-            'initial_balance': 1000.0,
+            'initial_balance': GLOBAL_INITIAL_BALANCE,
             'usdt_base_price': 1.0,
             'timezone': 'America/Santiago',
             'daily_reset_hour': 11,
@@ -334,13 +333,6 @@ class TradingProfiles:
     """
     
     PROFILES = {
-        "RAPIDO": {
-            "name": "🚀 Ultra-Rápido",
-            "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
-            "timeframes": ["1m", "5m", "15m"],
-            "risk_level": "high",
-            "frequency": "ultra_high"
-        },
         "AGRESIVO": {
             "name": "⚡ Agresivo",
             "description": "Timeframes 15m-1h, balance entre velocidad y control",
@@ -397,7 +389,6 @@ class TradingProfiles:
             "atr_default": 2.0,
             "atr_volatile": 2.5,
             "atr_sideways": 1.5,
-            "trailing_stop_activation": 2.0,
             "breakeven_threshold": 1.0,
             "tp_min_percentage": 1.0,
             "tp_max_percentage": 5.0,
@@ -976,11 +967,6 @@ class RiskManagerConfig:
         return TradingProfiles.get_current_profile()["atr_sideways"]
     
     @classmethod
-    def get_trailing_stop_activation(cls) -> float:
-        """Obtiene el umbral de activación del trailing stop según perfil activo."""
-        return TradingProfiles.get_current_profile()["trailing_stop_activation"]
-    
-    @classmethod
     def get_breakeven_threshold(cls) -> float:
         """Obtiene el umbral de breakeven según perfil activo."""
         return TradingProfiles.get_current_profile()["breakeven_threshold"]
@@ -1059,7 +1045,6 @@ class RiskManagerConfig:
     ATR_DEFAULT: float = property(lambda self: TradingProfiles.get_current_profile()["atr_default"])
     ATR_VOLATILE: float = property(lambda self: TradingProfiles.get_current_profile()["atr_volatile"])
     ATR_SIDEWAYS: float = property(lambda self: TradingProfiles.get_current_profile()["atr_sideways"])
-    TRAILING_STOP_ACTIVATION: float = property(lambda self: TradingProfiles.get_current_profile()["trailing_stop_activation"])
     BREAKEVEN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["breakeven_threshold"])
     
     # Valor inicial del portfolio para cálculos de riesgo en USDT - Se alimenta del PaperTrader para consistencia
@@ -1441,7 +1426,6 @@ CONFIGURACIÓN ACTUAL: SISTEMA COMPLETO DE TRES PERFILES
 # - Posiciones concurrentes: 8
 # - RSI: 35/65 (muy sensible)
 # - Confianza mínima: 60%
-# - Trailing stop: 1.0%
 # - Liquidez mínima: 3.0%
 # - Tamaño posición máx: 10.0%
 # - Consenso timeframes: 1
@@ -1457,7 +1441,6 @@ CONFIGURACIÓN ACTUAL: SISTEMA COMPLETO DE TRES PERFILES
 # - Posiciones concurrentes: 6
 # - RSI: 30/70 (balanceado)
 # - Confianza mínima: 65%
-# - Trailing stop: 1.5%
 # - Liquidez mínima: 5.0%
 # - Tamaño posición máx: 8.0%
 # - Consenso timeframes: 2
@@ -1473,7 +1456,6 @@ CONFIGURACIÓN ACTUAL: SISTEMA COMPLETO DE TRES PERFILES
 # - Posiciones concurrentes: 4
 # - RSI: 25/75 (conservador)
 # - Confianza mínima: 70%
-# - Trailing stop: 2.0%
 # - Liquidez mínima: 8.0%
 # - Tamaño posición máx: 6.0%
 # - Consenso timeframes: 3
@@ -1927,8 +1909,6 @@ class ConfigValidator:
         'max_slippage': (0.001, 0.1),
         'stop_loss_percentage': (0.01, 0.5),
         'take_profit_percentage': (0.01, 1.0),
-        'trailing_stop_activation': (0.01, 0.5),
-        'trailing_stop_distance': (0.005, 0.2),
         'max_drawdown_threshold': (0.05, 0.5),
         'volatility_adjustment_factor': (0.5, 3.0),
         'min_confidence_score': (30, 95),

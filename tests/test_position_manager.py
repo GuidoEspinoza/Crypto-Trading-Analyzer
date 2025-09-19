@@ -42,7 +42,6 @@ class TestPositionManagerOptimized:
     def mock_risk_config(self):
         """🔧 Mock para RiskManagerConfig"""
         mock_config = Mock()
-        mock_config.TRAILING_STOP_ACTIVATION = 2.0  # 2%
         
         with patch('src.config.config.RiskManagerConfig', return_value=mock_config):
             yield mock_config
@@ -321,75 +320,6 @@ class TestPositionOperations(TestPositionManagerOptimized):
             assert eth_positions[0].symbol == 'ETHUSDT'
 
 
-class TestTrailingStops(TestPositionManagerOptimized):
-    """🧪 Tests de trailing stops"""
-    
-    def test_calculate_atr_trailing_stop_buy_default_multiplier(self, position_manager):
-        """✅ Test cálculo de trailing stop para BUY con multiplicador por defecto"""
-        trailing_stop = position_manager.calculate_atr_trailing_stop(
-            symbol='BTCUSDT',
-            current_price=45000.0,
-            trade_type='BUY'
-        )
-        
-        # Cálculo esperado: 45000 - (45000 * 0.018 * 2.5) = 45000 - 2025 = 42975
-        expected = 45000.0 - (45000.0 * 0.018 * 2.5)
-        assert abs(trailing_stop - expected) < 0.01
-    
-    def test_calculate_atr_trailing_stop_buy_custom_multiplier(self, position_manager):
-        """✅ Test cálculo de trailing stop para BUY con multiplicador personalizado"""
-        trailing_stop = position_manager.calculate_atr_trailing_stop(
-            symbol='BTCUSDT',
-            current_price=45000.0,
-            trade_type='BUY',
-            atr_multiplier=3.0
-        )
-        
-        # Cálculo esperado: 45000 - (45000 * 0.018 * 3.0) = 45000 - 2430 = 42570
-        expected = 45000.0 - (45000.0 * 0.018 * 3.0)
-        assert abs(trailing_stop - expected) < 0.01
-    
-    def test_calculate_atr_trailing_stop_sell(self, position_manager):
-        """✅ Test cálculo de trailing stop para SELL"""
-        trailing_stop = position_manager.calculate_atr_trailing_stop(
-            symbol='BTCUSDT',
-            current_price=45000.0,
-            trade_type='SELL',
-            atr_multiplier=2.0
-        )
-        
-        # Cálculo esperado: 45000 + (45000 * 0.018 * 2.0) = 45000 + 1620 = 46620
-        expected = 45000.0 + (45000.0 * 0.018 * 2.0)
-        assert abs(trailing_stop - expected) < 0.01
-    
-    def test_update_trailing_stop_activation(self, position_manager, sample_position_info):
-        """✅ Test activación de trailing stop"""
-        # Configurar posición con ganancia suficiente para activar trailing
-        sample_position_info.current_price = 46000.0  # +2.22% ganancia
-        sample_position_info.unrealized_pnl_percentage = 2.22
-        sample_position_info.trailing_stop = None
-        
-        # El trailing_stop_activation ya está configurado en el mock (2%)
-        position_manager._update_trailing_stop(sample_position_info)
-        
-        # Verificar que se activó el trailing stop
-        assert sample_position_info.trailing_stop is not None
-        expected_trailing = 46000.0 * (1 - 0.015)  # 1.5% del perfil de test
-        assert abs(sample_position_info.trailing_stop - expected_trailing) < 0.01
-    
-    def test_update_trailing_stop_no_activation(self, position_manager, sample_position_info):
-        """✅ Test no activación de trailing stop por ganancia insuficiente"""
-        # Configurar posición con ganancia insuficiente
-        sample_position_info.current_price = 45500.0  # +1.11% ganancia
-        sample_position_info.unrealized_pnl_percentage = 1.11
-        sample_position_info.trailing_stop = None
-        
-        # El trailing_stop_activation ya está configurado en el mock (2%)
-        position_manager._update_trailing_stop(sample_position_info)
-        
-        # Verificar que NO se activó el trailing stop
-        assert sample_position_info.trailing_stop is None
-
 
 class TestExitConditions(TestPositionManagerOptimized):
     """🧪 Tests de condiciones de salida"""
@@ -410,14 +340,7 @@ class TestExitConditions(TestPositionManagerOptimized):
         reason = position_manager.check_exit_conditions(sample_position_info)
         assert reason == "STOP_LOSS"
     
-    def test_check_exit_conditions_trailing_stop_buy(self, position_manager, sample_position_info):
-        """✅ Test condición de Trailing Stop para BUY"""
-        sample_position_info.current_price = 44000.0  # Por debajo del trailing
-        sample_position_info.trailing_stop = 44500.0
-        
-        reason = position_manager.check_exit_conditions(sample_position_info)
-        assert reason == "TRAILING_STOP"
-    
+
     def test_check_exit_conditions_no_exit(self, position_manager, sample_position_info):
         """✅ Test sin condiciones de salida"""
         sample_position_info.current_price = 46000.0  # Precio normal

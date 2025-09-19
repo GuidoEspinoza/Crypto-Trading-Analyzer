@@ -260,7 +260,6 @@ class MessagesConfig:
     cache_entries_label: str = "entradas"
     tp_executed_label: str = "TP ejecutados"
     sl_executed_label: str = "SL ejecutados"
-    trailing_stops_label: str = "Trailing stops activos"
 
 @dataclass
 class AnalysisConfig:

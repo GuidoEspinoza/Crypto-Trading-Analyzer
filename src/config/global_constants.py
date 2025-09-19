@@ -24,7 +24,7 @@ from typing import Dict, Any, List, Union
 # - PaperTrader para simulación
 # - DatabaseConfig para configuración inicial
 # - Tests para configuración de pruebas
-GLOBAL_INITIAL_BALANCE: float = 1000.0
+GLOBAL_INITIAL_BALANCE: float = 500.0
 
 # Precio base de USDT (stablecoin)
 # Usado como referencia para conversiones y cálculos
@@ -34,16 +34,41 @@ USDT_BASE_PRICE: float = 1.0
 BASE_CURRENCY: str = "USDT"
 
 # ============================================================================
+# 🎯 PERFIL ACTIVO DEL SISTEMA
+# ============================================================================
+
+# Perfil de trading activo del sistema
+# Opciones disponibles: AGRESIVO, OPTIMO, CONSERVADOR
+# Este valor se usa en ConfigManager para determinar la configuración activa
+ACTIVE_TRADING_PROFILE: str = "OPTIMO"  # Perfil balanceado recomendado
+
+# ============================================================================
 # 🪙 SÍMBOLOS DE TRADING CENTRALIZADOS
 # ============================================================================
 
-# Selección basada en alta liquidez, volatilidad y volumen de trading
+# Selección optimizada para máxima rentabilidad 2025 (12 símbolos)
+# Análisis detallado en: docs/ANALISIS_SIMBOLOS_OPTIMIZADOS_2025.md
 SYMBOLS: List[str] = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT", "LINKUSDT"
+    # CORE: Estabilidad + Liquidez (40% peso recomendado)
+    "BTCUSDT",    # Bitcoin - Líder del mercado, alta liquidez
+    "ETHUSDT",    # Ethereum - ETFs institucionales + DeFi dominance
+    "SOLUSDT",    # Solana - Alto rendimiento + ecosistema maduro
+    
+    # HIGH GROWTH: Potencial 2-5x (35% peso recomendado)
+    "AVAXUSDT",   # Avalanche - Subnets + partnerships institucionales
+    "MATICUSDT",  # Polygon - POL transition + zkEVM
+    "ADAUSDT",    # Cardano - Potencial ETF + desarrollo sólido
+    "XRPUSDT",    # XRP - Caso legal resuelto + adopción institucional
+    
+    # EMERGING: Alto potencial 3-10x (25% peso recomendado)
+    "ATOMUSDT",   # Cosmos - Interoperabilidad + ecosystem growth
+    "NEARUSDT",   # NEAR - Escalabilidad + herramientas dev-friendly
+    "LINKUSDT",   # Chainlink - Oráculos esenciales + partnerships
+    "BNBUSDT"     # BNB - Utilidad Binance + burn mechanism
 ]
 
-# Símbolos para testing (subconjunto de los principales)
-TEST_SYMBOLS: List[str] = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+# Símbolos para testing (subconjunto optimizado)
+TEST_SYMBOLS: List[str] = ["BTCUSDT", "ETHUSDT", "AVAXUSDT", "MATICUSDT"]
 
 # ============================================================================
 # ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
@@ -104,15 +129,6 @@ PRE_RESET_CLOSURE_CONFIG: Dict[str, Union[bool, int, float]] = {
     "require_manual_confirmation": False, # Requerir confirmación manual
     "emergency_stop_enabled": True,     # Habilitar parada de emergencia
 }
-
-# ============================================================================
-# 🎯 PERFIL ACTIVO DEL SISTEMA
-# ============================================================================
-
-# Perfil de trading activo del sistema
-# Opciones disponibles: RAPIDO, AGRESIVO, OPTIMO, CONSERVADOR
-# Este valor se usa en ConfigManager para determinar la configuración activa
-ACTIVE_TRADING_PROFILE: str = "OPTIMO"  # Perfil balanceado recomendado
 
 # ============================================================================
 # 🎯 LÍMITES Y UMBRALES GLOBALES

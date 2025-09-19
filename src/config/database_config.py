@@ -224,7 +224,7 @@ TEST_DATABASE_CONFIG = DatabaseConfig(
         echo_sql=False
     ),
     portfolio=PortfolioConfig(
-        initial_usdt_amount=1000.0,  # Menor cantidad para tests
+        initial_usdt_amount=GLOBAL_INITIAL_BALANCE,  # Usar balance global para tests
         auto_initialize=True
     ),
     logging=LoggingConfig(

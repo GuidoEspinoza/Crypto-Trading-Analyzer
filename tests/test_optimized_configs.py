@@ -28,7 +28,7 @@ def validate_configurations():
         config_manager.initialize()
         print("✅ ConfigManager inicializado correctamente")
         
-        profiles = ["RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"]
+        profiles = ["AGRESIVO", "OPTIMO", "CONSERVADOR"]
         validation_results = {}
         
         for profile in profiles:
@@ -208,9 +208,9 @@ def validate_configurations():
             for profile in profiles:
                 print(f"  {profile}: {rsi_periods[profile]} períodos")
             
-            # Verificar que RAPIDO sea más sensible que CONSERVADOR
-            if rsi_periods['RAPIDO'] <= rsi_periods['CONSERVADOR']:
-                print("✅ Progresión de sensibilidad correcta (RAPIDO más sensible)")
+            # Verificar que AGRESIVO sea más sensible que CONSERVADOR
+            if rsi_periods['AGRESIVO'] <= rsi_periods['CONSERVADOR']:
+                print("✅ Progresión de sensibilidad correcta (AGRESIVO más sensible)")
             else:
                 print("⚠️ Progresión de sensibilidad podría mejorarse")
             
