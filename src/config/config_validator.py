@@ -308,23 +308,22 @@ class ConfigValidator:
         profile = config.profile
         
         # Validaciones específicas por perfil
-        if profile == TradingProfile.CONSERVATIVE:
+        if profile == TradingProfile.CONSERVADOR:
             if hasattr(config, 'risk') and config.risk.max_position_size > 0.1:
                 warnings_list.append(
                     f"Perfil conservador con posición máxima alta ({config.risk.max_position_size})"
                 )
         
-        elif profile == TradingProfile.AGGRESSIVE:
+        elif profile == TradingProfile.AGRESIVO:
             if hasattr(config, 'risk') and config.risk.max_position_size < 0.05:
                 warnings_list.append(
                     f"Perfil agresivo con posición máxima baja ({config.risk.max_position_size})"
                 )
         
-        elif profile == TradingProfile.SCALPING:
-            if hasattr(config, 'rsi') and config.rsi.period > 14:
+        elif profile == TradingProfile.OPTIMO:
+            if hasattr(config, 'strategy') and config.strategy.min_confidence_threshold < 0.5:
                 warnings_list.append(
-                    f"Scalping con RSI período alto ({config.rsi.period}), "
-                    "puede ser poco reactivo"
+                    f"Perfil óptimo con umbral de confianza muy bajo ({config.strategy.min_confidence_threshold})"
                 )
         
         return warnings_list
@@ -400,17 +399,17 @@ class ConfigValidator:
         
         # Sugerencias específicas por perfil e indicador
         profile_suggestions = {
-            TradingProfile.CONSERVATIVE: {
+            TradingProfile.CONSERVADOR: {
                 'rsi': {'period': 21, 'oversold_threshold': 25, 'overbought_threshold': 75},
                 'risk': {'max_position_size': 0.05, 'stop_loss_percentage': 0.015}
             },
-            TradingProfile.AGGRESSIVE: {
+            TradingProfile.OPTIMO: {
+                'rsi': {'period': 14, 'oversold_threshold': 30, 'overbought_threshold': 70},
+                'risk': {'max_position_size': 0.10, 'stop_loss_percentage': 0.02}
+            },
+            TradingProfile.AGRESIVO: {
                 'rsi': {'period': 10, 'oversold_threshold': 35, 'overbought_threshold': 65},
                 'risk': {'max_position_size': 0.15, 'stop_loss_percentage': 0.03}
-            },
-            TradingProfile.SCALPING: {
-                'rsi': {'period': 7},
-                'ma': {'short_period': 5, 'medium_period': 10}
             }
         }
         

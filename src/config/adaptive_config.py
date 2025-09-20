@@ -62,7 +62,7 @@ class AdaptiveConfigManager:
     
     def __init__(self, config_factory: ConfigFactory):
         self.config_factory = config_factory
-        self.current_profile = TradingProfile.MODERATE
+        self.current_profile = TradingProfile.OPTIMO
         self.adaptation_rules: List[AdaptationRule] = []
         self.performance_history: List[PerformanceMetrics] = []
         self.adaptation_history: List[Dict] = []
@@ -85,35 +85,35 @@ class AdaptiveConfigManager:
             AdaptationRule(
                 condition=MarketCondition.HIGH_VOLATILITY,
                 min_performance_threshold=0.6,
-                target_profile=TradingProfile.CONSERVATIVE,
+                target_profile=TradingProfile.CONSERVADOR,
                 confidence_adjustment=-10.0,
                 risk_adjustment=-0.5
             ),
             AdaptationRule(
                 condition=MarketCondition.BULL_MARKET,
                 min_performance_threshold=0.7,
-                target_profile=TradingProfile.AGGRESSIVE,
+                target_profile=TradingProfile.AGRESIVO,
                 confidence_adjustment=5.0,
                 risk_adjustment=0.3
             ),
             AdaptationRule(
                 condition=MarketCondition.BEAR_MARKET,
                 min_performance_threshold=0.5,
-                target_profile=TradingProfile.CONSERVATIVE,
+                target_profile=TradingProfile.CONSERVADOR,
                 confidence_adjustment=-5.0,
                 risk_adjustment=-0.3
             ),
             AdaptationRule(
                 condition=MarketCondition.TRENDING,
                 min_performance_threshold=0.65,
-                target_profile=TradingProfile.SWING,
+                target_profile=TradingProfile.OPTIMO,
                 confidence_adjustment=0.0,
                 risk_adjustment=0.1
             ),
             AdaptationRule(
                 condition=MarketCondition.RANGING,
                 min_performance_threshold=0.6,
-                target_profile=TradingProfile.SCALPING,
+                target_profile=TradingProfile.CONSERVADOR,
                 confidence_adjustment=-5.0,
                 risk_adjustment=-0.2
             )

@@ -24,7 +24,7 @@ from typing import Dict, Any, List, Union
 # - PaperTrader para simulación
 # - DatabaseConfig para configuración inicial
 # - Tests para configuración de pruebas
-GLOBAL_INITIAL_BALANCE: float = 500.0
+GLOBAL_INITIAL_BALANCE: float = 1000.0
 
 # Precio base de USDT (stablecoin)
 # Usado como referencia para conversiones y cálculos

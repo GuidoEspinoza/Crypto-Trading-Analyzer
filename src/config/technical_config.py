@@ -10,11 +10,9 @@ from enum import Enum
 
 class TradingProfile(Enum):
     """Perfiles de trading disponibles"""
-    CONSERVATIVE = "conservative"
-    MODERATE = "moderate"
-    AGGRESSIVE = "aggressive"
-    SCALPING = "scalping"
-    SWING = "swing"
+    CONSERVADOR = "CONSERVADOR"
+    OPTIMO = "OPTIMO"
+    AGRESIVO = "AGRESIVO"
 
 
 @dataclass
@@ -112,7 +110,7 @@ class TechnicalConfig:
     Configuración técnica centralizada que adapta parámetros según el perfil de trading.
     """
     
-    def __init__(self, profile: TradingProfile = TradingProfile.MODERATE):
+    def __init__(self, profile: TradingProfile = TradingProfile.OPTIMO):
         self.profile = profile
         self._load_profile_configs()
     
@@ -135,25 +133,19 @@ class TechnicalConfig:
         
         # Ajustes por perfil
         profile_adjustments = {
-            TradingProfile.CONSERVATIVE: {
+            TradingProfile.CONSERVADOR: {
                 'rsi': {'oversold_threshold': 25, 'overbought_threshold': 75},
                 'risk': {'max_position_size': 0.05, 'stop_loss_percentage': 0.015},
                 'strategy': {'min_confidence_threshold': 0.7}
             },
-            TradingProfile.AGGRESSIVE: {
+            TradingProfile.OPTIMO: {
+                # Configuración balanceada (valores por defecto)
+                'strategy': {'min_confidence_threshold': 0.6}
+            },
+            TradingProfile.AGRESIVO: {
                 'rsi': {'oversold_threshold': 35, 'overbought_threshold': 65},
                 'risk': {'max_position_size': 0.15, 'stop_loss_percentage': 0.03},
                 'strategy': {'min_confidence_threshold': 0.5}
-            },
-            TradingProfile.SCALPING: {
-                'rsi': {'period': 7},
-                'ma': {'short_period': 5, 'medium_period': 10, 'long_period': 20},
-                'risk': {'stop_loss_percentage': 0.005, 'take_profit_percentage': 0.01}
-            },
-            TradingProfile.SWING: {
-                'rsi': {'period': 21},
-                'ma': {'short_period': 50, 'medium_period': 100, 'long_period': 200},
-                'fibonacci': {'lookback_period': 200}
             }
         }
         

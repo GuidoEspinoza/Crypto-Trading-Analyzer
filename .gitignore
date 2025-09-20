@@ -53,6 +53,17 @@ portfolio_data/
 *.csv
 *.xlsx
 *.json
+!package.json
+!tsconfig.json
+!.vscode/*.json
+!.env.example
+
+# Archivos específicos del sistema de trading
+adaptive_config.json
+trading_config.json
+user_config.json
+performance_metrics.json
+backtest_results.json
 
 # ========================================
 # 🧪 TESTING Y COVERAGE
@@ -180,6 +191,12 @@ kubernetes/secrets/
 # 📊 ANÁLISIS Y REPORTES
 # ========================================
 reports/
+analysis/
+backtest_results/
+performance_reports/
+trading_reports/
+market_data/
+historical_data/
 charts/
 screenshots/
 *.png
@@ -198,6 +215,14 @@ tmp/
 temp/
 *.tmp
 *.temp
+*.backup
+*.bak
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Directorios específicos del sistema de trading
+live_data/
+paper_trading_data/
+simulation_results/
+strategy_cache/

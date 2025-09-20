@@ -42,7 +42,7 @@ class ConfigFactory:
                 self._configs_cache[profile_key] = TechnicalConfig(profile)
     
     def get_config(self, 
-                   profile: Union[str, TradingProfile] = TradingProfile.MODERATE,
+                   profile: Union[str, TradingProfile] = TradingProfile.OPTIMO,
                    symbol: Optional[str] = None,
                    custom_params: Optional[Dict[str, Any]] = None) -> TechnicalConfig:
         """
@@ -59,9 +59,9 @@ class ConfigFactory:
         # Normalizar perfil
         if isinstance(profile, str):
             try:
-                profile = TradingProfile(profile.lower())
+                profile = TradingProfile(profile.upper())
             except ValueError:
-                profile = TradingProfile.MODERATE
+                profile = TradingProfile.OPTIMO
         
         # Crear clave de caché
         cache_key = f"technical_{profile.value}"
@@ -136,7 +136,7 @@ class ConfigFactory:
         return config
     
     def create_custom_config(self, 
-                           base_profile: Union[str, TradingProfile] = TradingProfile.MODERATE,
+                           base_profile: Union[str, TradingProfile] = TradingProfile.OPTIMO,
                            **kwargs) -> TechnicalConfig:
         """
         Crea configuración personalizada con parámetros específicos.

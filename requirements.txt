@@ -24,11 +24,16 @@ aiohttp>=3.12.0           # Cliente HTTP asíncrono (actualizado) ✅
 python-json-logger==3.3.0 # Logging estructurado (actualizado) ✅
 PyYAML>=6.0.2             # Manejo de archivos de configuración ✅
 pytz>=2024.1              # Manejo de zonas horarias para trading optimizado ✅
+requests>=2.31.0          # Cliente HTTP para APIs ✅
+schedule>=1.2.0           # Programación de tareas ✅
+psutil>=5.9.0             # Monitoreo del sistema ✅
+boto3>=1.34.0             # AWS SDK (para backup en la nube) ✅
 
 # Visualización y gráficos para backtesting
 matplotlib>=3.8.0        # Gráficos y visualización ✅
 seaborn>=0.13.0           # Gráficos estadísticos avanzados ✅
 plotly>=5.17.0            # Gráficos interactivos ✅
+streamlit>=1.28.0         # Dashboard web interactivo ✅
 
 # Base de datos
 sqlalchemy>=2.0.0         # ORM para base de datos ✅
