@@ -115,7 +115,7 @@ class ConfigManager:
             frequency="very_high",  # Aumentar frecuencia para aprovechar movimientos rápidos
             trading_bot={
                 'analysis_interval': 30,  # Análisis más frecuente para timeframes cortos
-                'min_confidence': 68.0,  # Reducir umbral para más oportunidades
+                'min_confidence': 0.68,  # Reducir umbral para más oportunidades (68%)
                 'max_positions': 8,  # Más posiciones para aprovechar volatilidad
                 'max_daily_trades': 50,  # Aumentar límite diario para trading activo
                 'max_concurrent_positions': 8,  # Más posiciones concurrentes
@@ -242,7 +242,7 @@ class ConfigManager:
             frequency="medium",
             trading_bot={
                 'analysis_interval': 75,  # Análisis más frecuente para mejor timing
-                'min_confidence': 72.0,  # Mayor confianza para swing trading de calidad
+                'min_confidence': 0.72,  # Mayor confianza para swing trading de calidad (72%)
                 'max_positions': 6,  # Más posiciones para diversificación balanceada
                 'max_daily_trades': 20,  # Más trades para aprovechar swings
                 'max_concurrent_positions': 6,  # Posiciones concurrentes balanceadas
@@ -416,7 +416,7 @@ class ConfigManager:
             frequency="low",
             trading_bot={
                 'analysis_interval': 300,  # Análisis cada 5 minutos para holding estratégico
-                'min_confidence': 75.0,  # Mayor confianza requerida para holding
+                'min_confidence': 0.75,  # Mayor confianza requerida para holding (75%)
                 'max_positions': 2,  # Máximo 2 posiciones para concentración
                 'max_daily_trades': 3,  # Máximo 3 trades diarios para holding
                 'max_concurrent_positions': 2,  # Máximo 2 posiciones concurrentes
@@ -796,7 +796,7 @@ class ConfigManager:
             'test_symbols': TEST_SYMBOLS,
             'trading_bot': {
                 'analysis_interval': 45,
-                'min_confidence': 70.0,
+                'min_confidence': 0.70,
                 'max_positions': 5,
                 'position_timeout': 600,
                 'quick_exit_enabled': False,

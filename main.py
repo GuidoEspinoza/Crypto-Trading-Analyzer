@@ -204,6 +204,36 @@ async def get_bot_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting bot status: {str(e)}")
 
+@app.get("/bot/debug")
+async def get_bot_debug_info():
+    """
+    🔍 Obtener información de debug del trading bot incluyendo circuit breaker
+    """
+    try:
+        bot = ensure_bot_exists()
+        status = bot.get_status()
+        
+        # Obtener información del circuit breaker
+        circuit_breaker_info = getattr(status, 'circuit_breaker_info', {})
+        
+        return {
+            "status": "success",
+            "debug_info": {
+                "is_running": status.is_running,
+                "enable_trading": getattr(bot, 'enable_trading', True),
+                "circuit_breaker": circuit_breaker_info,
+                "current_drawdown": getattr(bot, 'current_drawdown', 0),
+                "max_drawdown_threshold": getattr(bot, 'max_drawdown_threshold', 0),
+                "peak_portfolio_value": getattr(bot, 'peak_portfolio_value', 0),
+                "signals_generated": status.total_signals_generated,
+                "trades_executed": status.total_trades_executed,
+                "can_execute_trade": bot._can_execute_trade() if hasattr(bot, '_can_execute_trade') else None
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting debug info: {str(e)}")
+
 @app.post("/bot/start")
 async def start_trading_bot():
     """
@@ -636,5 +666,5 @@ if __name__ == "__main__":
         "main:app", 
         host="0.0.0.0", 
         port=8000, 
-        reload=True
+        reload=False
     )

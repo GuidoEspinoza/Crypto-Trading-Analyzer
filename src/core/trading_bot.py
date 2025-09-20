@@ -164,7 +164,7 @@ class TradingBot:
         
         # Circuit breaker avanzado
         self.consecutive_losses = 0
-        self.circuit_breaker_active = False
+        self.circuit_breaker_active = True
         self.circuit_breaker_activated_at = None
         self.max_consecutive_losses = config.get("trading_bot", {}).get("max_consecutive_losses", optimized_config.DEFAULT_MAX_CONSECUTIVE_LOSSES)
         self.circuit_breaker_cooldown_hours = config.get("trading_bot", {}).get("circuit_breaker_cooldown_hours", optimized_config.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS)

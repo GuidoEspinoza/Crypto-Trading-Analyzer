@@ -166,7 +166,7 @@ def get_consolidated_config(profile: str = None) -> Dict[str, Any]:
             'test_symbols': ['BTCUSDT'],
             'trading_bot': {
                 'analysis_interval': 45,
-                'min_confidence': 70.0,
+                'min_confidence': 0.70,
                 'max_positions': 5
             },
             'risk_manager': {
@@ -1404,7 +1404,7 @@ class TestingConfig:
 DEV_CONFIG = {
     'symbols': TEST_SYMBOLS,  # Usa símbolos centralizados para testing
     'analysis_interval': 300,  # Análisis cada 5 minutos para testing
-    'min_confidence': 60.0,  # Umbral más bajo para testing
+    'min_confidence': 0.60,  # Umbral más bajo para testing (60%)
     'paper_balance': 1000.0,  # Balance menor para testing
 }
 

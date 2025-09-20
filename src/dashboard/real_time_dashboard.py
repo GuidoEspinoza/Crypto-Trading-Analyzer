@@ -2069,7 +2069,7 @@ class RealTimeDashboard:
                 'description': 'Modo de trading virtual para pruebas',
                 'risk_level': 'MEDIUM',
                 'max_positions': 5,
-                'min_confidence': 75.0
+                'min_confidence': 0.75
             }
     
     def _get_profile_risk_level(self, profile: str) -> str:
