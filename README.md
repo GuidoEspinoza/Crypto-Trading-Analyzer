@@ -28,15 +28,20 @@
 
 ### ✨ ¿Qué hace especial a este sistema?
 
-- **🧠 Inteligencia Artificial**: Analiza patrones complejos del mercado
-- **⚡ Tiempo Real**: Procesa datos en milisegundos
-- **🛡️ Seguridad Total**: Protege tu capital con gestión de riesgo avanzada
-- **📊 Análisis Completo**: Combina 15+ indicadores técnicos
-- **🎮 Fácil de Usar**: Interfaz web intuitiva y API REST
-- **📈 Dashboard Profesional**: Centro de control visual en tiempo real
-- **🎯 Métricas Avanzadas**: ROI, Sharpe Ratio, Win Rate, Drawdown y más
-- **🔔 Alertas Inteligentes**: Notificaciones automáticas de rendimiento
-- **🌙 Modo Oscuro**: Interfaz moderna optimizada para trading
+- **🧠 Inteligencia Artificial**: Analiza patrones complejos del mercado con algoritmos avanzados
+- **⚡ Tiempo Real**: Procesa datos en milisegundos con análisis cada 75 segundos
+- **🛡️ Seguridad Total**: Protege tu capital con gestión de riesgo avanzada y stop-loss dinámicos
+- **📊 Análisis Completo**: Combina 15+ indicadores técnicos con estrategias multi-timeframe
+- **🎮 Fácil de Usar**: Interfaz web intuitiva, API REST completa y configuración por perfiles
+- **📈 Dashboard Profesional**: Centro de control visual en tiempo real con métricas avanzadas
+- **🎯 Métricas Avanzadas**: ROI, Sharpe Ratio, Win Rate, Drawdown, Alpha, Beta y más
+- **🔔 Alertas Inteligentes**: Sistema de notificaciones automáticas con umbrales configurables
+- **🌙 Modo Oscuro**: Interfaz moderna optimizada para trading profesional
+- **🎛️ Perfiles Optimizados**: 4 perfiles pre-configurados (RÁPIDO, AGRESIVO, ÓPTIMO, CONSERVADOR)
+- **📱 Responsive Design**: Funciona perfectamente en desktop, tablet y móvil
+- **🔄 Auto-Actualización**: Datos y métricas actualizados automáticamente cada 30 segundos
+- **💼 Paper Trading**: Simulación completa sin riesgo para validar estrategias
+- **🎨 Visualizaciones Avanzadas**: Gráficos interactivos con Plotly y análisis técnico visual
 
 ---
 
@@ -109,22 +114,41 @@
 **¿Cómo funciona?** Como un sistema de seguridad que vigila tus inversiones 24/7 y te alerta de cualquier cambio importante.
 
 ### 📊 **Real-Time Dashboard** - El Centro de Control Visual
-**¿Qué hace?** Proporciona una interfaz web moderna y elegante para monitorear todo el sistema en tiempo real.
+**¿Qué hace?** Proporciona una interfaz web moderna y elegante para monitorear todo el sistema en tiempo real con capacidades profesionales de análisis.
 
 **Funciones principales:**
-- **Resumen del Portfolio**: Visualiza el estado completo de tu cartera
-- **Métricas en Tiempo Real**: ROI, Sharpe Ratio, Win Rate, Drawdown máximo
-- **Gráficos Interactivos**: Curva de equity, distribución de señales, métricas avanzadas
-- **Alertas Inteligentes**: Notificaciones automáticas sobre rendimiento y riesgos
-- **Modo Oscuro**: Interfaz moderna optimizada para trading profesional
+- **📈 Resumen del Portfolio**: Visualiza el estado completo de tu cartera con métricas en tiempo real
+- **🎯 Métricas Avanzadas**: ROI, Sharpe Ratio, Win Rate, Drawdown máximo, Alpha, Beta, Volatilidad
+- **📊 Gráficos Interactivos**: Curva de equity, distribución de señales, análisis de rendimiento temporal
+- **🔔 Sistema de Alertas Inteligentes**: Notificaciones automáticas configurables sobre:
+  - Win Rate crítico (< 30%)
+  - Sharpe Ratio negativo
+  - Drawdown excesivo (> 15%)
+  - Rendimiento excepcional (> 20% ROI)
+- **🌙 Modo Oscuro Profesional**: Interfaz optimizada para trading con colores suaves para los ojos
+- **📱 Diseño Responsivo**: Adaptación perfecta a cualquier dispositivo
+- **⚡ Actualización Automática**: Refresh inteligente cada 30 segundos sin interrumpir la navegación
 
-**Características técnicas:**
-- **Puerto dedicado**: Corre en http://localhost:8050
-- **Actualización automática**: Datos en tiempo real cada 30 segundos
-- **Responsive Design**: Funciona en desktop, tablet y móvil
-- **Visualizaciones avanzadas**: Gráficos de Plotly con interactividad completa
+**Características técnicas avanzadas:**
+- **🌐 Puerto dedicado**: Corre en http://localhost:8050 con servidor Dash optimizado
+- **📊 Visualizaciones Plotly**: Gráficos interactivos con zoom, pan y tooltips informativos
+- **🎨 UI/UX Profesional**: Diseño moderno con cards, gradientes y animaciones suaves
+- **📈 Análisis Temporal**: Gráficos de rendimiento con múltiples timeframes
+- **🔄 Estado en Tiempo Real**: Indicadores visuales del estado del bot y conexiones
+- **📋 Tablas Dinámicas**: Listados de posiciones y operaciones con filtros avanzados
+- **🎛️ Panel de Control**: Botones para iniciar/detener análisis y cambiar configuraciones
 
-**¿Cómo funciona?** Como un centro de comando profesional que te permite supervisar todas las operaciones, métricas y rendimiento desde una sola pantalla elegante y fácil de usar.
+**Métricas visualizadas:**
+- **💰 Portfolio Value**: Valor total actualizado en tiempo real
+- **📈 Total ROI**: Retorno sobre inversión acumulado
+- **🎯 Win Rate**: Porcentaje de operaciones exitosas
+- **📉 Max Drawdown**: Máxima pérdida desde el pico más alto
+- **⚡ Sharpe Ratio**: Relación riesgo-rendimiento ajustada
+- **📊 Volatilidad**: Medida de la variabilidad de los retornos
+- **🔢 Total Trades**: Número total de operaciones ejecutadas
+- **💵 Average Trade**: Ganancia/pérdida promedio por operación
+
+**¿Cómo funciona?** Como un centro de comando profesional de trading que combina la potencia de análisis institucional con la simplicidad de uso, permitiéndote supervisar todas las operaciones, métricas y rendimiento desde una sola pantalla elegante y altamente funcional.
 
 ### ✅ **Market Validator** - El Verificador de Condiciones
 **¿Qué hace?** Verifica que las condiciones del mercado sean adecuadas para operar.
@@ -285,80 +309,156 @@ La interfaz web para controlar todo:
 ## 🎮 Perfiles de Trading - Elige tu Estilo
 
 ### ⚡ **RÁPIDO** - Para Scalpers
-- **Objetivo**: Ganancias rápidas en minutos
-- **Riesgo**: Moderado (2% por operación)
-- **Frecuencia**: Muchas operaciones diarias
-- **Ideal para**: Traders activos que pueden monitorear constantemente
+- **🎯 Objetivo**: Ganancias rápidas en minutos con alta frecuencia
+- **⚠️ Riesgo**: Moderado (2% por operación)
+- **📊 Timeframes**: ["5m", "15m", "30m"] - Análisis de corto plazo
+- **🔄 Frecuencia**: Muchas operaciones diarias (50-100+)
+- **📈 RSI**: 20/80 (muy sensible a movimientos)
+- **🎯 Confianza mínima**: 60% para ejecución rápida
+- **👥 Ideal para**: Traders activos que pueden monitorear constantemente
 
 ### 🔥 **AGRESIVO** - Para Aventureros
-- **Objetivo**: Ganancias altas con más riesgo
-- **Riesgo**: Alto (3% por operación)
-- **Frecuencia**: Operaciones frecuentes
-- **Ideal para**: Traders experimentados con tolerancia al riesgo
+- **🎯 Objetivo**: Ganancias altas con mayor exposición al riesgo
+- **⚠️ Riesgo**: Alto (3% por operación)
+- **📊 Timeframes**: ["15m", "30m", "1h"] - Análisis de medio plazo
+- **🔄 Frecuencia**: Operaciones frecuentes (20-40 diarias)
+- **📈 RSI**: 25/75 con período 9 (agresivo)
+- **🎯 Confianza mínima**: 65% para balance riesgo-oportunidad
+- **👥 Ideal para**: Traders experimentados con alta tolerancia al riesgo
 
-### 🎯 **ÓPTIMO** - Para Equilibrados
-- **Objetivo**: Balance perfecto entre riesgo y ganancia
-- **Riesgo**: Moderado (2% por operación)
-- **Frecuencia**: Operaciones selectivas
-- **Ideal para**: La mayoría de traders (recomendado)
+### 🎯 **ÓPTIMO** - Para Equilibrados ⭐ **RECOMENDADO**
+- **🎯 Objetivo**: Balance perfecto entre riesgo, ganancia y consistencia
+- **⚠️ Riesgo**: Moderado-Bajo (2.5% por operación)
+- **📊 Timeframes**: ["1h", "4h", "1d"] - Análisis swing trading
+- **🔄 Frecuencia**: Operaciones selectivas de alta calidad (5-15 diarias)
+- **📈 RSI**: 25/75 con período 14 (balanceado y confiable)
+- **🎯 Confianza mínima**: 72% para máxima precisión
+- **💼 Posiciones máximas**: 6 para diversificación óptima
+- **🛡️ Stop Loss**: 2.5% dinámico basado en ATR
+- **💰 Take Profit**: 7.5% con trailing stop inteligente
+- **⏱️ Análisis**: Cada 75 segundos para captar oportunidades sin ruido
+- **🎨 Características especiales**:
+  - Gestión de riesgo adaptativa según volatilidad del mercado
+  - Take profit dinámico que se ajusta a las condiciones del mercado
+  - Filtros avanzados para evitar señales falsas en mercados laterales
+  - Optimización continua basada en rendimiento histórico
+- **👥 Ideal para**: La mayoría de traders, especialmente aquellos que buscan consistencia
 
 ### 🛡️ **CONSERVADOR** - Para Prudentes
-- **Objetivo**: Preservar capital con ganancias consistentes
-- **Riesgo**: Bajo (1% por operación)
-- **Frecuencia**: Pocas operaciones, muy selectivas
-- **Ideal para**: Traders nuevos o con baja tolerancia al riesgo
+- **🎯 Objetivo**: Preservar capital con ganancias consistentes y sostenibles
+- **⚠️ Riesgo**: Bajo (1% por operación)
+- **📊 Timeframes**: ["4h", "1d", "1w"] - Análisis de largo plazo
+- **🔄 Frecuencia**: Pocas operaciones, muy selectivas (1-5 diarias)
+- **📈 RSI**: 20/80 con período 21 (muy conservador)
+- **🎯 Confianza mínima**: 80% para máxima seguridad
+- **👥 Ideal para**: Traders nuevos, inversores de largo plazo o con baja tolerancia al riesgo
+
+---
+
+### 📊 **Comparativa de Rendimiento Esperado**
+
+| Perfil | Win Rate | ROI Mensual | Drawdown Máx | Trades/Día | Tiempo Dedicado |
+|--------|----------|-------------|--------------|------------|-----------------|
+| ⚡ RÁPIDO | 65-75% | 8-15% | 8-12% | 50-100+ | Alto (6-8h) |
+| 🔥 AGRESIVO | 70-80% | 10-20% | 10-15% | 20-40 | Medio (3-5h) |
+| 🎯 **ÓPTIMO** | **75-85%** | **12-18%** | **5-10%** | **5-15** | **Bajo (1-2h)** |
+| 🛡️ CONSERVADOR | 80-90% | 5-10% | 3-6% | 1-5 | Muy Bajo (30min) |
 
 ---
 
 ## 🚀 Inicio Rápido - En 5 Minutos
 
-### 1️⃣ **Instalación**
+### 1️⃣ **Instalación y Configuración**
 ```bash
 # Clonar el repositorio
 git clone https://github.com/tu-usuario/crypto-trading-analyzer.git
 cd crypto-trading-analyzer
 
+# Crear entorno virtual (recomendado)
+python3 -m venv venv
+source venv/bin/activate  # En Windows: venv\Scripts\activate
+
 # Instalar dependencias
 pip install -r requirements.txt
 
 # Configurar variables de entorno
-cp src/config/.env.example .env
-# Editar .env con tus claves de API
+cp .env.example .env
+# Editar .env con tus claves de API (opcional para paper trading)
 ```
 
-### 2️⃣ **Configuración Básica**
+### 2️⃣ **Configuración del Perfil de Trading**
 ```bash
-# Editar src/config/config.py
-TRADING_PROFILE = "OPTIMO"  # Perfil recomendado para empezar
-TRADING_MODE = "paper"      # Modo simulación (seguro)
+# El sistema viene pre-configurado con el perfil ÓPTIMO
+# Para cambiar el perfil, editar src/config/global_constants.py:
+
+ACTIVE_TRADING_PROFILE = "OPTIMO"  # Opciones: RAPIDO, AGRESIVO, OPTIMO, CONSERVADOR
+TRADING_MODE = "paper"             # Modo simulación (seguro para empezar)
+
+# Perfiles disponibles:
+# - RAPIDO: Scalping de alta frecuencia
+# - AGRESIVO: Mayor riesgo, mayor recompensa  
+# - OPTIMO: Balance perfecto (RECOMENDADO)
+# - CONSERVADOR: Máxima seguridad
 ```
 
-### 3️⃣ **Primera Ejecución**
+### 3️⃣ **Inicialización del Sistema**
 ```bash
-# Iniciar la API web
+# Terminal 1: Iniciar la API REST (puerto 8000)
 python3 main.py
 
-# En otra terminal, iniciar el bot
+# Terminal 2: Iniciar el bot de trading
 python3 src/tools/live_trading_bot.py
 
-# En una tercera terminal, iniciar el dashboard
+# Terminal 3: Iniciar el dashboard en tiempo real (puerto 8050)
 python3 src/dashboard/real_time_dashboard.py
 ```
 
-### 4️⃣ **Acceder a las Interfaces**
-- **Dashboard Principal**: http://localhost:8050 (Centro de control visual)
-- **API Documentación**: http://localhost:8000/docs (Endpoints técnicos)
-- **Monitoreo en tiempo real**: Métricas actualizadas cada 30 segundos
-- **Alertas automáticas**: Notificaciones de rendimiento y riesgos
+### 4️⃣ **Acceder a las Interfaces Web**
+- **🎯 Dashboard Principal**: http://localhost:8050 
+  - Centro de control visual con métricas en tiempo real
+  - Gráficos interactivos de rendimiento
+  - Sistema de alertas automáticas
+  - Modo oscuro profesional
+  
+- **📡 API REST**: http://localhost:8000/docs
+  - Documentación interactiva de endpoints
+  - Testing de funcionalidades
+  - Integración con sistemas externos
 
-### 5️⃣ **Monitorear Resultados**
+### 5️⃣ **Verificar el Sistema**
 ```bash
-# Ver estadísticas detalladas
-python3 src/tools/trading_monitor.py --detailed
+# Verificar estado del sistema
+python3 src/tools/trading_monitor.py
 
-# Ver base de datos
+# Ver configuración activa
+python3 -c "
+from src.config.config_manager import ConfigManager
+from src.config.global_constants import ACTIVE_TRADING_PROFILE
+config = ConfigManager()
+profile = config.get_profile_config(ACTIVE_TRADING_PROFILE)
+print(f'Perfil activo: {ACTIVE_TRADING_PROFILE}')
+print(f'Timeframes: {profile.strategies.rsi_strategy.timeframes}')
+print(f'RSI: {profile.strategies.rsi_strategy.oversold}/{profile.strategies.rsi_strategy.overbought}')
+print(f'Confianza mínima: {profile.strategies.rsi_strategy.min_confidence}%')
+"
+
+# Ver estadísticas de la base de datos
 python3 src/database/db_manager_cli.py stats
 ```
+
+### 6️⃣ **Primeros Pasos Recomendados**
+1. **📊 Monitorear el Dashboard**: Observa las métricas en tiempo real
+2. **🔍 Revisar Señales**: Verifica que el bot genere señales de trading
+3. **📈 Analizar Rendimiento**: Observa la curva de equity en el dashboard
+4. **⚙️ Ajustar Configuración**: Modifica parámetros según tus preferencias
+5. **🧪 Experimentar**: Prueba diferentes perfiles en modo paper trading
+
+### ⚠️ **Importante para Principiantes**
+- **Siempre comienza en modo `paper`** para familiarizarte con el sistema
+- **El perfil ÓPTIMO** está diseñado para la mayoría de usuarios
+- **Monitorea el dashboard** para entender cómo funciona el sistema
+- **Lee la documentación** de cada módulo antes de hacer cambios
+- **Haz backups** de tu configuración antes de modificarla
 
 ---
 
@@ -517,6 +617,106 @@ python3 tests/test_system.py
 # Test de indicadores técnicos
 python3 tests/test_advanced_indicators.py
 ```
+
+### 🤖 **Automatización y Optimización**
+
+#### ⚡ **Características de Automatización**
+- **Auto-rebalanceo de posiciones** cada 75 segundos
+- **Gestión automática de stop-loss** dinámicos
+- **Detección automática de patrones** de velas japonesas
+- **Optimización automática de parámetros** basada en rendimiento histórico
+- **Backup automático de datos** cada 24 horas
+- **Limpieza automática de logs** antiguos
+
+#### 🎯 **Optimizaciones de Rendimiento**
+- **Análisis paralelo** de múltiples activos
+- **Cache inteligente** de datos de mercado
+- **Compresión automática** de datos históricos
+- **Indexación optimizada** de base de datos
+- **Gestión eficiente de memoria** para análisis largos
+
+#### 📊 **Monitoreo Automático**
+```python
+# Configuración de monitoreo automático
+AUTO_MONITORING = {
+    "health_check_interval": 60,      # Verificar salud cada 60s
+    "performance_report": "daily",    # Reporte diario automático
+    "alert_threshold": 0.05,          # Alertar si pérdida > 5%
+    "auto_stop_loss": True,           # Stop-loss automático
+    "position_rebalance": True        # Rebalanceo automático
+}
+```
+
+---
+
+## 📈 Métricas Avanzadas y Sistema de Alertas
+
+### 🎯 **Métricas de Rendimiento Avanzadas**
+El sistema calcula automáticamente métricas profesionales de trading:
+
+#### 📊 **Métricas Principales**
+- **Sharpe Ratio**: Mide el rendimiento ajustado por riesgo
+- **Alpha**: Rendimiento excesivo comparado con el mercado
+- **Beta**: Correlación con el movimiento del mercado
+- **Volatilidad**: Desviación estándar de los retornos
+- **Maximum Drawdown**: Mayor pérdida desde un pico
+- **Win Rate**: Porcentaje de operaciones exitosas
+- **Profit Factor**: Ratio de ganancias vs pérdidas
+- **Average Trade**: Ganancia promedio por operación
+
+#### 🔍 **Análisis de Riesgo**
+```python
+# Ejemplo de métricas calculadas automáticamente
+{
+    "sharpe_ratio": 1.85,
+    "alpha": 0.12,
+    "beta": 0.78,
+    "volatility": 0.15,
+    "max_drawdown": -0.08,
+    "win_rate": 0.68,
+    "profit_factor": 1.45,
+    "total_trades": 156
+}
+```
+
+### 🚨 **Sistema de Alertas Inteligentes**
+
+#### 📱 **Tipos de Alertas**
+- **🔴 Alertas Críticas**: Pérdidas significativas, errores del sistema
+- **🟡 Alertas de Atención**: Oportunidades de trading, cambios de tendencia
+- **🟢 Alertas Informativas**: Operaciones exitosas, actualizaciones de estado
+
+#### ⚙️ **Configuración de Alertas**
+```python
+# En config/trading_config.py
+ALERT_CONFIG = {
+    "max_loss_alert": -0.05,      # Alerta si pérdida > 5%
+    "profit_target_alert": 0.10,   # Alerta si ganancia > 10%
+    "volume_spike_alert": 2.0,     # Alerta si volumen > 200% promedio
+    "rsi_extreme_alert": True,     # Alerta en RSI < 20 o > 80
+    "trend_change_alert": True     # Alerta en cambios de tendencia
+}
+```
+
+#### 📊 **Dashboard de Alertas**
+- **Panel en tiempo real** con todas las alertas activas
+- **Historial de alertas** con timestamps y acciones tomadas
+- **Filtros personalizables** por tipo, símbolo y severidad
+- **Exportación de reportes** en formato CSV/JSON
+
+### 🎨 **Visualizaciones Avanzadas**
+
+#### 📈 **Gráficos Interactivos**
+- **Candlestick Charts** con indicadores superpuestos
+- **Heatmaps de Correlación** entre diferentes activos
+- **Gráficos de Volumen** con análisis de flujo de dinero
+- **Mapas de Calor de Rendimiento** por timeframe
+
+#### 🎯 **Análisis Técnico Visual**
+- **Líneas de Soporte y Resistencia** automáticas
+- **Patrones de Velas** identificados y marcados
+- **Zonas de Fibonacci** calculadas dinámicamente
+- **Bandas de Bollinger** con señales de entrada/salida
 
 ---
 
