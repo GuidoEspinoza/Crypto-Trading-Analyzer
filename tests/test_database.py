@@ -129,7 +129,7 @@ class TestDatabaseConfig(unittest.TestCase):
         # Test test profile
         test_config = get_database_config("test")
         self.assertEqual(test_config.connection.database_name, ":memory:")
-        self.assertEqual(test_config.portfolio.initial_usdt_amount, 1000.0)
+        self.assertEqual(test_config.portfolio.initial_usdt_amount, GLOBAL_INITIAL_BALANCE)
         self.assertEqual(test_config.logging.level, "ERROR")
         
     def test_connection_config_database_url(self):
@@ -186,7 +186,7 @@ class TestDatabaseManagerOptimizations(unittest.TestCase):
         self.assertIsNotNone(self.db_manager.logger)
         
         # Verificar configuración aplicada
-        self.assertEqual(self.db_manager.config.portfolio.initial_usdt_amount, 1000.0)
+        self.assertEqual(self.db_manager.config.portfolio.initial_usdt_amount, GLOBAL_INITIAL_BALANCE)
         
     def test_database_manager_with_profile(self):
         """Test creación con perfil específico"""

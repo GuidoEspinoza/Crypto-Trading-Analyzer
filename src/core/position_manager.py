@@ -67,6 +67,7 @@ class PositionInfo:
     max_profit: float
     max_loss: float
     risk_reward_ratio: float
+    trailing_stop: Optional[float] = None  # Trailing stop dinámico
 
 @dataclass
 class PositionUpdate:
@@ -119,6 +120,7 @@ class PositionManager:
         # Configuraciones adicionales del perfil
         try:
             self.atr_estimation_pct = profile.get('atr_estimation_percentage', 2.0) / 100  # Convertir de % a decimal
+            self.trailing_stop_activation = profile.get('trailing_stop_activation', 3.0) / 100  # Convertir de % a decimal
             self.profit_scaling_ratios = {
                 'tp_max_ratio': profile.get('tp_max_ratio', 0.67),  # 2/3 del máximo
                 'tp_mid_ratio': profile.get('tp_mid_ratio', 0.5),   # 1/2 del máximo
@@ -127,6 +129,7 @@ class PositionManager:
         except NameError:
             # Si profile no está definido (error en el try anterior)
             self.atr_estimation_pct = 2.0 / 100  # 2% como estimación conservadora
+            self.trailing_stop_activation = 3.0 / 100  # 3% como valor por defecto
             self.profit_scaling_ratios = {
                 'tp_max_ratio': 0.67,  # 2/3 del máximo
                 'tp_mid_ratio': 0.5,   # 1/2 del máximo
@@ -293,7 +296,8 @@ class PositionManager:
                 days_held=days_held,
                 max_profit=self._calculate_max_profit(trade),
                 max_loss=self._calculate_max_loss(trade),
-                risk_reward_ratio=risk_reward_ratio
+                risk_reward_ratio=risk_reward_ratio,
+                trailing_stop=None  # Por defecto None, se puede configurar después
             )
             
         except Exception as e:
@@ -787,6 +791,126 @@ class PositionManager:
             logger.error(f"❌ Error updating dynamic take profits: {e}")
         
         return updated_count
+    
+    def update_trailing_stops(self, market_data: Dict[str, float]) -> int:
+        """🔄 Actualizar trailing stops para todas las posiciones activas
+        
+        Args:
+            market_data: Diccionario con precios actuales {symbol: price}
+            
+        Returns:
+            Número de trailing stops actualizados
+        """
+        updated_count = 0
+        
+        try:
+            positions = self.get_active_positions()
+            
+            with db_manager.get_db_session() as session:
+                for position in positions:
+                    if position.symbol not in market_data:
+                        continue
+                    
+                    current_price = market_data[position.symbol]
+                    
+                    # Obtener trade de la base de datos
+                    trade = session.query(Trade).filter(
+                        Trade.id == position.trade_id,
+                        Trade.status == "OPEN"
+                    ).first()
+                    
+                    if not trade:
+                        continue
+                    
+                    # Calcular ganancia actual
+                    if position.trade_type == "BUY":
+                        current_profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                    else:  # SELL
+                        current_profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                    
+                    # Solo activar trailing stop si hay ganancia suficiente
+                    min_profit_for_trailing = self.trailing_stop_activation * 100  # Convertir a porcentaje
+                    if current_profit_pct < min_profit_for_trailing:
+                        continue
+                    
+                    # Calcular nuevo trailing stop
+                    new_trailing_stop = self._calculate_trailing_stop(position, current_price, current_profit_pct)
+                    
+                    if new_trailing_stop is None:
+                        continue
+                    
+                    # Verificar si el nuevo trailing stop es mejor que el actual
+                    should_update = False
+                    if position.trade_type == "BUY":
+                        # Para posiciones LONG, el trailing stop debe subir
+                        if position.trailing_stop is None or new_trailing_stop > position.trailing_stop:
+                            should_update = True
+                    else:  # SELL
+                        # Para posiciones SHORT, el trailing stop debe bajar
+                        if position.trailing_stop is None or new_trailing_stop < position.trailing_stop:
+                            should_update = True
+                    
+                    if should_update:
+                        # Actualizar en la base de datos
+                        trade.stop_loss = new_trailing_stop
+                        
+                        # Actualizar en cache
+                        if position.trade_id in self.positions_cache:
+                            self.positions_cache[position.trade_id].trailing_stop = new_trailing_stop
+                            self.positions_cache[position.trade_id].stop_loss = new_trailing_stop
+                        
+                        updated_count += 1
+                        
+                        logger.info(
+                            f"🔄 Updated trailing stop for {position.symbol}: "
+                            f"${new_trailing_stop:.4f} (Price: ${current_price:.4f}, Profit: {current_profit_pct:.2f}%)"
+                        )
+                
+                session.commit()
+                
+                if updated_count > 0:
+                    self.stats["trailing_stops_updated"] = self.stats.get("trailing_stops_updated", 0) + updated_count
+                    logger.info(f"🔄 Updated {updated_count} trailing stops")
+                
+        except Exception as e:
+            logger.error(f"❌ Error updating trailing stops: {e}")
+        
+        return updated_count
+    
+    def _calculate_trailing_stop(self, position: 'PositionInfo', current_price: float, current_profit_pct: float) -> Optional[float]:
+        """📊 Calcular trailing stop basado en ATR y ganancia actual
+        
+        Args:
+            position: Información de la posición
+            current_price: Precio actual
+            current_profit_pct: Porcentaje de ganancia actual
+            
+        Returns:
+            Nuevo precio de trailing stop o None si no se puede calcular
+        """
+        try:
+            # Calcular trailing stop basado en ATR
+            atr_trailing = self.calculate_atr_trailing_stop(
+                symbol=position.symbol,
+                current_price=current_price,
+                trade_type=position.trade_type,
+                atr_multiplier=2.0
+            )
+            
+            if atr_trailing is None:
+                # Fallback: usar porcentaje fijo basado en ganancia
+                trailing_distance_pct = max(0.5, min(3.0, current_profit_pct * 0.3))  # Entre 0.5% y 3%
+                
+                if position.trade_type == "BUY":
+                    return current_price * (1 - trailing_distance_pct / 100)
+                else:  # SELL
+                    return current_price * (1 + trailing_distance_pct / 100)
+            
+            return atr_trailing
+            
+        except Exception as e:
+            logger.error(f"❌ Error calculating trailing stop for {position.symbol}: {e}")
+            return None
     
     def _calculate_dynamic_take_profit(self, position: 'PositionInfo', current_price: float, current_profit_pct: float) -> Optional[float]:
         """📊 Calcular take profit dinámico basado en ganancias actuales

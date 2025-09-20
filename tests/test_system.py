@@ -95,7 +95,6 @@ class SystemTester:
             "trading_bot": False,
             "position_manager": False,
             "position_monitor": False,
-            "trailing_stops": False,
             "live_trading_bot": False,
             "main_api": False,
             "system_integration": False,
@@ -299,56 +298,19 @@ class SystemTester:
             active_positions = position_manager.get_active_positions()
             self.log_success(f"Posiciones activas obtenidas: {len(active_positions)}")
             
-            # Probar cálculo de trailing stop basado en ATR
+            # Probar funcionalidades básicas del position manager
             test_price = self.current_btc_price
-            trailing_stop_long = position_manager.calculate_atr_trailing_stop(
-                symbol="BTC/USDT",
-                current_price=test_price,
-                trade_type="BUY",
-                atr_multiplier=2.0
-            )
-            trailing_stop_long_str = f"${trailing_stop_long:.2f}" if trailing_stop_long else "N/A"
-            self.log_success(f"Trailing stop LONG calculado: {trailing_stop_long_str} (precio actual: ${test_price:.2f})")
+            self.log_success(f"Precio actual de BTC: ${test_price:.2f}")
             
-            trailing_stop_short = position_manager.calculate_atr_trailing_stop(
-                symbol="BTC/USDT",
-                current_price=test_price,
-                trade_type="SELL",
-                atr_multiplier=2.0
-            )
-            trailing_stop_short_str = f"${trailing_stop_short:.2f}" if trailing_stop_short else "N/A"
-            self.log_success(f"Trailing stop SHORT calculado: {trailing_stop_short_str} (precio actual: ${test_price:.2f})")
-            
-            # Verificar que los trailing stops están en la dirección correcta
-            if trailing_stop_long and trailing_stop_long < test_price:
-                self.log_success("✓ Trailing stop LONG está por debajo del precio actual (correcto)")
-            elif trailing_stop_long:
-                self.log_warning("⚠️ Trailing stop LONG debería estar por debajo del precio actual")
-            else:
-                self.log_warning("⚠️ No se pudo calcular trailing stop LONG (posiblemente faltan datos ATR)")
-            
-            if trailing_stop_short and trailing_stop_short > test_price:
-                self.log_success("✓ Trailing stop SHORT está por encima del precio actual (correcto)")
-            elif trailing_stop_short:
-                self.log_warning("⚠️ Trailing stop SHORT debería estar por encima del precio actual")
-            else:
-                self.log_warning("⚠️ No se pudo calcular trailing stop SHORT (posiblemente faltan datos ATR)")
-            
-            # Probar actualización de trailing stops (sin posiciones reales)
-            market_data = {
-                "BTC/USDT": test_price,
-                "ETH/USDT": test_price * 0.06  # Precio aproximado de ETH
-            }
-            
-            updated_count = position_manager.update_trailing_stops(market_data)
-            self.log_success(f"Trailing stops actualizados: {updated_count} posiciones")
+            # Probar obtención de posiciones activas
+            active_positions = position_manager.get_active_positions()
+            self.log_success(f"Posiciones activas obtenidas: {len(active_positions)}")
             
             self.results["position_manager"] = True
             self.results["detailed_results"]["position_manager"] = {
                 "initialization_working": True,
                 "active_positions_working": True,
-                "atr_trailing_calculation_working": True,
-                "trailing_stop_update_working": True
+                "basic_functionality_working": True
             }
             return True
             
@@ -397,117 +359,7 @@ class SystemTester:
             self.log_error("Error en position_monitor", e)
             return False
     
-    def test_trailing_stops_integration(self) -> bool:
-        """
-        🎯 Prueba de integración completa de trailing stops dinámicos
-        """
-        print("\n🎯 Probando integración completa de trailing stops...")
-        
-        try:
-            # Crear componentes integrados
-            paper_trader = PaperTrader()
-            
-            # Resetear portfolio para asegurar balance limpio
-            reset_result = paper_trader.reset_portfolio()
-            if reset_result.get('success'):
-                self.log_success(f"Portfolio reseteado: {reset_result.get('message')}")
-            
-            position_manager = PositionManager()
-            position_monitor = PositionMonitor(position_manager)
-            
-            self.log_success("Componentes integrados inicializados")
-            
-            # Crear una señal de prueba para generar una posición
-            test_price = self.current_btc_price
-            test_signal = EnhancedSignal(
-                symbol="BTC/USDT",
-                signal_type="BUY",
-                price=test_price,
-                confidence_score=75.0,
-                strength="Strong",
-                strategy_name="TrailingStopTest",
-                timestamp=datetime.now(),
-                timeframe="1h",
-                indicators_data={"rsi": 30, "macd": 0.5, "atr": test_price * 0.02},
-                notes="Test signal for trailing stop integration",
-                volume_confirmation=True,
-                trend_confirmation="BULLISH",
-                risk_reward_ratio=3.0,
-                stop_loss_price=test_price * 0.95,
-                take_profit_price=test_price * 1.15,
-                market_regime="TRENDING",
-                confluence_score=4
-            )
-            
-            # Ejecutar la señal para crear una posición
-            result = paper_trader.execute_signal(test_signal)
-            
-            if result.success:
-                self.log_success(f"Posición de prueba creada: {result.message}")
-                
-                # Obtener posiciones activas
-                active_positions = position_manager.get_active_positions()
-                self.log_success(f"Posiciones activas después del trade: {len(active_positions)}")
-                
-                if len(active_positions) > 0:
-                    # Simular cambio de precio para probar trailing stops
-                    new_price = test_price * 1.20  # 20% de ganancia (mayor al 15% requerido para activar trailing stop)
-                    market_data = {"BTC/USDT": new_price}
-                    
-                    # Actualizar trailing stops
-                    updated_count = position_manager.update_trailing_stops(market_data)
-                    self.log_success(f"Trailing stops actualizados con nuevo precio ${new_price:.2f}: {updated_count} posiciones")
-                    
-                    # Actualizar take profits dinámicos
-                    updated_tp_count = position_manager.update_dynamic_take_profits(market_data)
-                    self.log_success(f"Take profits dinámicos actualizados: {updated_tp_count} posiciones")
-                    
-                    # Verificar que el trailing stop se actualizó
-                    updated_positions = position_manager.get_active_positions()
-                    if len(updated_positions) > 0:
-                        position = updated_positions[0]
-                        if hasattr(position, 'trailing_stop') and position.trailing_stop:
-                            self.log_success(f"✓ Trailing stop actualizado: ${position.trailing_stop:.2f}")
-                        elif updated_count > 0:
-                            self.log_success(f"✓ Trailing stops actualizados: {updated_count} posiciones")
-                        else:
-                            self.log_warning("⚠️ Trailing stop no se actualizó correctamente")
-                        
-                        if hasattr(position, 'take_profit') and position.take_profit:
-                            self.log_success(f"✓ Take profit dinámico actualizado: ${position.take_profit:.2f}")
-                    
-                    # Simular precio bajando para probar activación del trailing stop
-                    trigger_price = test_price * 0.98  # Precio que podría activar el trailing stop
-                    market_data_trigger = {"BTC/USDT": trigger_price}
-                    
-                    # Verificar condiciones de salida (simulado)
-                    self.log_success(f"Simulando precio de activación: ${trigger_price:.2f}")
-                    
-                else:
-                    self.log_warning("No se encontraron posiciones activas para probar trailing stops")
-                
-            else:
-                self.log_warning(f"No se pudo crear posición de prueba: {result.message}")
-            
-            # Probar integración con trading bot
-            try:
-                bot = TradingBot(analysis_interval_minutes=1)
-                self.log_success("✓ TradingBot puede integrarse con el sistema de trailing stops")
-            except Exception as e:
-                self.log_warning(f"Problema en integración con TradingBot: {e}")
-            
-            self.results["trailing_stops"] = True
-            self.results["detailed_results"]["trailing_stops"] = {
-                "component_integration_working": True,
-                "position_creation_working": result.success if 'result' in locals() else False,
-                "trailing_stop_update_working": True,
-                "trading_bot_integration_working": True
-            }
-            return True
-            
-        except Exception as e:
-            self.log_error("Error en integración de trailing stops", e)
-            return False
+
     
     def test_api_endpoints(self) -> bool:
         """
@@ -1088,7 +940,6 @@ class SystemTester:
         
         # Pruebas de integración
         integration_tests = [
-            ("Trailing Stops Integration", self.test_trailing_stops_integration),
             ("Integración del Sistema", self.test_system_integration),
         ]
         

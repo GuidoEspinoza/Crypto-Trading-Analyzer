@@ -13,10 +13,20 @@ from datetime import datetime
 from functools import lru_cache
 import hashlib
 
-from src.config.config_manager import ConfigManager
+from src.config import (
+    ConfigManager,
+    get_config_factory,
+    TechnicalConfig,
+    TradingProfile,
+    get_adaptive_manager
+)
 
 # Inicializar configuración centralizada
 try:
+    config_factory = get_config_factory()
+    technical_config = config_factory.get_config()
+    
+    # Mantener compatibilidad con configuración legacy
     config = ConfigManager().get_consolidated_config()
     if config is None:
         config = {}
@@ -25,6 +35,7 @@ except Exception as e:
     config = {
         'advanced_indicators': {'fibonacci_lookback': 50}
     }
+    technical_config = TechnicalConfig()
 from src.utils.advanced_cache import indicator_cache, cached_function
 from src.utils.error_handler import handle_errors
 
@@ -122,7 +133,8 @@ class AdvancedIndicators:
             FibonacciLevels con todos los niveles calculados
         """
         if lookback is None:
-            lookback = cls._get_config_value("advanced_indicators.fibonacci_lookback", 50)
+            # Usar configuración centralizada
+            lookback = technical_config.fibonacci.lookback_period
         
         # Encontrar máximo y mínimo en el período
         recent_data = df.tail(lookback)
@@ -144,8 +156,8 @@ class AdvancedIndicators:
         diff = swing_high - swing_low
         
         # Calcular niveles de Fibonacci (retracement desde el máximo)
-        # RETRACEMENT_LEVELS = [0.236, 0.382, 0.500, 0.618, 0.786]
-        retracement_levels = cls._get_config_value("fibonacci.retracement_levels", [0.236, 0.382, 0.500, 0.618, 0.786])
+        # Usar configuración centralizada
+        retracement_levels = technical_config.fibonacci.retracement_levels
         return FibonacciLevels(
             level_0=AdvancedIndicators.safe_float(swing_high),
             level_236=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[0])),  # 0.236
@@ -1118,9 +1130,11 @@ class AdvancedIndicators:
         global config
         if period is None:
             try:
+                # Usar configuración centralizada
+                period = technical_config.rsi.period
+            except (AttributeError, NameError):
+                # Fallback a configuración legacy
                 period = config.get("advanced_indicators", {}).get("rsi_period", 14)
-            except (KeyError, AttributeError):
-                period = 14
             
         # Verificar cache
         params = {'period': period}
@@ -1253,27 +1267,30 @@ class AdvancedIndicators:
         """
         global config
         
-        # Obtener parámetros desde configuración
+        # Obtener parámetros desde configuración centralizada
         if fast_period is None:
             try:
+                fast_period = technical_config.macd.fast_period
+            except (AttributeError, NameError):
+                # Fallback a configuración legacy
                 macd_periods = config.get("advanced_indicators", {}).get("macd_periods", [12, 26, 9])
                 fast_period = macd_periods[0] if len(macd_periods) >= 1 else 12
-            except (KeyError, AttributeError, IndexError):
-                fast_period = 12
                 
         if slow_period is None:
             try:
+                slow_period = technical_config.macd.slow_period
+            except (AttributeError, NameError):
+                # Fallback a configuración legacy
                 macd_periods = config.get("advanced_indicators", {}).get("macd_periods", [12, 26, 9])
                 slow_period = macd_periods[1] if len(macd_periods) >= 2 else 26
-            except (KeyError, AttributeError, IndexError):
-                slow_period = 26
                 
         if signal_period is None:
             try:
+                signal_period = technical_config.macd.signal_period
+            except (AttributeError, NameError):
+                # Fallback a configuración legacy
                 macd_periods = config.get("advanced_indicators", {}).get("macd_periods", [12, 26, 9])
                 signal_period = macd_periods[2] if len(macd_periods) >= 3 else 9
-            except (KeyError, AttributeError, IndexError):
-                signal_period = 9
         
         # Verificar cache
         params = {'fast_period': fast_period, 'slow_period': slow_period, 'signal_period': signal_period}

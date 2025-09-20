@@ -313,16 +313,69 @@ async def get_bot_detailed_report():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
+@app.get("/bot/trading-mode")
+async def get_trading_mode():
+    """
+    📊 Obtener modo de trading actual
+    """
+    try:
+        bot = ensure_bot_exists()
+        
+        # Determinar el modo de trading actual
+        trading_mode = "paper"  # Por defecto paper trading
+        live_trading_available = False
+        
+        # Verificar si hay configuración para live trading
+        try:
+            config = ConfigManager.get_consolidated_config()
+            live_trading_available = config.get("live_trading", {}).get("enabled", False)
+        except:
+            pass
+        
+        return {
+            "status": "success",
+            "trading_mode": trading_mode,
+            "live_trading_available": live_trading_available,
+            "bot_status": bot.is_running if hasattr(bot, 'is_running') else False,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting trading mode: {str(e)}")
 
-
-
-
-
-
-
-
-
-
+@app.post("/bot/trading-mode")
+async def set_trading_mode(request: dict):
+    """
+    📊 Configurar modo de trading
+    """
+    try:
+        mode = request.get("mode", "paper")
+        confirmation = request.get("confirmation", False)
+        
+        if mode not in ["paper", "live"]:
+            raise HTTPException(status_code=400, detail="Invalid trading mode. Use 'paper' or 'live'")
+        
+        if mode == "live" and not confirmation:
+            raise HTTPException(status_code=400, detail="Live trading requires explicit confirmation")
+        
+        # Por ahora solo soportamos paper trading
+        if mode == "live":
+            return {
+                "status": "warning",
+                "message": "Live trading not yet implemented. Using paper trading mode.",
+                "trading_mode": "paper",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        return {
+            "status": "success",
+            "message": f"Trading mode set to {mode}",
+            "trading_mode": mode,
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error setting trading mode: {str(e)}")
 
 @app.post("/bot/emergency-stop")
 async def emergency_stop_bot():
@@ -472,7 +525,6 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
         quick_backtest = None
         if test_mode == "full":
             try:
-                from datetime import timedelta
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=30)  # Último mes
                 

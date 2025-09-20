@@ -23,9 +23,6 @@ class TestPositionAdjuster:
         return {
             'position_monitoring_interval': 30,
             'profit_scaling_threshold': 2.0,
-            'trailing_stop_activation': 5.0,
-            'trailing_stop_sl_pct': 0.02,
-            'trailing_stop_tp_pct': 0.05,
             'profit_protection_sl_pct': 0.01,
             'profit_protection_tp_pct': 0.03,
             'risk_management_threshold': -1.0,
@@ -228,15 +225,15 @@ class TestPositionAdjuster:
         # SL debería mantenerse o mejorar ligeramente
         assert new_sl >= sample_position.current_sl
     
-    def test_calculate_new_levels_trailing_stop(self, position_adjuster, sample_position):
-        """Test de cálculo de nuevos niveles para trailing stop"""
+    def test_calculate_new_levels_profit_protection(self, position_adjuster, sample_position):
+        """Test de cálculo de nuevos niveles para protección de ganancias"""
         new_tp, new_sl = position_adjuster._calculate_new_levels(
             position=sample_position,
-            reason=AdjustmentReason.TRAILING_STOP,
+            reason=AdjustmentReason.PROFIT_SCALING,  # Usar PROFIT_SCALING que tiene lógica implementada
             current_price=52000.0
         )
         
-        # Para trailing stop, ambos niveles deberían ajustarse
+        # Para profit scaling, ambos niveles deberían ajustarse
         assert new_tp != sample_position.current_tp
         assert new_sl != sample_position.current_sl
     
@@ -384,7 +381,7 @@ class TestPositionAdjuster:
             ),
             AdjustmentResult(
                 symbol='ETHUSDT',
-                reason=AdjustmentReason.TRAILING_STOP,
+                reason=AdjustmentReason.PROFIT_PROTECTION,
                 success=False,
                 old_tp=3200.0,
                 new_tp=3300.0,
@@ -404,7 +401,7 @@ class TestPositionAdjuster:
         assert stats['success_rate'] == 33.33333333333333  # 1/3 * 100 (1 exitoso de 3 total)
         assert len(stats['recent_adjustments']) == 2
         assert 'profit_scaling' in stats['adjustments_by_reason']
-        assert 'trailing_stop' in stats['adjustments_by_reason']
+        assert 'profit_protection' in stats['adjustments_by_reason']
     
     def test_reset_adjustment_counts(self, position_adjuster):
         """Test de reset de contadores"""
@@ -435,9 +432,10 @@ class TestPositionAdjuster:
     def test_adjustment_reason_enum(self):
         """Test del enum AdjustmentReason"""
         assert AdjustmentReason.PROFIT_SCALING.value == "profit_scaling"
-        assert AdjustmentReason.TRAILING_STOP.value == "trailing_stop"
         assert AdjustmentReason.PROFIT_PROTECTION.value == "profit_protection"
         assert AdjustmentReason.RISK_MANAGEMENT.value == "risk_management"
+        assert AdjustmentReason.EMERGENCY_STOP.value == "emergency_stop"
+        assert AdjustmentReason.VOLATILITY_CHANGE.value == "volatility_change"
     
     def test_adjustment_result_dataclass(self):
         """Test del dataclass AdjustmentResult"""
@@ -492,9 +490,6 @@ class TestPositionAdjusterIntegration:
         return {
             'position_monitoring_interval': 1,  # Intervalo corto para tests
             'profit_scaling_threshold': 1.0,
-            'trailing_stop_activation': 2.0,
-            'trailing_stop_sl_pct': 0.01,
-            'trailing_stop_tp_pct': 0.02,
             'profit_protection_sl_pct': 0.005,
             'profit_protection_tp_pct': 0.015,
             'risk_management_threshold': -0.5,

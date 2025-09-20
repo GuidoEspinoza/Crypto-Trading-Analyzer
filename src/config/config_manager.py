@@ -244,7 +244,7 @@ class ConfigManager:
                 'analysis_interval': 75,  # Análisis más frecuente para mejor timing
                 'min_confidence': 0.72,  # Mayor confianza para swing trading de calidad (72%)
                 'max_positions': 6,  # Más posiciones para diversificación balanceada
-                'max_daily_trades': 20,  # Más trades para aprovechar swings
+                'max_daily_trades': 15,  # Usar configuración optimizada
                 'max_concurrent_positions': 6,  # Posiciones concurrentes balanceadas
                 'symbols': ['BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'DOTUSDT'],  # Más símbolos para diversificación
                 'position_timeout': 1200,  # Timeout optimizado para swing trading

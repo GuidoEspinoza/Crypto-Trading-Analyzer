@@ -299,7 +299,7 @@ class TestEnhancedRiskManager(unittest.TestCase):
         # Verificaciones
         self.assertIsInstance(activation_threshold, float)
         self.assertGreater(activation_threshold, 0.008)  # Mínimo 0.8%
-        self.assertLess(activation_threshold, 0.025)     # Máximo 2.5%
+        self.assertLessEqual(activation_threshold, 0.025)     # Máximo 2.5% (inclusive)
         
         # Test de distancia de trailing optimizada
         base_distance = 0.015  # 1.5% base

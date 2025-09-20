@@ -116,14 +116,12 @@ class TestTradeModel(unittest.TestCase):
             entry_value=1000.0,
             stop_loss=0.95,
             take_profit=1.10,
-            trailing_stop=0.02,
             timeframe="1d"
         )
         
         # Verificar risk management
         self.assertEqual(trade.stop_loss, 0.95)
         self.assertEqual(trade.take_profit, 1.10)
-        self.assertEqual(trade.trailing_stop, 0.02)
     
     @unittest.skipIf(not MODELS_AVAILABLE, "Trade model not available")
     def test_trade_persistence(self):

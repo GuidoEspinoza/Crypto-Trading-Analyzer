@@ -18,7 +18,13 @@ from functools import lru_cache
 import hashlib
 import time
 
-from src.config.config_manager import ConfigManager
+from src.config import (
+    ConfigManager,
+    get_config_factory,
+    TechnicalConfig,
+    TradingProfile,
+    get_adaptive_manager
+)
 from src.config.config import TechnicalAnalysisConfig, StrategyConfig
 
 # Configuración centralizada
@@ -27,6 +33,10 @@ try:
     config = config_manager.get_consolidated_config()
     if config is None:
         config = {}
+    
+    # Configuración técnica centralizada
+    config_factory = get_config_factory()
+    technical_config = config_factory.get_config()
     
     # Importar constantes de confianza desde StrategyConfig.Base
     BASE_CONFIDENCE = StrategyConfig.Base.BASE_CONFIDENCE
@@ -60,6 +70,7 @@ except Exception as e:
             'breakout_threshold': 0.02
         }
     }
+    technical_config = TechnicalConfig()
     
     # Constantes de fallback
     BASE_CONFIDENCE = 50.0
@@ -932,11 +943,19 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
         # === PARÁMETROS DE CONFIRMACIÓN ===
         self.min_volume_ratio = 1.2  # Ratio mínimo de volumen vs promedio
         self.min_confluence = 2      # Mínimo de confirmaciones requeridas
-        self.trend_strength_threshold = 0.6  # Umbral de fuerza de tendencia
+        try:
+            # Usar configuración centralizada
+            self.trend_strength_threshold = technical_config.strategies.trend_strength_threshold
+        except (AttributeError, NameError):
+            self.trend_strength_threshold = 0.6  # Fallback
         
         # === FILTROS DE CALIDAD ===
         self.min_atr_ratio = 0.8     # Ratio mínimo ATR para volatilidad
-        self.max_spread_threshold = 0.003  # Máximo spread permitido
+        try:
+            # Usar configuración centralizada
+            self.max_spread_threshold = technical_config.strategies.max_spread_threshold
+        except (AttributeError, NameError):
+            self.max_spread_threshold = 0.003  # Fallback
         
         # 📊 Log de configuración cargada
         logger.info(f"🎯 RSI Strategy configurada desde perfil {ConfigManager.get_active_profile()}:")

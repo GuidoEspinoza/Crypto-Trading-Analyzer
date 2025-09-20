@@ -173,7 +173,9 @@ class LiveTradingBot:
             logger.info("📋 CONFIGURACIÓN DE ESTRATEGIAS:")
             for strategy_name, strategy in self.trading_bot.strategies.items():
                 logger.info(f"   🎯 {strategy_name}:")
-                logger.info(f"      • Confianza mínima: {strategy.min_confidence:.1f}%")
+                # Corregir visualización de porcentajes - si el valor es < 1, está en formato decimal
+                confidence_display = strategy.min_confidence * 100 if strategy.min_confidence < 1 else strategy.min_confidence
+                logger.info(f"      • Confianza mínima: {confidence_display:.1f}%")
                 if hasattr(strategy, 'rsi_oversold'):
                     logger.info(f"      • RSI Sobreventa: {strategy.rsi_oversold}")
                 if hasattr(strategy, 'rsi_overbought'):
@@ -545,6 +547,54 @@ class LiveTradingBot:
             import traceback
             traceback.print_exc()
     
+    def _show_binance_config_info(self, signal):
+        """
+        📋 Mostrar configuración sugerida para Binance (solo informativo)
+        """
+        try:
+            from src.config.config import RiskManagerConfig
+            
+            symbol = signal.symbol
+            signal_type = signal.signal_type
+            price = signal.price
+            
+            # Calcular valores sugeridos para Binance
+            binance_config = self.live_config.get_binance_adjustments_config()
+            
+            if signal_type == "BUY":
+                # Precio sugerido ligeramente por debajo
+                suggested_price = price * binance_config.buy_adjustment_factor
+                
+                # Monto sugerido (ejemplo)
+                suggested_usdt = 100.0  # Valor ejemplo
+                crypto_amount = suggested_usdt / suggested_price
+                
+                # TP/SL sugeridos
+                tp_pct = RiskManagerConfig.get_tp_min_percentage()
+                sl_pct = RiskManagerConfig.get_sl_min_percentage()
+                
+                take_profit_price = price * (1 + tp_pct / 100)
+                stop_loss_price = price * (1 - sl_pct / 100)
+                
+                logger.info(f"\n{Fore.CYAN}📋 CONFIGURACIÓN SUGERIDA PARA BINANCE:{Style.RESET_ALL}")
+                logger.info(f"   🎯 Tipo: {signal_type}")
+                logger.info(f"   💰 Precio sugerido: ${suggested_price:.4f}")
+                logger.info(f"   📊 Cantidad: {crypto_amount:.6f} {symbol.split('/')[0]}")
+                logger.info(f"   💵 Total USDT: ${suggested_usdt:.2f}")
+                logger.info(f"   🎯 Take Profit: ${take_profit_price:.4f} (+{tp_pct:.1f}%)")
+                logger.info(f"   🛡️ Stop Loss: ${stop_loss_price:.4f} (-{sl_pct:.1f}%)")
+                
+            elif signal_type == "SELL":
+                suggested_price = price * binance_config.sell_adjustment_factor
+                
+                logger.info(f"\n{Fore.CYAN}📋 CONFIGURACIÓN SUGERIDA PARA BINANCE:{Style.RESET_ALL}")
+                logger.info(f"   🎯 Tipo: {signal_type}")
+                logger.info(f"   💰 Precio sugerido: ${suggested_price:.4f}")
+                logger.info(f"   📝 Vender posición completa del activo")
+                
+        except Exception as e:
+            logger.error(f"❌ Error mostrando configuración de Binance: {e}")
+    
     def _show_binance_config(self, signal, trade_result):
         """
         📋 Mostrar configuración para replicar en Binance
@@ -833,7 +883,7 @@ class LiveTradingBot:
             # Ordenar por prioridad (mayor primero)
             high_confidence_signals.sort(key=signal_priority, reverse=True)
             
-            logger.info(f"📊 Portfolio diversification for {symbol}: {current_positions}/{max_positions} positions")
+            logger.info(f"📊 POSICIONES DIVERSIFICACION para {symbol}: {current_positions}/{max_positions} positions")
             if current_positions < diversification_threshold:
                 logger.info(f"🎯 Prioritizing BUY signals for {symbol} - portfolio diversification")
             

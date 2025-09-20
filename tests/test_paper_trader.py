@@ -95,7 +95,7 @@ class TestPaperTraderSignalValidation(unittest.TestCase):
     """Tests para validación de señales de trading"""
     
     def setUp(self):
-        self.trader = PaperTrader(initial_balance=1000.0)
+        self.trader = PaperTrader(initial_balance=100000.0)  # Aumentar balance para permitir múltiples posiciones
         self.trader.reset_portfolio()  # Resetear portfolio para evitar interferencia entre tests
         self.trader.db_manager = Mock(spec=DatabaseManager)
         

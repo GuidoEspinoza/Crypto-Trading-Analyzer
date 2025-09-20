@@ -55,7 +55,6 @@ class TestPositionMonitorInitialization:
                 'price_cache_duration': 60,
                 'position_log_interval': 120,
                 'idle_sleep_multiplier': 3,
-                'trailing_stop_activation': 0.02,
                 'monitor_interval': 30,
                 'analysis_interval': 300
             }
@@ -245,7 +244,6 @@ class TestPositionMonitorPositionProcessing:
             unrealized_pnl_percentage=2.04,
             stop_loss=48000.0,
             take_profit=52000.0,
-            trailing_stop=None,
             entry_time=datetime.now(),
             strategy_name="TEST",
             confidence_score=0.8,
@@ -279,7 +277,6 @@ class TestPositionMonitorPositionProcessing:
             unrealized_pnl_percentage=2.04,
             stop_loss=48000.0,
             take_profit=52000.0,
-            trailing_stop=None,
             entry_time=datetime.now(),
             strategy_name="TEST",
             confidence_score=0.8,
@@ -315,7 +312,6 @@ class TestPositionMonitorPositionProcessing:
             unrealized_pnl_percentage=2.04,
             stop_loss=48000.0,
             take_profit=52000.0,
-            trailing_stop=None,
             entry_time=datetime.now(),
             strategy_name="TEST",
             confidence_score=0.8,
@@ -349,7 +345,6 @@ class TestPositionMonitorPositionProcessing:
             unrealized_pnl_percentage=2.04,
             stop_loss=48000.0,
             take_profit=52000.0,
-            trailing_stop=None,
             entry_time=datetime.now(),
             strategy_name="TEST",
             confidence_score=0.8,
@@ -385,7 +380,6 @@ class TestPositionMonitorPositionProcessing:
             unrealized_pnl_percentage=2.04,
             stop_loss=48000.0,
             take_profit=52000.0,
-            trailing_stop=None,
             entry_time=datetime.now(),
             strategy_name="TEST",
             confidence_score=0.8,
@@ -421,7 +415,6 @@ class TestPositionMonitorPositionProcessing:
             unrealized_pnl_percentage=2.04,
             stop_loss=48000.0,
             take_profit=52000.0,
-            trailing_stop=None,
             entry_time=datetime.now(),
             strategy_name="TEST",
             confidence_score=0.8,
@@ -499,7 +492,7 @@ class TestPositionMonitorCleanup:
                 trade_id=1, symbol="BTC/USDT", trade_type="BUY", entry_price=50000.0,
                 current_price=50000.0, quantity=0.1, entry_value=5000.0, current_value=5000.0,
                 unrealized_pnl=0.0, unrealized_pnl_percentage=0.0, stop_loss=None, take_profit=None,
-                trailing_stop=None, entry_time=datetime.now(), strategy_name="TEST",
+                entry_time=datetime.now(), strategy_name="TEST",
                 confidence_score=0.8, timeframe="1h", notes="Test position",
                 days_held=0.5, max_profit=150.0, max_loss=-50.0, risk_reward_ratio=2.0
             ),
@@ -660,13 +653,12 @@ class TestPositionMonitorIntegration:
                 trade_id=1, symbol="BTC/USDT", trade_type="BUY", entry_price=50000.0,
                 current_price=50000.0, quantity=0.1, entry_value=5000.0, current_value=5000.0,
                 unrealized_pnl=0.0, unrealized_pnl_percentage=0.0, stop_loss=None, take_profit=None,
-                trailing_stop=None, entry_time=datetime.now(), strategy_name="TEST",
+                entry_time=datetime.now(), strategy_name="TEST",
                 confidence_score=0.8, timeframe="1h", notes="Test position",
                 days_held=0.5, max_profit=150.0, max_loss=-50.0, risk_reward_ratio=2.0
             )
         ]
         self.mock_position_manager.get_active_positions.return_value = positions
-        self.mock_position_manager.update_trailing_stops.return_value = 0
         self.mock_position_manager.update_dynamic_take_profits.return_value = 0
         self.mock_position_manager.check_exit_conditions.return_value = None
         
@@ -683,7 +675,6 @@ class TestPositionMonitorIntegration:
         
         with self.monitor._stats_lock:
             assert self.monitor.stats["monitoring_cycles"] == 1
-        self.monitor.position_manager.update_trailing_stops.assert_called_once()
         self.monitor.position_manager.update_dynamic_take_profits.assert_called_once()
     
     def test_full_monitoring_cycle(self):

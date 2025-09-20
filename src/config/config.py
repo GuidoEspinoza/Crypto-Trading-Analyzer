@@ -2146,7 +2146,7 @@ class TradingBotOptimizedConfig:
         elif profile == 'aggressive':
             base_config.update({
                 'analysis_interval_minutes': 2,
-                'max_daily_trades': 20,
+                'max_daily_trades': cls.DEFAULT_MAX_DAILY_TRADES,
                 'min_confidence_threshold': 60.0,
                 'max_consecutive_losses': 5,
                 'circuit_breaker_cooldown_hours': 2

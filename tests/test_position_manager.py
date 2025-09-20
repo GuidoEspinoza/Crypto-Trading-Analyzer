@@ -109,7 +109,6 @@ class TestPositionManagerOptimized:
             unrealized_pnl_percentage=2.22,
             stop_loss=sample_trade.stop_loss,
             take_profit=sample_trade.take_profit,
-            trailing_stop=None,
             entry_time=sample_trade.entry_time,
             strategy_name="test_strategy",
             confidence_score=0.85,
@@ -138,7 +137,6 @@ class TestPositionManagerInitialization(TestPositionManagerOptimized):
                 assert manager.profit_scaling_ratios['tp_max_ratio'] == 0.7
                 assert manager.profit_scaling_ratios['tp_mid_ratio'] == 0.6
                 assert manager.profit_scaling_ratios['tp_min_ratio'] == 0.65
-                assert manager.trailing_stop_activation == 0.02  # 2% del mock
     
     def test_initialization_with_default_values(self, mock_db_session, mock_paper_trader):
         """✅ Test inicialización con valores por defecto"""
@@ -147,7 +145,6 @@ class TestPositionManagerInitialization(TestPositionManagerOptimized):
             with patch('src.core.paper_trader.PaperTrader', return_value=mock_paper_trader):
                 with patch('src.config.config.TradingBotConfig'):
                     with patch('src.config.config.RiskManagerConfig') as mock_risk:
-                        mock_risk.return_value.TRAILING_STOP_ACTIVATION = 3.0
                         manager = PositionManager()
                         
                         # Verificar valores por defecto
@@ -300,7 +297,7 @@ class TestPositionOperations(TestPositionManagerOptimized):
             entry_price=3000.0, current_price=3100.0, quantity=1.0,
             entry_value=3000.0, current_value=3100.0, unrealized_pnl=100.0,
             unrealized_pnl_percentage=3.33, stop_loss=2900.0, take_profit=3200.0,
-            trailing_stop=None, entry_time=datetime.now(), strategy_name="test_strategy",
+            entry_time=datetime.now(), strategy_name="test_strategy",
             confidence_score=0.80, timeframe="1h", notes='ETH test',
             days_held=0.1, max_profit=150.0, max_loss=-50.0, risk_reward_ratio=2.0
         )
@@ -377,7 +374,7 @@ class TestPortfolioAnalysis(TestPositionManagerOptimized):
             entry_price=3000.0, current_price=3100.0, quantity=2.0,
             entry_value=6000.0, current_value=6200.0, unrealized_pnl=200.0,
             unrealized_pnl_percentage=3.33, stop_loss=2900.0, take_profit=3200.0,
-            trailing_stop=None, entry_time=datetime.now(), strategy_name="test_strategy",
+            entry_time=datetime.now(), strategy_name="test_strategy",
             confidence_score=0.75, timeframe="1h", notes='ETH test',
             days_held=0.1, max_profit=300.0, max_loss=-100.0, risk_reward_ratio=2.0
         )
