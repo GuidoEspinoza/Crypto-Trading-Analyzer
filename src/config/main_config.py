@@ -53,7 +53,7 @@ class TradingBotDefaults:
     analysis_interval_minutes: int = 60
     max_daily_trades: int = 10
     min_confidence_threshold: float = 0.7
-    enable_trading: bool = False
+    enable_trading: bool = True
     default_symbols: List[str] = None
     initial_portfolio_value: float = GLOBAL_INITIAL_BALANCE
     

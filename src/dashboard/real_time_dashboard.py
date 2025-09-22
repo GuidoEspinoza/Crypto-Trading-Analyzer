@@ -353,6 +353,14 @@ class MetricsCalculator:
                         )
                         unrealized_pnl_total += unrealized_pnl
                 
+                # Calcular PnL Realizado (suma de PnL de trades cerrados)
+                closed_trades = session.query(Trade).filter(
+                    Trade.is_paper_trade == is_paper_trade,
+                    Trade.status == 'CLOSED'
+                ).all()
+                
+                realized_pnl_total = sum(trade.pnl for trade in closed_trades if trade.pnl) if closed_trades else 0.0
+                
                 # Señales recientes (últimas 10)
                 recent_signals = []
                 for trade in all_trades[-10:]:
@@ -383,6 +391,7 @@ class MetricsCalculator:
                     'profit_factor': profit_factor,
                     'total_fees_paid': total_fees_paid,
                     'unrealized_pnl_total': unrealized_pnl_total,
+                    'realized_pnl': realized_pnl_total,
                     'total_trades': total_trades,
                     'trades_today': trades_today,
                     'win_rate_pct': win_rate,
@@ -1794,7 +1803,26 @@ class RealTimeDashboard:
         st.subheader("📈 Trades Activos")
         if active_trades:
             active_df = pd.DataFrame(active_trades)
-            st.dataframe(active_df, width='stretch')
+            # Seleccionar y renombrar columnas relevantes
+            display_columns = {
+                'symbol': 'Symbol',
+                'type': 'Type',
+                'entry_price': 'Entry Price',
+                'quantity': 'Quantity',
+                'unrealized_pnl': 'Unrealized PnL',
+                'strategy': 'Strategy'
+            }
+            active_df_display = active_df[list(display_columns.keys())].rename(columns=display_columns)
+            
+            # Formatear columnas numéricas
+            if 'Entry Price' in active_df_display.columns:
+                active_df_display['Entry Price'] = active_df_display['Entry Price'].apply(lambda x: f"${x:.4f}")
+            if 'Quantity' in active_df_display.columns:
+                active_df_display['Quantity'] = active_df_display['Quantity'].apply(lambda x: f"{x:.6f}")
+            if 'Unrealized PnL' in active_df_display.columns:
+                active_df_display['Unrealized PnL'] = active_df_display['Unrealized PnL'].apply(lambda x: f"${x:.2f}")
+            
+            st.dataframe(active_df_display, width='stretch', hide_index=True)
         else:
             st.info("No hay trades activos")
         
@@ -1866,8 +1894,8 @@ class RealTimeDashboard:
             )
         
         with col4:
-            # PnL Realizado (diferencia entre equity actual y balance inicial)
-            realized_pnl = metrics['current_equity'] - GLOBAL_INITIAL_BALANCE
+            # PnL Realizado (suma de PnL de trades cerrados)
+            realized_pnl = metrics.get('realized_pnl', 0.0)
             emoji = "✅" if realized_pnl >= 0 else "❌"
             delta_color = "normal" if realized_pnl >= 0 else "inverse"
             st.metric(
@@ -1926,7 +1954,7 @@ class RealTimeDashboard:
         
         # Mostrar tabla
         df = pd.DataFrame(table_data)
-        st.dataframe(df, width='stretch')
+        st.dataframe(df, width='stretch', hide_index=True)
     
     def _render_welcome_screen(self):
         """Renderizar pantalla de bienvenida"""

@@ -256,7 +256,11 @@ class ConfigManager:
                 'event_queue_maxsize': 100,  # Tamaño de cola de eventos
                 'min_time_between_trades_seconds': 300,  # Tiempo mínimo entre trades
                 'max_trades_per_hour': 4,  # Máximo trades por hora para swing trading
-                'post_reset_spacing_minutes': 90  # Espaciado post-reset optimizado para swings
+                'post_reset_spacing_minutes': 90,  # Espaciado post-reset optimizado para swings
+                'min_confidence_threshold': 0.72,  # Umbral mínimo de confianza para ejecutar trades
+                'max_consecutive_losses': 3,  # Máximo de pérdidas consecutivas antes de activar circuit breaker
+                'circuit_breaker_cooldown_hours': 2,  # Horas de enfriamiento del circuit breaker
+                'enable_trading': True  # Habilitar ejecución de trades
             },
             risk_manager={
                 'max_risk_per_trade': 0.03,  # Riesgo balanceado optimizado para swing trading
