@@ -2,6 +2,11 @@
 # Configuración profesional para proyecto de análisis de trading
 
 # ========================================
+# 📊 PINESCRIPT
+# ========================================
+PineScriptTest/
+
+# ========================================
 # 🐍 PYTHON
 # ========================================
 __pycache__/
