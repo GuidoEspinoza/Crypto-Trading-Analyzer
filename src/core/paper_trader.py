@@ -14,7 +14,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.config import PaperTraderConfig, TradingBotConfig, USDT_BASE_PRICE
+from src.config.config import PaperTraderConfig, TradingBotConfig, USD_BASE_PRICE
 
 from database.database import db_manager
 from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
@@ -530,8 +530,8 @@ class PaperTrader:
                     initial_portfolio = Portfolio(
                         symbol="USDT",
                         quantity=self.initial_balance,
-                        avg_price=USDT_BASE_PRICE,
-                    current_price=USDT_BASE_PRICE,
+                        avg_price=USD_BASE_PRICE,
+                    current_price=USD_BASE_PRICE,
                         current_value=self.initial_balance,
                         unrealized_pnl=0.0,
                         unrealized_pnl_percentage=0.0,
@@ -590,15 +590,15 @@ class PaperTrader:
         
         if usdt_portfolio:
             usdt_portfolio.quantity += amount
-            usdt_portfolio.current_value = usdt_portfolio.quantity * USDT_BASE_PRICE
+            usdt_portfolio.current_value = usdt_portfolio.quantity * USD_BASE_PRICE
             usdt_portfolio.last_updated = datetime.now()
         else:
             # Crear entrada USDT si no existe
             new_usdt = Portfolio(
                 symbol="USDT",
                 quantity=max(0, amount),
-                avg_price=USDT_BASE_PRICE,
-                current_price=USDT_BASE_PRICE,
+                avg_price=USD_BASE_PRICE,
+                current_price=USD_BASE_PRICE,
                 current_value=max(0, amount),
                 is_paper=True
             )

@@ -39,12 +39,21 @@ USD_BASE_PRICE = 1.0
 # ============================================================================
 
 GLOBAL_SYMBOLS: List[str] = [
-        # Pares principales (máxima liquidez)
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT",
-        # Altcoins de alta capitalización y volumen
-        "ADAUSDT", "XRPUSDT", "LINKUSDT", "DOGEUSDT", "TRXUSDT",
-        # Tokens con alta volatilidad y buen volumen
-        "DOTUSDT", "MATICUSDT", "ATOMUSDT", "NEARUSDT", "SUIUSDT"
+    "BTCUSDT",    # Bitcoin - Líder del mercado, alta liquidez
+    "ETHUSDT",    # Ethereum - ETFs institucionales + DeFi dominance
+    "SOLUSDT",    # Solana - Alto rendimiento + ecosistema maduro
+    
+    # HIGH GROWTH: Potencial 2-5x (35% peso recomendado)
+    "AVAXUSDT",   # Avalanche - Subnets + partnerships institucionales
+    "MATICUSDT",  # Polygon - POL transition + zkEVM
+    "ADAUSDT",    # Cardano - Potencial ETF + desarrollo sólido
+    "XRPUSDT",    # XRP - Caso legal resuelto + adopción institucional
+    
+    # EMERGING: Alto potencial 3-10x (25% peso recomendado)
+    "ATOMUSDT",   # Cosmos - Interoperabilidad + ecosystem growth
+    "NEARUSDT",   # NEAR - Escalabilidad + herramientas dev-friendly
+    "LINKUSDT",   # Chainlink - Oráculos esenciales + partnerships
+    "BNBUSDT"     # BNB - Utilidad Binance + burn mechanism
     ]
 
 # ============================================================================
