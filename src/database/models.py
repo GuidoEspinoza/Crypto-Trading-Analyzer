@@ -9,13 +9,6 @@ from sqlalchemy.sql import func
 from datetime import datetime
 from typing import Optional
 
-# Importar constante global para consistencia
-try:
-    from ..config.global_constants import GLOBAL_INITIAL_BALANCE
-except ImportError:
-    # Fallback en caso de importación circular
-    GLOBAL_INITIAL_BALANCE = 500.0
-
 Base = declarative_base()
 
 class Trade(Base):
@@ -49,6 +42,7 @@ class Trade(Base):
     # Risk management
     stop_loss = Column(Float, nullable=True)
     take_profit = Column(Float, nullable=True)
+    trailing_stop = Column(Float, nullable=True)  # Trailing stop dinámico
     
     # Metadatos
     timeframe = Column(String(10), nullable=False)  # 1h, 4h, 1d
@@ -156,7 +150,7 @@ class BacktestResult(Base):
     total_days = Column(Integer, nullable=False)
     
     # Capital inicial
-    initial_capital = Column(Float, nullable=False, default=GLOBAL_INITIAL_BALANCE)
+    initial_capital = Column(Float, nullable=False, default=10000.0)
     final_capital = Column(Float, nullable=False)
     
     # Performance metrics

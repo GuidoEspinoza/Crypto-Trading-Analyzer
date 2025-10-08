@@ -10,72 +10,46 @@ import os
 import time
 import json
 import traceback
-import importlib.util
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-# Configurar el path del proyecto
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
-sys.path.insert(0, os.path.join(project_root, 'src'))
+# Agregar el directorio backend al path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Importar componentes del sistema
 try:
     import ccxt
     import pandas as pd
     import numpy as np
+    # Agregar el directorio raíz del proyecto al path
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, project_root)
+    sys.path.insert(0, os.path.join(project_root, 'src'))
     
-    # Importar configuraciones centralizadas primero
-    from src.config.config import (
-        TradingProfiles, TRADING_PROFILE, get_consolidated_config, 
-        validate_system_configuration, auto_validate_on_startup
+    from src.database.database import db_manager
+    from src.core.enhanced_strategies import (
+        ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy,
+        TradingSignal, TradingStrategy, EnhancedSignal, EnhancedTradingStrategy
     )
-    from src.config.global_constants import (
-        GLOBAL_INITIAL_BALANCE, BASE_CURRENCY, USDT_BASE_PRICE, 
-        TIMEZONE, RESET_STRATEGIES
-    )
-    
-    # Importar componentes principales
-    print("🔄 Cargando configuraciones centralizadas...")
-    
-    # Importar clases principales del sistema
-    from src.database.database import DatabaseManager
-    from src.core.advanced_indicators import AdvancedIndicators
-    from src.core.enhanced_risk_manager import EnhancedRiskManager
-    from src.core.enhanced_strategies import TradingSignal, EnhancedSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
     from src.core.paper_trader import PaperTrader
     from src.core.trading_bot import TradingBot
+    from src.core.enhanced_risk_manager import EnhancedRiskManager
+    from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
     from src.core.position_manager import PositionManager
     from src.core.position_monitor import PositionMonitor
+    # Importar configuraciones centralizadas
+    from src.config.config import (
+        TradingProfiles, TRADING_PROFILE
+    )
+    # Configuraciones de production_config removidas (no utilizadas)
+    # Importar LiveTradingBot desde el nuevo módulo
     from src.tools.live_trading_bot import LiveTradingBot
-    
-    # Variables globales para las clases importadas
-    db_manager = None
-    
-    print("✅ Todas las clases importadas correctamente")
-    
 except ImportError as e:
     print(f"❌ Error importing modules: {e}")
-    print("💡 Ejecutando pruebas básicas de configuración solamente")
-    # Continuar con pruebas limitadas
-    ccxt = None
-    pd = None
-    np = None
-    # Definir clases como None para evitar errores
-    DatabaseManager = None
-    AdvancedIndicators = None
-    EnhancedRiskManager = None
-    TradingSignal = None
-    EnhancedSignal = None
-    ProfessionalRSIStrategy = None
-    MultiTimeframeStrategy = None
-    EnsembleStrategy = None
-    PaperTrader = None
-    TradingBot = None
-    PositionManager = None
-    PositionMonitor = None
-    LiveTradingBot = None
-    db_manager = None
+    print("💡 Make sure you're in the backend directory and all dependencies are installed")
+    # Skip tests if imports fail
+    import pytest
+    pytest.skip(f"Skipping tests due to import error: {e}")
 
 class SystemTester:
     """
@@ -87,7 +61,6 @@ class SystemTester:
         self.results = {
             "binance_connection": False,
             "database_operations": False,
-            "centralized_configurations": False,
             "advanced_indicators": False,
             "enhanced_risk_manager": False,
             "enhanced_strategies": False,
@@ -95,6 +68,7 @@ class SystemTester:
             "trading_bot": False,
             "position_manager": False,
             "position_monitor": False,
+            "trailing_stops": False,
             "live_trading_bot": False,
             "main_api": False,
             "system_integration": False,
@@ -104,19 +78,8 @@ class SystemTester:
         }
         
         # Configuraciones centralizadas
+        # Configuraciones de production_config removidas (no utilizadas)
         self.bot_config = TradingProfiles.PROFILES[TRADING_PROFILE]
-        self.consolidated_config = get_consolidated_config()
-        
-        # Validar configuraciones al inicio
-        self.config_validation_passed = False
-        try:
-            self.config_validation_passed = validate_system_configuration()
-            if self.config_validation_passed:
-                self.log_success("✓ Validación de configuraciones centralizadas exitosa")
-            else:
-                self.log_warning("⚠️ Algunas validaciones de configuración fallaron")
-        except Exception as e:
-            self.log_error("Error en validación de configuraciones", e)
         
         # Símbolos para testing
         self.test_symbols = ["BTCUSDT", "ETHUSDT", "ADAUSDT"]
@@ -194,16 +157,7 @@ class SystemTester:
         print("\n🗄️ Probando operaciones de base de datos...")
         
         try:
-            # Verificar que DatabaseManager esté disponible
-            if DatabaseManager is None:
-                self.log_error("DatabaseManager no está disponible")
-                return False
-            
             # Probar inicialización
-            global db_manager
-            if db_manager is None:
-                db_manager = DatabaseManager()
-            
             db_manager.create_tables()
             self.log_success("Base de datos inicializada")
             
@@ -213,7 +167,7 @@ class SystemTester:
             
             # Probar obtener estrategias
             with db_manager.get_db_session() as session:
-                from src.database.models import Strategy
+                from database.models import Strategy
                 strategies = session.query(Strategy).all()
                 self.log_success(f"Estrategias en DB: {len(strategies)}")
             
@@ -223,65 +177,13 @@ class SystemTester:
         except Exception as e:
             self.log_error("Error en operaciones de base de datos", e)
             return False
+
     
-    def test_centralized_configurations(self) -> bool:
-        """
-        ⚙️ Probar configuraciones centralizadas y constantes globales
-        """
-        print("\n⚙️ Probando configuraciones centralizadas...")
-        
-        try:
-            # Probar constantes globales
-            self.log_success(f"GLOBAL_INITIAL_BALANCE: ${GLOBAL_INITIAL_BALANCE:,.2f}")
-            self.log_success(f"BASE_CURRENCY: {BASE_CURRENCY}")
-            self.log_success(f"USDT_BASE_PRICE: ${USDT_BASE_PRICE}")
-            self.log_success(f"TIMEZONE: {TIMEZONE}")
-            self.log_success(f"RESET_STRATEGIES: {RESET_STRATEGIES}")
-            
-            # Probar configuración consolidada
-            if self.consolidated_config:
-                self.log_success(f"Configuración consolidada cargada: {len(self.consolidated_config)} módulos")
-                
-                # Verificar módulos principales
-                expected_modules = [
-                    'trading_bot', 'enhanced_risk_manager', 'paper_trader',
-                    'advanced_indicators', 'enhanced_strategies'
-                ]
-                
-                for module in expected_modules:
-                    if module in self.consolidated_config:
-                        self.log_success(f"✓ Módulo {module} configurado")
-                    else:
-                        self.log_warning(f"⚠️ Módulo {module} no encontrado en configuración")
-            else:
-                self.log_warning("⚠️ Configuración consolidada no disponible")
-            
-            # Probar perfil de trading actual
-            if self.bot_config:
-                self.log_success(f"Perfil de trading activo: {TRADING_PROFILE}")
-                self.log_success(f"Configuración del perfil cargada correctamente")
-            else:
-                self.log_error("Error cargando configuración del perfil de trading")
-                return False
-            
-            # Probar validación del sistema
-            if self.config_validation_passed:
-                self.log_success("✓ Validación completa del sistema exitosa")
-            else:
-                self.log_warning("⚠️ Validación del sistema con advertencias")
-            
-            self.results["centralized_configurations"] = True
-            self.results["detailed_results"]["centralized_configurations"] = {
-                "global_constants_working": True,
-                "consolidated_config_working": self.consolidated_config is not None,
-                "trading_profile_working": self.bot_config is not None,
-                "system_validation_working": self.config_validation_passed
-            }
-            return True
-            
-        except Exception as e:
-            self.log_error("Error en configuraciones centralizadas", e)
-            return False
+
+    
+
+    
+
     
     def test_position_manager_module(self) -> bool:
         """
@@ -298,19 +200,56 @@ class SystemTester:
             active_positions = position_manager.get_active_positions()
             self.log_success(f"Posiciones activas obtenidas: {len(active_positions)}")
             
-            # Probar funcionalidades básicas del position manager
+            # Probar cálculo de trailing stop basado en ATR
             test_price = self.current_btc_price
-            self.log_success(f"Precio actual de BTC: ${test_price:.2f}")
+            trailing_stop_long = position_manager.calculate_atr_trailing_stop(
+                symbol="BTC/USDT",
+                current_price=test_price,
+                trade_type="BUY",
+                atr_multiplier=2.0
+            )
+            trailing_stop_long_str = f"${trailing_stop_long:.2f}" if trailing_stop_long else "N/A"
+            self.log_success(f"Trailing stop LONG calculado: {trailing_stop_long_str} (precio actual: ${test_price:.2f})")
             
-            # Probar obtención de posiciones activas
-            active_positions = position_manager.get_active_positions()
-            self.log_success(f"Posiciones activas obtenidas: {len(active_positions)}")
+            trailing_stop_short = position_manager.calculate_atr_trailing_stop(
+                symbol="BTC/USDT",
+                current_price=test_price,
+                trade_type="SELL",
+                atr_multiplier=2.0
+            )
+            trailing_stop_short_str = f"${trailing_stop_short:.2f}" if trailing_stop_short else "N/A"
+            self.log_success(f"Trailing stop SHORT calculado: {trailing_stop_short_str} (precio actual: ${test_price:.2f})")
+            
+            # Verificar que los trailing stops están en la dirección correcta
+            if trailing_stop_long and trailing_stop_long < test_price:
+                self.log_success("✓ Trailing stop LONG está por debajo del precio actual (correcto)")
+            elif trailing_stop_long:
+                self.log_warning("⚠️ Trailing stop LONG debería estar por debajo del precio actual")
+            else:
+                self.log_warning("⚠️ No se pudo calcular trailing stop LONG (posiblemente faltan datos ATR)")
+            
+            if trailing_stop_short and trailing_stop_short > test_price:
+                self.log_success("✓ Trailing stop SHORT está por encima del precio actual (correcto)")
+            elif trailing_stop_short:
+                self.log_warning("⚠️ Trailing stop SHORT debería estar por encima del precio actual")
+            else:
+                self.log_warning("⚠️ No se pudo calcular trailing stop SHORT (posiblemente faltan datos ATR)")
+            
+            # Probar actualización de trailing stops (sin posiciones reales)
+            market_data = {
+                "BTC/USDT": test_price,
+                "ETH/USDT": test_price * 0.06  # Precio aproximado de ETH
+            }
+            
+            updated_count = position_manager.update_trailing_stops(market_data)
+            self.log_success(f"Trailing stops actualizados: {updated_count} posiciones")
             
             self.results["position_manager"] = True
             self.results["detailed_results"]["position_manager"] = {
                 "initialization_working": True,
                 "active_positions_working": True,
-                "basic_functionality_working": True
+                "atr_trailing_calculation_working": True,
+                "trailing_stop_update_working": True
             }
             return True
             
@@ -359,7 +298,111 @@ class SystemTester:
             self.log_error("Error en position_monitor", e)
             return False
     
-
+    def test_trailing_stops_integration(self) -> bool:
+        """
+        🎯 Prueba de integración completa de trailing stops dinámicos
+        """
+        print("\n🎯 Probando integración completa de trailing stops...")
+        
+        try:
+            # Crear componentes integrados
+            paper_trader = PaperTrader()
+            position_manager = PositionManager()
+            position_monitor = PositionMonitor(position_manager)
+            
+            self.log_success("Componentes integrados inicializados")
+            
+            # Crear una señal de prueba para generar una posición
+            test_price = self.current_btc_price
+            test_signal = EnhancedSignal(
+                symbol="BTC/USDT",
+                signal_type="BUY",
+                price=test_price,
+                confidence_score=75.0,
+                strength="Strong",
+                strategy_name="TrailingStopTest",
+                timestamp=datetime.now(),
+                timeframe="1h",
+                indicators_data={"rsi": 30, "macd": 0.5, "atr": test_price * 0.02},
+                notes="Test signal for trailing stop integration",
+                volume_confirmation=True,
+                trend_confirmation="BULLISH",
+                risk_reward_ratio=3.0,
+                stop_loss_price=test_price * 0.95,
+                take_profit_price=test_price * 1.15,
+                market_regime="TRENDING",
+                confluence_score=4
+            )
+            
+            # Ejecutar la señal para crear una posición
+            result = paper_trader.execute_signal(test_signal)
+            
+            if result.success:
+                self.log_success(f"Posición de prueba creada: {result.message}")
+                
+                # Obtener posiciones activas
+                active_positions = position_manager.get_active_positions()
+                self.log_success(f"Posiciones activas después del trade: {len(active_positions)}")
+                
+                if len(active_positions) > 0:
+                    # Simular cambio de precio para probar trailing stops
+                    new_price = test_price * 1.20  # 20% de ganancia (mayor al 15% requerido para activar trailing stop)
+                    market_data = {"BTC/USDT": new_price}
+                    
+                    # Actualizar trailing stops
+                    updated_count = position_manager.update_trailing_stops(market_data)
+                    self.log_success(f"Trailing stops actualizados con nuevo precio ${new_price:.2f}: {updated_count} posiciones")
+                    
+                    # Actualizar take profits dinámicos
+                    updated_tp_count = position_manager.update_dynamic_take_profits(market_data)
+                    self.log_success(f"Take profits dinámicos actualizados: {updated_tp_count} posiciones")
+                    
+                    # Verificar que el trailing stop se actualizó
+                    updated_positions = position_manager.get_active_positions()
+                    if len(updated_positions) > 0:
+                        position = updated_positions[0]
+                        if hasattr(position, 'trailing_stop') and position.trailing_stop:
+                            self.log_success(f"✓ Trailing stop actualizado: ${position.trailing_stop:.2f}")
+                        elif updated_count > 0:
+                            self.log_success(f"✓ Trailing stops actualizados: {updated_count} posiciones")
+                        else:
+                            self.log_warning("⚠️ Trailing stop no se actualizó correctamente")
+                        
+                        if hasattr(position, 'take_profit') and position.take_profit:
+                            self.log_success(f"✓ Take profit dinámico actualizado: ${position.take_profit:.2f}")
+                    
+                    # Simular precio bajando para probar activación del trailing stop
+                    trigger_price = test_price * 0.98  # Precio que podría activar el trailing stop
+                    market_data_trigger = {"BTC/USDT": trigger_price}
+                    
+                    # Verificar condiciones de salida (simulado)
+                    self.log_success(f"Simulando precio de activación: ${trigger_price:.2f}")
+                    
+                else:
+                    self.log_warning("No se encontraron posiciones activas para probar trailing stops")
+                
+            else:
+                self.log_warning(f"No se pudo crear posición de prueba: {result.message}")
+            
+            # Probar integración con trading bot
+            try:
+                bot = TradingBot(analysis_interval_minutes=1)
+                self.log_success("✓ TradingBot puede integrarse con el sistema de trailing stops")
+            except Exception as e:
+                self.log_warning(f"Problema en integración con TradingBot: {e}")
+            
+            self.results["trailing_stops"] = True
+            self.results["detailed_results"]["trailing_stops"] = {
+                "component_integration_working": True,
+                "position_creation_working": result.success if 'result' in locals() else False,
+                "trailing_stop_update_working": True,
+                "trading_bot_integration_working": True
+            }
+            return True
+            
+        except Exception as e:
+            self.log_error("Error en integración de trailing stops", e)
+            return False
     
     def test_api_endpoints(self) -> bool:
         """
@@ -592,12 +635,6 @@ class SystemTester:
         try:
             # Crear PaperTrader
             paper_trader = PaperTrader()
-            
-            # Resetear portfolio para asegurar balance limpio
-            reset_result = paper_trader.reset_portfolio()
-            if reset_result.get('success'):
-                self.log_success(f"Portfolio reseteado: {reset_result.get('message')}")
-            
             self.log_success("PaperTrader inicializado")
             
             # Verificar balance inicial
@@ -752,16 +789,7 @@ class SystemTester:
         try:
             # Intentar importar FastAPI app
             try:
-                import sys
-                import os
-                main_path = os.path.join(project_root, 'main.py')
-                if os.path.exists(main_path):
-                    spec = importlib.util.spec_from_file_location("main", main_path)
-                    main_module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(main_module)
-                    app = main_module.app
-                else:
-                    raise ImportError("main.py not found")
+                from main import app
                 self.log_success("FastAPI app importada")
                 
                 # Verificar que la app tiene rutas
@@ -819,57 +847,46 @@ class SystemTester:
         """
         🔄 Prueba de integración completa del sistema
         Verifica el flujo: Señal → Evaluación de Riesgo → Ejecución → Seguimiento
-        Usa configuraciones centralizadas para garantizar consistencia
         """
         print("\n🔄 Probando integración completa del sistema...")
         
         try:
-            # 0. Verificar configuraciones centralizadas
-            self.log_success(f"0. Usando configuración: {TRADING_PROFILE}")
-            self.log_success(f"   Balance inicial: {GLOBAL_INITIAL_BALANCE} {BASE_CURRENCY}")
-            
-            # 1. Generar señal con estrategia usando configuración centralizada
+            # 1. Generar señal con estrategia
             strategy = ProfessionalRSIStrategy()
             signal = strategy.analyze(self.test_symbols[0])
             self.log_success(f"1. Señal generada: {signal.signal_type} ({signal.confidence_score:.1f}%)")
             
-            # Si la señal tiene baja confianza o es SELL (sin balance), crear una señal de prueba con alta confianza
-            if signal.confidence_score < 70.0 or signal.signal_type == "SELL":
+            # Si la señal tiene baja confianza, crear una señal de prueba con alta confianza
+            if signal.confidence_score < 70.0:
                 signal = EnhancedSignal(
                     symbol="BTC/USDT",
                     signal_type="BUY",
-                    price=self.current_btc_price,  # Usar precio real actual
+                    price=50000.0,
                     confidence_score=85.0,  # Alta confianza para pasar validación
                     strength="Strong",
                     strategy_name="TestStrategy",
                     timestamp=datetime.now(),
                     timeframe="1h",
                     indicators_data={"rsi": 30, "macd": 0.8},
-                    notes="High confidence test signal (forced BUY for testing)",
+                    notes="High confidence test signal",
                     volume_confirmation=True,
                     trend_confirmation="BULLISH",
                     risk_reward_ratio=2.5,
-                    stop_loss_price=self.current_btc_price * 0.96,  # 4% stop loss
-                    take_profit_price=self.current_btc_price * 1.10,  # 10% take profit
+                    stop_loss_price=48000.0,
+                    take_profit_price=55000.0,
                     market_regime="TRENDING",
                     confluence_score=3
                 )
                 self.log_success(f"1. Señal de prueba creada: {signal.signal_type} ({signal.confidence_score:.1f}%)")
             
-            # 2. Evaluar riesgo usando balance de configuración centralizada
+            # 2. Evaluar riesgo
             risk_manager = EnhancedRiskManager()
-            assessment = risk_manager.assess_trade_risk(signal, GLOBAL_INITIAL_BALANCE)
+            assessment = risk_manager.assess_trade_risk(signal, 10000.0)
             self.log_success(f"2. Riesgo evaluado: Score {assessment.overall_risk_score:.1f}/100")
             
             # 3. Ejecutar en paper trading si aprobado
             if assessment.is_approved:
                 paper_trader = PaperTrader()
-                
-                # Resetear portfolio para asegurar balance limpio
-                reset_result = paper_trader.reset_portfolio()
-                if reset_result.get('success'):
-                    self.log_success(f"Portfolio reseteado: {reset_result.get('message')}")
-                
                 result = paper_trader.execute_signal(signal)
                 
                 if result.success:
@@ -880,26 +897,14 @@ class SystemTester:
                     performance = paper_trader.calculate_portfolio_performance()
                     self.log_success(f"4. Seguimiento: {len(positions)} posiciones, Performance: {performance}")
                 else:
-                    # Verificar si es un error esperado (SELL sin balance)
-                    if signal.signal_type == "SELL" and "balance to sell" in result.message:
-                        self.log_warning(f"3. Señal SELL sin balance (comportamiento normal): {result.message}")
-                    else:
-                        self.log_error(f"3. Error ejecutando trade: {result.message}")
+                    self.log_error(f"3. Error ejecutando trade: {result.message}")
             else:
                 self.log_warning("Trade no aprobado por risk manager")
             
-            # 5. Verificar integración con TradingBot usando configuración centralizada
+            # 5. Verificar integración con TradingBot
             bot = TradingBot(analysis_interval_minutes=1)
             bot_status = bot.get_status()
             self.log_success(f"5. TradingBot integrado: {bot_status.is_running}")
-            
-            # 6. Verificar que las configuraciones están sincronizadas
-            config_sync = (
-                self.consolidated_config is not None and
-                self.bot_config is not None and
-                TRADING_PROFILE in ["AGRESIVO", "OPTIMO", "CONSERVADOR"]
-            )
-            self.log_success(f"6. Configuraciones sincronizadas: {config_sync}")
             
             self.results["system_integration"] = True
             self.results["detailed_results"]["system_integration"] = {
@@ -907,8 +912,7 @@ class SystemTester:
                 "risk_evaluation": True,
                 "trade_execution": assessment.is_approved,
                 "position_tracking": True,
-                "bot_integration": True,
-                "config_synchronization": config_sync
+                "bot_integration": True
             }
             return True
             
@@ -926,7 +930,6 @@ class SystemTester:
         individual_tests = [
             ("Conexión Binance", self.test_binance_connection),
             ("Base de Datos", self.test_database_operations),
-            ("Configuraciones Centralizadas", self.test_centralized_configurations),
             ("Advanced Indicators", self.test_advanced_indicators_module),
             ("Enhanced Risk Manager", self.test_enhanced_risk_manager_module),
             ("Enhanced Strategies", self.test_enhanced_strategies_module),
@@ -940,6 +943,7 @@ class SystemTester:
         
         # Pruebas de integración
         integration_tests = [
+            ("Trailing Stops Integration", self.test_trailing_stops_integration),
             ("Integración del Sistema", self.test_system_integration),
         ]
         
