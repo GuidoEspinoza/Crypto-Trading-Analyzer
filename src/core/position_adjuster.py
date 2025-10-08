@@ -187,7 +187,7 @@ class PositionAdjuster:
                 return last_trade_price * (1 + variation)
             
             # Fallback: precio base simulado
-            return 50000.0  # Precio base para simulación
+            return 0.0  # Precio base para simulación
             
         except Exception as e:
             logger.error(f"❌ Error obteniendo precio para {symbol}: {e}")

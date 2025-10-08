@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from typing import Generator, Optional
 from datetime import datetime
 
-from .models import Base, Trade, Portfolio, Strategy, BacktestResult, TradingSignal
+from .models import Base, Trade, Portfolio, Strategy, BacktestResult, TradingSignal, Settings
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +58,13 @@ class DatabaseManager:
         # Crear tablas si no existen
         self.create_tables()
         
+        # Inicializar GLOBAL_INITIAL_BALANCE en settings si no existe
+        from src.config.main_config import GLOBAL_INITIAL_BALANCE
+        try:
+            self.set_global_initial_balance_if_absent(GLOBAL_INITIAL_BALANCE)
+        except Exception as e:
+            logger.error(f"⚠️ No se pudo inicializar GLOBAL_INITIAL_BALANCE desde config: {e}")
+        
         # Inicializar portfolio base si no existe
         self.initialize_base_portfolio()
         
@@ -102,6 +109,34 @@ class DatabaseManager:
         finally:
             session.close()
     
+    # === Global Settings helpers ===
+    def get_global_initial_balance(self) -> float:
+        """
+        Obtener el balance inicial global desde la DB (Settings), fallback seguro a 0.0
+        """
+        try:
+            with self.get_db_session() as session:
+                setting = session.query(Settings).filter(Settings.key == "GLOBAL_INITIAL_BALANCE").first()
+                return float(setting.value) if setting and setting.value is not None else 0.0
+        except Exception as e:
+            logger.error(f"❌ Error leyendo GLOBAL_INITIAL_BALANCE: {e}")
+            return 0.0
+    
+    def set_global_initial_balance_if_absent(self, value: float) -> None:
+        """
+        Setear GLOBAL_INITIAL_BALANCE en DB si no existe. No sobreescribe si ya está definido.
+        """
+        try:
+            with self.get_db_session() as session:
+                existing = session.query(Settings).filter(Settings.key == "GLOBAL_INITIAL_BALANCE").first()
+                if not existing:
+                    setting = Settings(key="GLOBAL_INITIAL_BALANCE", value=float(value) if value is not None else 0.0)
+                    session.add(setting)
+                    session.commit()
+                    logger.info(f"💾 GLOBAL_INITIAL_BALANCE seteado en DB: ${setting.value:,.2f}")
+        except Exception as e:
+            logger.error(f"❌ Error seteando GLOBAL_INITIAL_BALANCE: {e}")
+    
     def initialize_base_portfolio(self):
         """
         💼 Inicializar portfolio base con USDT virtual
@@ -115,13 +150,14 @@ class DatabaseManager:
                 ).first()
                 
                 if not existing_usdt:
-                    # Crear portfolio inicial con $10,000 USDT virtuales
+                    initial_balance_db = self.get_global_initial_balance()
+                    # Crear portfolio inicial con USDT del setting global (fallback segura a 0)
                     initial_portfolio = Portfolio(
                         symbol="USDT",
-                        quantity=10000.0,
+                        quantity=initial_balance_db,
                         avg_price=1.0,
                         current_price=1.0,
-                        current_value=10000.0,
+                        current_value=initial_balance_db,
                         unrealized_pnl=0.0,
                         unrealized_pnl_percentage=0.0,
                         is_paper=True
@@ -129,7 +165,7 @@ class DatabaseManager:
                     
                     session.add(initial_portfolio)
                     session.commit()
-                    logger.info("💰 Initialized paper trading portfolio with $10,000 USDT")
+                    logger.info(f"💰 Initialized paper trading portfolio with ${initial_balance_db:,.2f} USDT")
                 
         except SQLAlchemyError as e:
             logger.error(f"❌ Error initializing portfolio: {e}")
@@ -152,11 +188,21 @@ class DatabaseManager:
                 
                 total_value = sum(item.current_value or 0 for item in portfolio_items)
                 total_pnl = sum(item.unrealized_pnl or 0 for item in portfolio_items)
+                base_value = self.get_global_initial_balance()
+                
+                # Disponible en USDT (cash)
+                usdt_entry = session.query(Portfolio).filter(
+                    Portfolio.symbol == "USDT",
+                    Portfolio.is_paper == is_paper
+                ).first()
+                available_balance = float(usdt_entry.quantity) if usdt_entry and usdt_entry.quantity is not None else 0.0
                 
                 return {
                     "total_value": round(total_value, 2),
                     "total_pnl": round(total_pnl, 2),
-                    "total_pnl_percentage": round((total_pnl / 10000) * 100, 2) if total_value > 0 else 0,
+                    "total_pnl_percentage": round((total_pnl / base_value) * 100, 2) if base_value > 0 else 0,
+                    "available_balance": round(available_balance, 2),
+                    "initial_balance": round(base_value, 2),
                     "assets": [
                         {
                             "symbol": item.symbol,
@@ -165,7 +211,7 @@ class DatabaseManager:
                             "unrealized_pnl": item.unrealized_pnl
                         }
                         for item in portfolio_items
-                        if item.quantity > 0.00001  # Filtrar cantidades muy pequeñas
+                        if item.quantity > 0.00001
                     ]
                 }
         except SQLAlchemyError as e:

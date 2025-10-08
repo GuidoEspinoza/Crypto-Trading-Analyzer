@@ -126,7 +126,10 @@ class MetricsCalculator:
                     return
                 
                 # Construir historial de equity acumulativo
-                running_equity = INITIAL_BALANCE
+                # Usar balance inicial desde resumen de portfolio si está disponible
+                portfolio_summary = db_manager.get_portfolio_summary(is_paper=USE_PAPER_TRADING)
+                starting_equity = portfolio_summary.get('initial_balance', 0.0)
+                running_equity = starting_equity
                 self.equity_history.clear()
                 
                 # Punto inicial
@@ -211,11 +214,11 @@ class MetricsCalculator:
                 total_pnl = sum([t.pnl for t in closed_trades if t.pnl]) or 0.0
                 
                 # Equity actual
-                current_equity = portfolio_summary.get('total_value', INITIAL_BALANCE)
+                current_equity = portfolio_summary.get('total_value', 0.0)
                 
                 # Determinar balance inicial correcto (solo paper trading)
-                # En paper trading, usar el balance inicial configurado
-                initial_equity = INITIAL_BALANCE
+                # Usar el balance inicial desde DB (portfolio_summary)
+                initial_equity = portfolio_summary.get('initial_balance', 0.0)
                 
                 # Retorno total
                 if initial_equity > 0:
@@ -376,7 +379,7 @@ class MetricsCalculator:
                     real_usdt_balance = paper_trader.get_balance('USDT')
                 except Exception as e:
                     # Fallback al valor del portfolio summary si hay error
-                    real_usdt_balance = portfolio_summary.get('available_balance', INITIAL_BALANCE)
+                    real_usdt_balance = portfolio_summary.get('available_balance', 0.0)
                 
                 return {
                     'total_return_pct': total_return,
@@ -393,6 +396,7 @@ class MetricsCalculator:
                     'total_trades': total_trades,
                     'trades_today': trades_today,
                     'win_rate_pct': win_rate,
+                    'initial_balance': initial_equity,
                     'recent_signals': recent_signals
                 }
                 
@@ -406,7 +410,7 @@ class MetricsCalculator:
             if len(self.equity_history) == 0:
                 return {
                     'total_return_pct': 0.0,
-                    'current_equity': INITIAL_BALANCE,
+                    'current_equity': 0.0,
                     'current_drawdown_pct': 0.0,
                     'max_drawdown_pct': 0.0,
                     'volatility_pct': 0.0,
@@ -416,7 +420,8 @@ class MetricsCalculator:
                     'total_trades': 0,
                     'trades_today': 0,
                     'win_rate_pct': 0.0,
-                    'recent_signals': []
+                    'recent_signals': [],
+                    'initial_balance': 0.0
                 }
             
             # Usar datos del historial de equity
@@ -496,14 +501,15 @@ class MetricsCalculator:
                 'total_trades': 0,
                 'trades_today': 0,
                 'win_rate_pct': 0.0,
-                'recent_signals': []
+                'recent_signals': [],
+                'initial_balance': initial_equity
             }
             
         except Exception as e:
             print(f"Error calculando métricas de prueba: {e}")
             return {
                 'total_return_pct': 0.0,
-                'current_equity': INITIAL_BALANCE,
+                'current_equity': 0.0,
                 'current_drawdown_pct': 0.0,
                 'max_drawdown_pct': 0.0,
                 'volatility_pct': 0.0,
@@ -513,13 +519,14 @@ class MetricsCalculator:
                 'total_trades': 0,
                 'trades_today': 0,
                 'win_rate_pct': 0.0,
-                'recent_signals': []
+                'recent_signals': [],
+                'initial_balance': 0.0
             }
     
     def _empty_metrics(self) -> Dict:
         """Métricas vacías por defecto"""
         return {
-            'current_equity': INITIAL_BALANCE,
+            'current_equity': 0.0,
             'total_return_pct': 0.0,
             'current_drawdown_pct': 0.0,
             'max_drawdown_pct': 0.0,
@@ -530,7 +537,9 @@ class MetricsCalculator:
             'total_trades': 0,
             'win_rate_pct': 0.0,
             'recent_signals': [],
-            'last_update': datetime.now()
+            'last_update': datetime.now(),
+            'initial_balance': 0.0,
+            'available_balance': 0.0
         }
     
     def _calculate_unrealized_pnl(self, trade_type: str, entry_price: float, current_price: float, quantity: float) -> float:
@@ -715,13 +724,14 @@ class MetricsCalculator:
                     })
             
             result = {
-                'total_value': portfolio_summary.get('total_value', INITIAL_BALANCE),
-                'available_balance': portfolio_summary.get('available_balance', INITIAL_BALANCE),
+                'total_value': portfolio_summary.get('total_value', 0.0),
+                'available_balance': portfolio_summary.get('available_balance', 0.0),
                 'positions_value': portfolio_summary.get('positions_value', 0.0),
                 'unrealized_pnl': total_unrealized_pnl,  # Usar el cálculo correcto
                 'realized_pnl': portfolio_summary.get('total_pnl', 0.0),
                 'total_pnl': portfolio_summary.get('total_pnl', 0.0),
                 'total_pnl_percentage': portfolio_summary.get('total_pnl_percentage', 0.0),
+                'initial_balance': portfolio_summary.get('initial_balance', 0.0),
                 'trading_mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
                 'positions': positions  # Agregar las posiciones para el gráfico
             }
@@ -730,13 +740,14 @@ class MetricsCalculator:
         except Exception as e:
             print(f"Error obteniendo portfolio summary: {e}")
             return {
-                'total_value': INITIAL_BALANCE,
-                'available_balance': INITIAL_BALANCE,
+                'total_value': 0.0,
+                'available_balance': 0.0,
                 'positions_value': 0.0,
                 'unrealized_pnl': 0.0,
                 'realized_pnl': 0.0,
                 'total_pnl': 0.0,
                 'total_pnl_percentage': 0.0,
+                'initial_balance': 0.0,
                 'trading_mode': 'ERROR_FALLBACK',
                 'positions': []  # Lista vacía en caso de error
             }
@@ -1757,7 +1768,7 @@ class RealTimeDashboard:
             if closed_trades:
                 # Crear datos de equity basados en trades cerrados
                 equity_data = []
-                running_equity = INITIAL_BALANCE  # Equity inicial
+                running_equity = metrics.get('initial_balance', 0.0)  # Equity inicial desde DB
                 for trade in sorted(closed_trades, key=lambda x: x.get('exit_time', datetime.now())):
                     running_equity += trade.get('pnl', 0)
                     equity_data.append({
@@ -1861,7 +1872,7 @@ class RealTimeDashboard:
         
         with col1:
             # Balance Actual (USDT disponible sin invertir)
-            available_balance = metrics.get('available_balance', INITIAL_BALANCE)
+            available_balance = metrics.get('available_balance', 0.0)
             emoji = "💵"
             st.metric(
                 f"{emoji} USDT Disponibles",
@@ -1871,7 +1882,7 @@ class RealTimeDashboard:
         with col2:
             # Valor Portfolio (Valor total incluyendo posiciones y PnL)
             total_value = metrics['current_equity']
-            initial_balance = INITIAL_BALANCE
+            initial_balance = metrics.get('initial_balance', 0.0)
             growth = total_value - initial_balance
             growth_pct = (growth / initial_balance) * 100 if initial_balance > 0 else 0
             
@@ -2158,7 +2169,10 @@ class RealTimeDashboard:
             st.write("**Límites:**")
             st.write(f"• Posiciones Máximas: {trading_info['max_positions']}")
             st.write(f"• Confianza Mínima: {trading_info['min_confidence']:.1f}%")
-            st.write(f"• Balance Inicial: ${INITIAL_BALANCE:,.2f}")
+            # Balance inicial desde DB
+            portfolio_summary = self.metrics_calc.get_portfolio_summary()
+            initial_balance_db = portfolio_summary.get('initial_balance', 0.0)
+            st.write(f"• Balance Inicial: ${initial_balance_db:,.2f}")
         
         # Métricas de configuración
         col1, col2, col3 = st.columns(3)
@@ -2169,8 +2183,8 @@ class RealTimeDashboard:
             st.metric("Símbolos Configurados", total_symbols)
         
         with col2:
-            # Mostrar balance inicial
-            st.metric("Balance Inicial", f"${INITIAL_BALANCE:,.0f}")
+            # Mostrar balance inicial desde DB
+            st.metric("Balance Inicial", f"${initial_balance_db:,.0f}")
         
         with col3:
             # Obtener posiciones activas desde la base de datos

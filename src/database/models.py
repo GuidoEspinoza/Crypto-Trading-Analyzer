@@ -221,3 +221,20 @@ class TradingSignal(Base):
     
     def __repr__(self):
         return f"<TradingSignal(symbol={self.symbol}, type={self.signal_type}, confidence={self.confidence_score})>"
+
+class Settings(Base):
+    """
+    ⚙️ Configuración global simple de clave-valor.
+    Usada para persistir valores como el balance inicial.
+    """
+    __tablename__ = "settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(50), unique=True, nullable=False, index=True)
+    value = Column(Float, nullable=False, default=0.0)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    def __repr__(self):
+        return f"<Settings(key={self.key}, value={self.value})>"

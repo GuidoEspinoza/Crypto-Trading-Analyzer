@@ -61,7 +61,12 @@ class PaperTrader:
         """
         # Configuración del paper trader desde archivo centralizado
         self.config = PaperTraderConfig()
-        self.initial_balance = initial_balance if initial_balance is not None else self.config.INITIAL_BALANCE
+        # Obtener balance inicial desde la base de datos (fallback a 0.0)
+        try:
+            db_initial_balance = db_manager.get_global_initial_balance()
+        except Exception:
+            db_initial_balance = 0.0
+        self.initial_balance = initial_balance if initial_balance is not None else db_initial_balance
         self.max_position_size = self.config.get_max_position_size()
         self.max_total_exposure = self.config.get_max_total_exposure()
         self.min_trade_value = self.config.get_min_trade_value()
@@ -722,7 +727,7 @@ class PaperTrader:
                 return {
                     "total_value": total_value,
                     "total_pnl": total_pnl,
-                    "total_return_percentage": ((total_value - self.initial_balance) / self.initial_balance) * 100,
+                    "total_return_percentage": ((total_value - self.initial_balance) / self.initial_balance) * 100 if self.initial_balance > 0 else 0.0,
                     "total_trades": total_trades,
                     "winning_trades": winning_trades,
                     "win_rate": round(win_rate, 2),
@@ -807,10 +812,10 @@ class PaperTrader:
         """
         try:
             portfolio_summary = self._get_portfolio_summary()
-            return portfolio_summary.get("total_value", self.initial_balance)
+            return portfolio_summary.get("total_value", 0.0)
         except Exception as e:
             self.logger.error(f"❌ Error getting portfolio value: {e}")
-            return self.initial_balance
+            return 0.0
     
     def get_positions(self) -> Dict:
         """
