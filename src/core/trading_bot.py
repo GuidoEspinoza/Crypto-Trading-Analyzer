@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.config import TradingBotConfig, TradingProfiles, APIConfig
+from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment

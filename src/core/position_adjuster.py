@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.config.config import RiskManagerConfig, TradingProfiles, TradingBotConfig, APIConfig
+from src.config.main_config import RiskManagerConfig, TradingProfiles, TradingBotConfig, APIConfig
 from src.database.database import db_manager
 
 # Configurar logger

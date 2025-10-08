@@ -35,14 +35,12 @@ sys.path.insert(0, project_root)
 
 from src.database.database import db_manager
 from src.database.models import Trade, Portfolio, TradingSignal
-from src.config.config_manager import ConfigManager
-from src.config.global_constants import GLOBAL_INITIAL_BALANCE
 from src.core.paper_trader import PaperTrader
+from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, TRADING_PROFILE
 
-
-# Configuración del modo de trading
-config = ConfigManager.get_consolidated_config()
-USE_PAPER_TRADING = config.get("trading_bot", {}).get("use_paper_trading", True)
+# Configuración del modo de trading (centralizada)
+INITIAL_BALANCE = PaperTraderConfig.INITIAL_BALANCE
+USE_PAPER_TRADING = True
 
 warnings.filterwarnings('ignore')
 
@@ -128,7 +126,7 @@ class MetricsCalculator:
                     return
                 
                 # Construir historial de equity acumulativo
-                running_equity = GLOBAL_INITIAL_BALANCE
+                running_equity = INITIAL_BALANCE
                 self.equity_history.clear()
                 
                 # Punto inicial
@@ -213,11 +211,11 @@ class MetricsCalculator:
                 total_pnl = sum([t.pnl for t in closed_trades if t.pnl]) or 0.0
                 
                 # Equity actual
-                current_equity = portfolio_summary.get('total_value', GLOBAL_INITIAL_BALANCE)
+                current_equity = portfolio_summary.get('total_value', INITIAL_BALANCE)
                 
                 # Determinar balance inicial correcto (solo paper trading)
                 # En paper trading, usar el balance inicial configurado
-                initial_equity = GLOBAL_INITIAL_BALANCE
+                initial_equity = INITIAL_BALANCE
                 
                 # Retorno total
                 if initial_equity > 0:
@@ -378,7 +376,7 @@ class MetricsCalculator:
                     real_usdt_balance = paper_trader.get_balance('USDT')
                 except Exception as e:
                     # Fallback al valor del portfolio summary si hay error
-                    real_usdt_balance = portfolio_summary.get('available_balance', GLOBAL_INITIAL_BALANCE)
+                    real_usdt_balance = portfolio_summary.get('available_balance', INITIAL_BALANCE)
                 
                 return {
                     'total_return_pct': total_return,
@@ -408,7 +406,7 @@ class MetricsCalculator:
             if len(self.equity_history) == 0:
                 return {
                     'total_return_pct': 0.0,
-                    'current_equity': GLOBAL_INITIAL_BALANCE,
+                    'current_equity': INITIAL_BALANCE,
                     'current_drawdown_pct': 0.0,
                     'max_drawdown_pct': 0.0,
                     'volatility_pct': 0.0,
@@ -505,7 +503,7 @@ class MetricsCalculator:
             print(f"Error calculando métricas de prueba: {e}")
             return {
                 'total_return_pct': 0.0,
-                'current_equity': GLOBAL_INITIAL_BALANCE,
+                'current_equity': INITIAL_BALANCE,
                 'current_drawdown_pct': 0.0,
                 'max_drawdown_pct': 0.0,
                 'volatility_pct': 0.0,
@@ -521,7 +519,7 @@ class MetricsCalculator:
     def _empty_metrics(self) -> Dict:
         """Métricas vacías por defecto"""
         return {
-            'current_equity': GLOBAL_INITIAL_BALANCE,
+            'current_equity': INITIAL_BALANCE,
             'total_return_pct': 0.0,
             'current_drawdown_pct': 0.0,
             'max_drawdown_pct': 0.0,
@@ -717,8 +715,8 @@ class MetricsCalculator:
                     })
             
             result = {
-                'total_value': portfolio_summary.get('total_value', GLOBAL_INITIAL_BALANCE),
-                'available_balance': portfolio_summary.get('available_balance', GLOBAL_INITIAL_BALANCE),
+                'total_value': portfolio_summary.get('total_value', INITIAL_BALANCE),
+                'available_balance': portfolio_summary.get('available_balance', INITIAL_BALANCE),
                 'positions_value': portfolio_summary.get('positions_value', 0.0),
                 'unrealized_pnl': total_unrealized_pnl,  # Usar el cálculo correcto
                 'realized_pnl': portfolio_summary.get('total_pnl', 0.0),
@@ -732,8 +730,8 @@ class MetricsCalculator:
         except Exception as e:
             print(f"Error obteniendo portfolio summary: {e}")
             return {
-                'total_value': GLOBAL_INITIAL_BALANCE,
-                'available_balance': GLOBAL_INITIAL_BALANCE,
+                'total_value': INITIAL_BALANCE,
+                'available_balance': INITIAL_BALANCE,
                 'positions_value': 0.0,
                 'unrealized_pnl': 0.0,
                 'realized_pnl': 0.0,
@@ -1759,7 +1757,7 @@ class RealTimeDashboard:
             if closed_trades:
                 # Crear datos de equity basados en trades cerrados
                 equity_data = []
-                running_equity = GLOBAL_INITIAL_BALANCE  # Equity inicial
+                running_equity = INITIAL_BALANCE  # Equity inicial
                 for trade in sorted(closed_trades, key=lambda x: x.get('exit_time', datetime.now())):
                     running_equity += trade.get('pnl', 0)
                     equity_data.append({
@@ -1863,7 +1861,7 @@ class RealTimeDashboard:
         
         with col1:
             # Balance Actual (USDT disponible sin invertir)
-            available_balance = metrics.get('available_balance', GLOBAL_INITIAL_BALANCE)
+            available_balance = metrics.get('available_balance', INITIAL_BALANCE)
             emoji = "💵"
             st.metric(
                 f"{emoji} USDT Disponibles",
@@ -1873,7 +1871,7 @@ class RealTimeDashboard:
         with col2:
             # Valor Portfolio (Valor total incluyendo posiciones y PnL)
             total_value = metrics['current_equity']
-            initial_balance = GLOBAL_INITIAL_BALANCE
+            initial_balance = INITIAL_BALANCE
             growth = total_value - initial_balance
             growth_pct = (growth / initial_balance) * 100 if initial_balance > 0 else 0
             
@@ -2073,31 +2071,28 @@ class RealTimeDashboard:
     def _get_trading_mode_info(self) -> Dict:
         """Obtener información del modo de trading actual"""
         try:
-            # Usar configuración actual del proyecto
-            trading_config = config.get("trading_bot", {})
-            # Obtener el perfil activo desde ConfigManager
-            from src.config.config_manager import ConfigManager
-            profile = ConfigManager.get_active_profile()
-            
+            # Usar configuración centralizada
+            current_profile_cfg = TradingProfiles.get_current_profile()
+            profile_name = current_profile_cfg.get('name', TRADING_PROFILE)
+            max_positions = TradingBotConfig.get_max_concurrent_positions()
+            min_confidence = RiskManagerConfig.get_min_confidence_threshold()
             return {
                 'mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
-                'profile': profile,
-                'description': f'Trading con perfil {profile}',
-                'risk_level': self._get_profile_risk_level(profile),
-                'max_positions': trading_config.get('max_concurrent_positions', 5),
-                'min_confidence': trading_config.get('min_confidence_threshold', 75.0)
+                'profile': profile_name,
+                'description': f'Trading con perfil {profile_name}',
+                'risk_level': self._get_profile_risk_level(profile_name),
+                'max_positions': max_positions,
+                'min_confidence': min_confidence
             }
         except Exception as e:
             print(f"Error obteniendo trading mode info: {e}")
-            # Importar ACTIVE_TRADING_PROFILE como fallback
-            from src.config.global_constants import ACTIVE_TRADING_PROFILE
             return {
-                'mode': 'PAPER_TRADING',
-                'profile': ACTIVE_TRADING_PROFILE,
+                'mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
+                'profile': TRADING_PROFILE,
                 'description': 'Modo de trading virtual para pruebas',
-                'risk_level': 'MEDIUM',
-                'max_positions': 5,
-                'min_confidence': 0.75
+                'risk_level': self._get_profile_risk_level(TRADING_PROFILE),
+                'max_positions': TradingBotConfig.get_max_concurrent_positions(),
+                'min_confidence': RiskManagerConfig.get_min_confidence_threshold()
             }
     
     def _get_profile_risk_level(self, profile: str) -> str:
@@ -2163,71 +2158,79 @@ class RealTimeDashboard:
             st.write("**Límites:**")
             st.write(f"• Posiciones Máximas: {trading_info['max_positions']}")
             st.write(f"• Confianza Mínima: {trading_info['min_confidence']:.1f}%")
-            st.write(f"• Balance Inicial: ${GLOBAL_INITIAL_BALANCE:,.2f}")
+            st.write(f"• Balance Inicial: ${INITIAL_BALANCE:,.2f}")
         
         # Métricas de configuración
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Obtener número de símbolos configurados
-            symbols_config = config.get("symbols", {})
-            total_symbols = len(symbols_config)
+            # Número de símbolos configurados desde configuración centralizada
+            total_symbols = len(TradingBotConfig.SYMBOLS)
             st.metric("Símbolos Configurados", total_symbols)
         
         with col2:
             # Mostrar balance inicial
-            st.metric("Balance Inicial", f"${GLOBAL_INITIAL_BALANCE:,.0f}")
+            st.metric("Balance Inicial", f"${INITIAL_BALANCE:,.0f}")
         
         with col3:
             # Obtener posiciones activas desde la base de datos
             active_trades = self.metrics_calc.get_active_trades()
             st.metric("Posiciones Activas", len(active_trades))
         
-        # Gráfico de distribución de estrategias
-        strategies_config = config.get("strategies", {})
-        if strategies_config:
-            strategy_names = list(strategies_config.keys())
-            strategy_weights = [1] * len(strategy_names)  # Peso igual para todas
-            
-            fig_strategies = go.Figure(data=[
-                go.Pie(
-                    labels=strategy_names,
-                    values=strategy_weights,
-                    hole=0.4,
-                    marker_colors=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+        # Gráfico de distribución de estrategias (config centralizada)
+        try:
+            strategy_weights = getattr(StrategyConfig.Ensemble, 'STRATEGY_WEIGHTS', None)
+            if strategy_weights:
+                strategy_names = list(strategy_weights.keys())
+                strategy_values = list(strategy_weights.values())
+                fig_strategies = go.Figure(data=[
+                    go.Pie(
+                        labels=strategy_names,
+                        values=strategy_values,
+                        hole=0.4,
+                        marker_colors=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+                    )
+                ])
+                fig_strategies.update_layout(
+                    title="Distribución de Estrategias Configuradas",
+                    template='plotly_dark',
+                    height=300,
+                    showlegend=True
                 )
-            ])
-            
-            fig_strategies.update_layout(
-                title="Distribución de Estrategias Configuradas",
-                template='plotly_dark',
-                height=300,
-                showlegend=True
-            )
-            
-            st.plotly_chart(fig_strategies, width='stretch')
-        else:
+                st.plotly_chart(fig_strategies, width='stretch')
+            else:
+                st.info("No hay estrategias configuradas")
+        except Exception:
             st.info("No hay estrategias configuradas")
     
     def _render_trailing_sl_section(self):
         """Renderizar sección de gestión de riesgo"""
         st.subheader("🎯 Gestión de Riesgo")
         
-        # Obtener configuración de riesgo
-        risk_config = config.get("risk_management", {})
+        # Obtener parámetros de riesgo desde configuración centralizada
+        try:
+            sl_pct = RiskManagerConfig.get_sl_min_percentage()
+            tp_pct = RiskManagerConfig.get_tp_min_percentage()
+            max_drawdown_pct = RiskManagerConfig.get_max_drawdown_threshold() * 100.0
+            position_size_pct = PaperTraderConfig.get_max_position_size() * 100.0
+        except Exception:
+            sl_pct = 2.0
+            tp_pct = 4.0
+            max_drawdown_pct = 10.0
+            position_size_pct = 20.0
         
         # Mostrar configuración de riesgo
         col1, col2 = st.columns(2)
         
         with col1:
             st.write("**Stop Loss:**")
-            st.write(f"• Stop Loss: {risk_config.get('stop_loss_pct', 2.0):.1f}%")
-            st.write(f"• Take Profit: {risk_config.get('take_profit_pct', 4.0):.1f}%")
+            st.write(f"• Stop Loss: {sl_pct:.1f}%")
+            st.write(f"• Take Profit: {tp_pct:.1f}%")
         
         with col2:
             st.write("**Gestión de Posición:**")
-            st.write(f"• Tamaño Posición: {risk_config.get('position_size_pct', 20.0):.1f}%")
-            st.write(f"• Max Drawdown: {risk_config.get('max_drawdown_pct', 10.0):.1f}%")
+            st.write(f"• Tamaño Posición: {position_size_pct:.1f}%")
+            st.write(f"• Max Drawdown: {max_drawdown_pct:.1f}%")
         
         # Obtener posiciones activas
         active_trades = self.metrics_calc.get_active_trades()
@@ -2307,14 +2310,14 @@ class RealTimeDashboard:
             
             with col1:
                 st.write("**Parámetros de Riesgo:**")
-                st.write(f"• Stop Loss: {risk_config.get('stop_loss_pct', 2.0):.1f}%")
-                st.write(f"• Take Profit: {risk_config.get('take_profit_pct', 4.0):.1f}%")
-                st.write(f"• Max Drawdown: {risk_config.get('max_drawdown_pct', 10.0):.1f}%")
+                st.write(f"• Stop Loss: {RiskManagerConfig.get_sl_min_percentage():.1f}%")
+                st.write(f"• Take Profit: {RiskManagerConfig.get_tp_min_percentage():.1f}%")
+                st.write(f"• Max Drawdown: {RiskManagerConfig.get_max_drawdown_threshold() * 100.0:.1f}%")
             
             with col2:
                 st.write("**Configuración de Posición:**")
-                st.write(f"• Tamaño: {risk_config.get('position_size_pct', 20.0):.1f}% del balance")
-                st.write(f"• Posiciones máximas: {config.get('trading_bot', {}).get('max_concurrent_positions', 5)}")
+                st.write(f"• Tamaño: {PaperTraderConfig.get_max_position_size() * 100.0:.1f}% del balance")
+                st.write(f"• Posiciones máximas: {TradingBotConfig.get_max_concurrent_positions()}")
                 st.write(f"• Estado: {'Activo' if USE_PAPER_TRADING else 'Inactivo'}")
 
 

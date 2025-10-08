@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from database.database import db_manager
 from database.models import Trade, Portfolio
 from .position_manager import PositionManager
-from src.config.config import APIConfig, MonitoringConfig
+from src.config.main_config import APIConfig, MonitoringConfig
 
 # Configurar logging
 logger = logging.getLogger(__name__)

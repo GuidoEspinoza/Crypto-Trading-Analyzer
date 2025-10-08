@@ -20,7 +20,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 from src.core.trading_bot import TradingBot
-from src.config.config import TradingBotConfig
+from src.config.main_config import TradingBotConfig
 from src.database.database import db_manager
 
 # Configurar logging con colores
@@ -352,7 +352,7 @@ class LiveTradingBot:
         """
         try:
             # Importar configuración dinámica
-            from src.config.config import RiskManagerConfig
+            from src.config.main_config import RiskManagerConfig
             
             # Extraer datos del trade ejecutado
             symbol = signal.symbol

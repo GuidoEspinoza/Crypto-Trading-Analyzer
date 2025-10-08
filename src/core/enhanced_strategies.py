@@ -18,7 +18,7 @@ from functools import lru_cache
 import hashlib
 import time
 
-from src.config.config import StrategyConfig, CacheConfig, TechnicalAnalysisConfig, ConfluenceConfig
+from src.config.main_config import StrategyConfig, CacheConfig, TechnicalAnalysisConfig, ConfluenceConfig
 
 # Clases base para estrategias de trading
 @dataclass
@@ -113,7 +113,7 @@ class EnhancedTradingStrategy(TradingStrategy):
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)
         # Importar configuración para obtener valores del perfil activo
-        from src.config.config import StrategyConfig
+        from src.config.main_config import StrategyConfig
         config = StrategyConfig.ProfessionalRSI()
         self.min_volume_ratio = config.get_min_volume_ratio()  # Volumen según perfil activo
         self.min_confluence = config.get_min_confluence()  # Confluencia según perfil activo
@@ -517,7 +517,7 @@ class EnhancedTradingStrategy(TradingStrategy):
         """
         try:
             # Importar configuración dinámica
-            from src.config.config import RiskManagerConfig
+            from src.config.main_config import RiskManagerConfig
             
             # Obtener rangos dinámicos desde config
             sl_min = RiskManagerConfig.get_sl_min_percentage()

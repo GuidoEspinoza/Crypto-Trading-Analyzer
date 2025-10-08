@@ -32,7 +32,7 @@ TRADING_PROFILE = "OPTIMO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERV
 GLOBAL_INITIAL_BALANCE = 1000.0
 
 # Precio base de USDT (stablecoin)
-USD_BASE_PRICE = 1.0
+USDT_BASE_PRICE = 1.0
 
 # ============================================================================
 # 🎯 LISTA DE ACTIVOS

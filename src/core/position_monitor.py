@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.config import TradingBotConfig, RiskManagerConfig, TradingProfiles
+from src.config.main_config import TradingBotConfig, RiskManagerConfig, TradingProfiles
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -155,7 +155,7 @@ class PositionMonitor:
         
         if self.monitor_thread and self.monitor_thread.is_alive():
             profile = TradingProfiles.get_current_profile()
-            from src.config.config import TradingBotConfig
+            from src.config.main_config import TradingBotConfig
             timeout = TradingBotConfig.get_thread_join_timeout()
             self.monitor_thread.join(timeout=timeout)
         
@@ -167,7 +167,7 @@ class PositionMonitor:
         
         cleanup_counter = 0
         profile = TradingProfiles.get_current_profile()
-        from src.config.config import TradingBotConfig
+        from src.config.main_config import TradingBotConfig
         cleanup_interval = TradingBotConfig.get_cleanup_interval()  # Limpiar cada N ciclos
         
         while self.monitoring_active and not self.stop_event.is_set():

@@ -38,7 +38,7 @@ try:
     from src.core.position_manager import PositionManager
     from src.core.position_monitor import PositionMonitor
     # Importar configuraciones centralizadas
-    from src.config.config import (
+    from src.config.main_config import (
         TradingProfiles, TRADING_PROFILE
     )
     # Configuraciones de production_config removidas (no utilizadas)

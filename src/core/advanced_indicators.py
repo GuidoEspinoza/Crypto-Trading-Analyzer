@@ -14,7 +14,7 @@ from functools import lru_cache
 import hashlib
 
 # Importar configuración centralizada
-from src.config.config import AdvancedIndicatorsConfig, FibonacciConfig, OscillatorConfig, CalculationConfig
+from src.config.main_config import AdvancedIndicatorsConfig, FibonacciConfig, OscillatorConfig, CalculationConfig
 
 # Suprimir warnings específicos de pandas_ta
 warnings.filterwarnings('ignore', message='.*dtype incompatible.*')
@@ -1104,7 +1104,7 @@ class AdvancedIndicators:
                         "BEARISH" if price_trend == "UP" and rsi_trend == "DOWN" else "NONE"
             
             # Obtener umbrales configurables
-            from src.config.config import TradingProfiles, TRADING_PROFILE
+            from src.config.main_config import TradingProfiles, TRADING_PROFILE
             config = TradingProfiles.PROFILES[TRADING_PROFILE]
             rsi_oversold = config.get('rsi_oversold', 30)
             rsi_overbought = config.get('rsi_overbought', 70)

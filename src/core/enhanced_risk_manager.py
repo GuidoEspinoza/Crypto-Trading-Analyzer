@@ -15,7 +15,7 @@ from enum import Enum
 
 # Importar componentes existentes
 from .enhanced_strategies import EnhancedSignal
-from src.config.config import RiskManagerConfig, TradingProfiles
+from src.config.main_config import RiskManagerConfig, TradingProfiles
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +384,7 @@ class EnhancedRiskManager:
                     initial_tp = signal.price - (3 * atr_data)  # 3 ATR por debajo para SELL
             
             # Obtener configuración desde perfil activo
-            from src.config.config import RiskManagerConfig
+            from src.config.main_config import RiskManagerConfig
             risk_config = RiskManagerConfig()
             
             # Configurar parámetros del trailing TP desde configuración
