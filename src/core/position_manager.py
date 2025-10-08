@@ -94,11 +94,11 @@ class PositionManager:
         self.positions_cache = {}
         self.last_cache_update = 0
         profile = TradingProfiles.get_current_profile()
-        self.cache_duration = profile.get('position_check_interval', 30)  # segundos
+        self.cache_duration = profile['position_check_interval']  # segundos
         
         # Configuración de trailing stops desde RiskManagerConfig
-        self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION / 100  # Convertir de % a decimal
-        self.trailing_stop_distance = profile.get('default_trailing_distance', 1.0) / 100  # Convertir de % a decimal
+        self.trailing_stop_activation = self.risk_config.TRAILING_STOP_ACTIVATION  # Ya en decimal
+        self.trailing_stop_distance = profile['default_trailing_distance']  # Ya en decimal
         
         # Estadísticas
         self.stats = {
@@ -270,9 +270,9 @@ class PositionManager:
                 return
             
             # Verificar si la posición está en ganancia suficiente para activar trailing
-            profit_percentage = position.unrealized_pnl_percentage
+            profit_percentage = position.unrealized_pnl_percentage / 100.0  # Convertir porcentaje a decimal para comparación
             
-            if profit_percentage >= (self.trailing_stop_activation * 100):
+            if profit_percentage >= self.trailing_stop_activation:
                 # Calcular nuevo trailing stop
                 new_trailing = position.current_price * (1 - self.trailing_stop_distance)
                 
@@ -695,12 +695,13 @@ class PositionManager:
                     
                     # Calcular ganancia actual
                     if position.trade_type == "BUY":
-                        current_profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                        current_profit_pct = (current_price - position.entry_price) / position.entry_price
                     else:  # SELL
-                        current_profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                        current_profit_pct = (position.entry_price - current_price) / position.entry_price
                     
-                    # Solo actualizar si hay ganancias significativas (1.5% o más)
-                    if current_profit_pct < 1.5:
+                    # Solo actualizar si hay ganancias significativas (>= tp_min en porcentaje)
+                    # current_profit_pct ahora está en DECIMAL y tp_min está en DECIMAL
+                    if current_profit_pct < RiskManagerConfig.get_tp_min_percentage():
                         continue
                     
                     # Calcular nuevo take profit dinámico
@@ -736,7 +737,7 @@ class PositionManager:
                         
                         logger.info(
                             f"🎯 Updated dynamic take profit for {position.symbol}: "
-                            f"${new_take_profit:.4f} (Price: ${current_price:.4f}, Profit: {current_profit_pct:.2f}%)"
+                            f"${new_take_profit:.4f} (Price: ${current_price:.4f}, Profit: {current_profit_pct*100:.2f}%)"
                         )
                 
                 session.commit()
@@ -773,11 +774,12 @@ class PositionManager:
             tp_increment_pct = tp_min
             
             # Ajustar incremento según ganancia actual (rangos dinámicos)
-            if current_profit_pct >= tp_max:  # tp_max% o más de ganancia
+            # current_profit_pct ahora está en DECIMAL; tp_min/tp_max están en DECIMAL.
+            if current_profit_pct >= tp_max:  # tp_max o más de ganancia
                 tp_increment_pct = tp_max * 0.67  # Incrementar TP en 2/3 del máximo
-            elif current_profit_pct >= tp_max * 0.67:  # 2/3 del tp_max% o más de ganancia
+            elif current_profit_pct >= tp_max * 0.67:  # 2/3 del tp_max o más de ganancia
                 tp_increment_pct = tp_max * 0.5  # Incrementar TP en 1/2 del máximo
-            elif current_profit_pct >= tp_min * 0.67:  # 2/3 del tp_min% o más de ganancia
+            elif current_profit_pct >= tp_min * 0.67:  # 2/3 del tp_min o más de ganancia
                 tp_increment_pct = tp_min  # Incrementar TP en mínimo
             else:
                 return None  # No actualizar si ganancia es menor al umbral mínimo
@@ -785,10 +787,10 @@ class PositionManager:
             # Calcular nuevo take profit
             if position.trade_type == "BUY":
                 # Para BUY: incrementar TP hacia arriba
-                new_tp = current_price * (1 + (tp_increment_pct / 100))
+                new_tp = current_price * (1 + tp_increment_pct)
             else:  # SELL
                 # Para SELL: decrementar TP hacia abajo
-                new_tp = current_price * (1 - (tp_increment_pct / 100))
+                new_tp = current_price * (1 - tp_increment_pct)
             
             return round(new_tp, 4)
             

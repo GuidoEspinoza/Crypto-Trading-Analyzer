@@ -102,10 +102,10 @@ class TradingProfiles:
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 2.5,  # TP mínimo optimizado
-            "tp_max_percentage": 5.5,  # TP máximo optimizado
-            "sl_min_percentage": 0.8,  # SL mínimo más ajustado
-            "sl_max_percentage": 2.5,  # SL máximo optimizado
+            "tp_min_percentage": 0.025,  # TP mínimo optimizado (decimal)
+            "tp_max_percentage": 0.055,  # TP máximo optimizado (decimal)
+            "sl_min_percentage": 0.008,  # SL mínimo más ajustado (decimal)
+            "sl_max_percentage": 0.025,  # SL máximo optimizado (decimal)
             "tp_increment_percentage": 1.0,  # Incremento base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
@@ -148,6 +148,8 @@ class TradingProfiles:
             "live_first_analysis_delay": 10,  # Optimizado más rápido
             # Position Adjuster Config - Optimizado
             "position_monitoring_interval": 30,  # Intervalo de monitoreo en segundos
+            "price_cache_duration": 30,  # Duración del cache de precio (segundos)
+            "max_close_attempts": 3,  # Máximo intentos de cierre antes de marcar procesado
             "profit_scaling_threshold": 2.0,  # Umbral para escalado de ganancias (%)
             "trailing_stop_sl_pct": 0.02,  # SL dinámico para trailing stop (2%)
             "trailing_stop_tp_pct": 0.05,  # TP dinámico para trailing stop (5%)
@@ -160,8 +162,8 @@ class TradingProfiles:
             "kelly_win_rate": 0.65,  # Tasa de ganancia asumida para Kelly Criterion
             "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
             "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 2.0,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 1.0,  # Incremento base de TP (%)
+            "default_trailing_distance": 0.02,  # Distancia de trailing por defecto (decimal)
+            "tp_increment_base_pct": 0.01,  # Incremento base de TP (decimal)
             # Trading Bot Config
             "cache_ttl_seconds": 120,  # TTL del cache en segundos (2 min)
             "event_queue_maxsize": 500,  # Tamaño máximo de la cola de eventos
@@ -233,10 +235,10 @@ class TradingProfiles:
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
+            "tp_min_percentage": 0.03,  # TP mínimo 3% (decimal)
+            "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
+            "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
+            "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
             "tp_increment_percentage": 1.0,  # Incremento base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
@@ -281,8 +283,8 @@ class TradingProfiles:
             "kelly_win_rate": 0.68,  # Tasa de ganancia asumida para Kelly Criterion
             "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
             "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 2.2,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 1.3,  # Incremento base de TP (%)
+            "default_trailing_distance": 0.022,  # Distancia de trailing por defecto (decimal)
+            "tp_increment_base_pct": 0.013,  # Incremento base de TP (decimal)
             # Trading Bot Config
             "cache_ttl_seconds": 150,  # TTL del cache en segundos (2.5 min)
             "event_queue_maxsize": 600,  # Tamaño máximo de la cola de eventos
@@ -354,10 +356,10 @@ class TradingProfiles:
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
+            "tp_min_percentage": 0.03,  # TP mínimo 3% (decimal)
+            "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
+            "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
+            "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
             "tp_increment_percentage": 1.0,  # Incremento base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
@@ -400,6 +402,8 @@ class TradingProfiles:
             "live_first_analysis_delay": 15,  # Optimizado
             # Position Adjuster Config - Optimizado
             "position_monitoring_interval": 45,  # Intervalo de monitoreo en segundos
+            "price_cache_duration": 45,  # Duración del cache de precio (segundos)
+            "max_close_attempts": 3,  # Máximo intentos de cierre antes de marcar procesado
             "profit_scaling_threshold": 2.5,  # Umbral para escalado de ganancias (%)
             "trailing_stop_sl_pct": 0.025,  # SL dinámico para trailing stop (2.5%)
             "trailing_stop_tp_pct": 0.06,  # TP dinámico para trailing stop (6%)
@@ -412,8 +416,8 @@ class TradingProfiles:
             "kelly_win_rate": 0.62,  # Tasa de ganancia asumida para Kelly Criterion
             "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
             "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 2.5,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 1.2,  # Incremento base de TP (%)
+            "default_trailing_distance": 0.025,  # Distancia de trailing por defecto (decimal)
+            "tp_increment_base_pct": 0.012,  # Incremento base de TP (decimal)
             # Trading Bot Config
             "cache_ttl_seconds": 180,  # TTL del cache en segundos (3 min)
             "event_queue_maxsize": 800,  # Tamaño máximo de la cola de eventos
@@ -485,10 +489,10 @@ class TradingProfiles:
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 3.0,  # TP mínimo 3%
-            "tp_max_percentage": 6.0,  # TP máximo 6%
-            "sl_min_percentage": 1.0,  # SL mínimo 1%
-            "sl_max_percentage": 3.0,  # SL máximo 3%
+            "tp_min_percentage": 0.03,  # TP mínimo 3% (decimal)
+            "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
+            "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
+            "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
             "tp_increment_percentage": 0.8,  # Incremento conservador de TP
             "max_tp_adjustments": 3,  # Menos ajustes para conservador
             "tp_confidence_threshold": 0.8,  # Umbral más alto para conservador
@@ -531,6 +535,8 @@ class TradingProfiles:
             "live_first_analysis_delay": 90,  # Más tiempo inicial
             # Position Adjuster Config - Ultra conservador
             "position_monitoring_interval": 120,  # Intervalo de monitoreo en segundos (2 min)
+            "price_cache_duration": 60,  # Duración del cache de precio (segundos)
+            "max_close_attempts": 2,  # Máximo intentos de cierre antes de marcar procesado
             "profit_scaling_threshold": 3.0,  # Umbral para escalado de ganancias (%)
             "trailing_stop_sl_pct": 0.015,  # SL dinámico para trailing stop (1.5%)
             "trailing_stop_tp_pct": 0.04,  # TP dinámico para trailing stop (4%)
@@ -543,8 +549,8 @@ class TradingProfiles:
             "kelly_win_rate": 0.58,  # Tasa de ganancia asumida para Kelly Criterion
             "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
             "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 1.8,  # Distancia de trailing por defecto (%)
-            "tp_increment_base_pct": 0.8,  # Incremento base de TP (%)
+            "default_trailing_distance": 0.018,  # Distancia de trailing por defecto (decimal)
+            "tp_increment_base_pct": 0.008,  # Incremento base de TP (decimal)
             # Trading Bot Config
             "cache_ttl_seconds": 300,  # TTL del cache en segundos (5 min)
             "event_queue_maxsize": 1200,  # Tamaño máximo de la cola de eventos
@@ -759,7 +765,7 @@ class PaperTraderConfig:
     MIN_LIQUIDITY: float = property(lambda self: TradingProfiles.get_current_profile()["min_liquidity"])
     
     # Máximo % del balance disponible para trading (reserva para fees)
-    MAX_BALANCE_USAGE: float = 95.0
+    MAX_BALANCE_USAGE: float = 0.95
 
 
 # ============================================================================

@@ -85,11 +85,11 @@ class PositionMonitor:
         self.processed_trades = set()  # Set de trade_ids ya procesados para cierre
         self.failed_close_attempts = {}  # Dict para contar intentos fallidos por trade_id
         profile = TradingProfiles.get_current_profile()
-        self.max_close_attempts = profile.get('max_close_attempts', 3)  # Máximo número de intentos antes de marcar como procesado
+        self.max_close_attempts = profile['max_close_attempts']  # Máximo número de intentos antes de marcar como procesado
         
         # Configuración de monitoreo desde TradingBotConfig
-        self.monitor_interval = self.config.get_live_update_interval()  # segundos entre checks
-        self.price_cache_duration = profile.get('price_cache_duration', 30)  # segundos de validez del cache
+        self.monitor_interval = TradingBotConfig.get_monitoring_interval()  # segundos entre checks
+        self.price_cache_duration = profile['price_cache_duration']  # segundos de validez del cache
         
         # Inicializar estadísticas del monitor
         self.stats = {
@@ -513,19 +513,19 @@ class PositionMonitor:
             entry_price = position["entry_price"]
             trade_type = position["trade_type"]
             
-            # Configuración de trailing stop desde config
-            trailing_percentage = self.risk_config.trailing_stop_percentage
+            # Configuración de trailing stop desde perfil (decimal)
+            trailing_distance = TradingProfiles.get_current_profile()["default_trailing_distance"]
             
             if trade_type == "BUY":
                 # Para posiciones largas, trailing stop se mueve hacia arriba
-                trailing_stop = current_price * (1 - trailing_percentage / 100)
+                trailing_stop = current_price * (1 - trailing_distance)
                 # Solo actualizar si es mayor que el stop loss actual
                 current_sl = position.get("stop_loss")
                 if current_sl is None or trailing_stop > current_sl:
                     return trailing_stop
             else:  # SELL
                 # Para posiciones cortas, trailing stop se mueve hacia abajo
-                trailing_stop = current_price * (1 + trailing_percentage / 100)
+                trailing_stop = current_price * (1 + trailing_distance)
                 # Solo actualizar si es menor que el stop loss actual
                 current_sl = position.get("stop_loss")
                 if current_sl is None or trailing_stop < current_sl:

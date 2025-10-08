@@ -209,7 +209,7 @@ class PaperTrader:
             if signal.signal_type == "BUY":
                 # Verificar si tenemos USDT suficiente
                 usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * (self.max_position_size / 100.0)  # Convertir porcentaje
+                max_trade_value = usdt_balance * (self.max_position_size)  # porcentaje en decimal
                 
                 if usdt_balance < self.min_trade_value:
                     self.logger.info(f"❌ Insufficient USDT balance: ${usdt_balance:.2f} < ${self.min_trade_value:.2f}")
@@ -249,8 +249,8 @@ class PaperTrader:
             with db_manager.get_db_session() as session:
                 # Calcular cantidad a comprar
                 usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * (self.max_position_size / 100.0)  # Convertir % a decimal
-                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage / 100.0))  # Límite configurable para fees
+                max_trade_value = usdt_balance * (self.max_position_size)  # Ya en decimal
+                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage))  # Límite configurable para fees (decimal)
                 
                 if trade_value < self.min_trade_value:
                     return TradeResult(
@@ -321,9 +321,9 @@ class PaperTrader:
                         tp_pct = RiskManagerConfig.get_tp_min_percentage()
                         
                         if stop_loss_price is None:
-                            stop_loss_price = signal.price * (1 - sl_pct / 100)
+                            stop_loss_price = signal.price * (1 - sl_pct)
                         if take_profit_price is None:
-                            take_profit_price = signal.price * (1 + tp_pct / 100)
+                            take_profit_price = signal.price * (1 + tp_pct)
                             
                         self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
 

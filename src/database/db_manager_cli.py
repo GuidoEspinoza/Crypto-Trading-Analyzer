@@ -23,6 +23,7 @@ from database.database import DatabaseManager
 from database.migrations import run_migrations, get_migration_status
 from database.models import Trade, Portfolio, Strategy, BacktestResult, TradingSignal
 from sqlalchemy import text, func
+from config.main_config import DatabaseConfig
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -185,7 +186,7 @@ class DatabaseCLI:
         except Exception as e:
             print(f"❌ Error obteniendo estadísticas: {e}")
     
-    def cleanup(self, days: int = 30) -> bool:
+    def cleanup(self, days: int = DatabaseConfig.DATA_RETENTION_DAYS) -> bool:
         """Limpiar datos antiguos."""
         print(f"🧹 Limpiando datos anteriores a {days} días...")
         
@@ -330,7 +331,7 @@ def main():
     
     # Comando cleanup
     cleanup_parser = subparsers.add_parser("cleanup", help="Limpiar datos antiguos")
-    cleanup_parser.add_argument("--days", type=int, default=30, help="Días de antigüedad para limpiar")
+    cleanup_parser.add_argument("--days", type=int, default=DatabaseConfig.DATA_RETENTION_DAYS, help="Días de antigüedad para limpiar")
     
     # Comando vacuum
     subparsers.add_parser("vacuum", help="Optimizar base de datos")

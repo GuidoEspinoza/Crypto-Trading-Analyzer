@@ -377,8 +377,8 @@ class LiveTradingBot:
                 else:
                     # Fallback: usar configuración dinámica
                     tp_max = RiskManagerConfig.get_tp_max_percentage()
-                    take_profit_price = price * (1 + tp_max / 100)
-                    take_profit_pct = tp_max
+                    take_profit_price = price * (1 + tp_max)
+                    take_profit_pct = tp_max * 100
                 
                 if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
                     stop_loss_price = signal.stop_loss_price
@@ -386,8 +386,8 @@ class LiveTradingBot:
                 else:
                     # Fallback: usar configuración dinámica
                     sl_max = RiskManagerConfig.get_sl_max_percentage()
-                    stop_loss_price = price * (1 - sl_max / 100)
-                    stop_loss_pct = sl_max
+                    stop_loss_price = price * (1 - sl_max)
+                    stop_loss_pct = sl_max * 100
                 
                 logger.info("")
                 logger.info("🎯 ═══════════════════════════════════════════════════════════")
@@ -419,8 +419,8 @@ class LiveTradingBot:
                 else:
                     # Fallback: usar configuración dinámica
                     tp_max = RiskManagerConfig.get_tp_max_percentage()
-                    take_profit_price = price * (1 - tp_max / 100)
-                    take_profit_pct = tp_max
+                    take_profit_price = price * (1 - tp_max)
+                    take_profit_pct = tp_max * 100
                 
                 if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
                     stop_loss_price = signal.stop_loss_price
@@ -428,8 +428,8 @@ class LiveTradingBot:
                 else:
                     # Fallback: usar configuración dinámica
                     sl_max = RiskManagerConfig.get_sl_max_percentage()
-                    stop_loss_price = price * (1 + sl_max / 100)
-                    stop_loss_pct = sl_max
+                    stop_loss_price = price * (1 + sl_max)
+                    stop_loss_pct = sl_max * 100
                 
                 logger.info("")
                 logger.info("🎯 ═══════════════════════════════════════════════════════════")

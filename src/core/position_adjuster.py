@@ -243,11 +243,11 @@ class PositionAdjuster:
             pnl_pct = position.unrealized_pnl_pct
             
             # Condición 1: Escalado de ganancias (posición ganadora > threshold%)
-            profit_threshold = self.profile.get('profit_scaling_threshold', 2.0)
+            profit_threshold = self.profile['profit_scaling_threshold']
             if pnl_pct > profit_threshold:
                 # Mover SL más cerca para proteger ganancias
-                sl_pct = self.profile.get('profit_protection_sl_pct', 0.01)
-                tp_pct = self.profile.get('profit_protection_tp_pct', 0.03)
+                sl_pct = self.profile['profit_protection_sl_pct']
+                tp_pct = self.profile['profit_protection_tp_pct']
                 if side == 'BUY':
                     new_sl = entry_price * (1 + sl_pct)  # SL para protección de ganancias
                     new_tp = current_price * (1 + tp_pct)  # TP para protección de ganancias
@@ -258,11 +258,11 @@ class PositionAdjuster:
                 return True, AdjustmentReason.PROFIT_SCALING, new_tp, new_sl
             
             # Condición 2: Trailing Stop (posición muy ganadora)
-            trailing_activation = risk_config.get_trailing_stop_activation() if hasattr(risk_config, 'get_trailing_stop_activation') else 5.0
-            if pnl_pct > trailing_activation:
+            trailing_activation = risk_config.get_trailing_stop_activation()
+            if (pnl_pct / 100.0) > trailing_activation:
                 # Implementar trailing stop más agresivo
-                sl_pct = self.profile.get('trailing_stop_sl_pct', 0.02)  # 2% por defecto
-                tp_pct = self.profile.get('trailing_stop_tp_pct', 0.05)  # 5% por defecto
+                sl_pct = self.profile['trailing_stop_sl_pct']  # 2% por defecto
+                tp_pct = self.profile['trailing_stop_tp_pct']  # 5% por defecto
                 if side == 'BUY':
                     new_sl = current_price * (1 - sl_pct)  # SL dinámico
                     new_tp = current_price * (1 + tp_pct)  # TP dinámico
@@ -273,11 +273,11 @@ class PositionAdjuster:
                 return True, AdjustmentReason.TRAILING_STOP, new_tp, new_sl
             
             # Condición 3: Gestión de riesgo (posición perdedora < threshold%)
-            risk_threshold = self.profile.get('risk_management_threshold', -1.0)
+            risk_threshold = self.profile['risk_management_threshold']
             if pnl_pct < risk_threshold:
                 # Ajustar SL más conservador
-                sl_pct = self.profile.get('risk_management_sl_pct', 0.015)
-                tp_pct = self.profile.get('risk_management_tp_pct', 0.02)
+                sl_pct = self.profile['risk_management_sl_pct']
+                tp_pct = self.profile['risk_management_tp_pct']
                 if side == 'BUY':
                     new_sl = current_price * (1 - sl_pct)  # SL más cerca
                     new_tp = entry_price * (1 + tp_pct)  # TP más conservador

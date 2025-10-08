@@ -151,7 +151,7 @@ class TradingBot:
         self.circuit_breaker_cooldown_hours = self.config.get_circuit_breaker_cooldown_hours()
         
         # Nuevas funcionalidades del circuit breaker
-        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold() / 100.0  # Convertir porcentaje a decimal
+        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold()  # Ya en decimal
         self.current_drawdown = 0.0
         self.peak_portfolio_value = 0.0
         self.gradual_reactivation_enabled = True

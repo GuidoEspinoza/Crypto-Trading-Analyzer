@@ -526,48 +526,49 @@ class EnhancedTradingStrategy(TradingStrategy):
             tp_max = RiskManagerConfig.get_tp_max_percentage()
             
             # Calcular porcentaje ATR respecto al precio
-            atr_percentage = (atr / entry_price) * 100
+            atr_ratio = (atr / entry_price)
             
             # Determinar SL y TP basado en rangos dinámicos
             if signal_type == "BUY":
                 # Stop Loss: sl_min%-sl_max% por debajo del precio de entrada
-                if atr_percentage <= sl_min:
+                if atr_ratio <= sl_min:
                     sl_pct = sl_min  # Mínimo dinámico
-                elif atr_percentage >= sl_max:
+                elif atr_ratio >= sl_max:
                     sl_pct = sl_max  # Máximo dinámico
                 else:
-                    sl_pct = atr_percentage  # Usar ATR si está en rango
+                    sl_pct = atr_ratio  # Usar ATR si está en rango
                 
                 # Take Profit: tp_min%-tp_max% por encima del precio de entrada
-                if atr_percentage * 1.5 <= tp_min:
+                atr_tp = atr_ratio * 1.5
+                if atr_tp <= tp_min:
                     tp_pct = tp_min  # Mínimo dinámico
-                elif atr_percentage * 1.5 >= tp_max:
+                elif atr_tp >= tp_max:
                     tp_pct = tp_max  # Máximo dinámico
                 else:
-                    tp_pct = atr_percentage * 1.5  # 1.5x ATR si está en rango
+                    tp_pct = atr_tp  # 1.5x ATR si está en rango
                 
-                stop_loss = entry_price * (1 - sl_pct / 100)
-                take_profit = entry_price * (1 + tp_pct / 100)
+                stop_loss = entry_price * (1 - sl_pct)
+                take_profit = entry_price * (1 + tp_pct)
                 
             elif signal_type == "SELL":
                 # Stop Loss: sl_min%-sl_max% por encima del precio de entrada
-                if atr_percentage <= sl_min:
+                if atr_ratio <= sl_min:
                     sl_pct = sl_min  # Mínimo dinámico
-                elif atr_percentage >= sl_max:
+                elif atr_ratio >= sl_max:
                     sl_pct = sl_max  # Máximo dinámico
                 else:
-                    sl_pct = atr_percentage  # Usar ATR si está en rango
+                    sl_pct = atr_ratio  # Usar ATR si está en rango
                 
                 # Take Profit: tp_min%-tp_max% por debajo del precio de entrada
-                if atr_percentage * 1.5 <= tp_min:
+                if atr_ratio * 1.5 <= tp_min:
                     tp_pct = tp_min  # Mínimo dinámico
-                elif atr_percentage * 1.5 >= tp_max:
+                elif atr_ratio * 1.5 >= tp_max:
                     tp_pct = tp_max  # Máximo dinámico
                 else:
-                    tp_pct = atr_percentage * 1.5  # 1.5x ATR si está en rango
+                    tp_pct = atr_ratio * 1.5  # 1.5x ATR si está en rango
                 
-                stop_loss = entry_price * (1 + sl_pct / 100)
-                take_profit = entry_price * (1 - tp_pct / 100)
+                stop_loss = entry_price * (1 + sl_pct)
+                take_profit = entry_price * (1 - tp_pct)
             else:
                 return 0.0, 0.0, 0.0
             
