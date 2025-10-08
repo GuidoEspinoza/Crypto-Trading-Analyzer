@@ -58,12 +58,12 @@ class DatabaseManager:
         # Crear tablas si no existen
         self.create_tables()
         
-        # Inicializar GLOBAL_INITIAL_BALANCE en settings si no existe
-        from src.config.main_config import GLOBAL_INITIAL_BALANCE
+        # Inicializar PAPER_GLOBAL_INITIAL_BALANCE en settings si no existe
+        from src.config.main_config import PAPER_GLOBAL_INITIAL_BALANCE
         try:
-            self.set_global_initial_balance_if_absent(GLOBAL_INITIAL_BALANCE)
+            self.set_global_initial_balance_if_absent(PAPER_GLOBAL_INITIAL_BALANCE)
         except Exception as e:
-            logger.error(f"⚠️ No se pudo inicializar GLOBAL_INITIAL_BALANCE desde config: {e}")
+            logger.error(f"⚠️ No se pudo inicializar PAPER_GLOBAL_INITIAL_BALANCE desde config: {e}")
         
         # Inicializar portfolio base si no existe
         self.initialize_base_portfolio()

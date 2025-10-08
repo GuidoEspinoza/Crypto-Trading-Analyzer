@@ -528,7 +528,7 @@ class SystemTester:
             )
             
             # Probar evaluación de riesgo usando portfolio inicial de configuración
-            assessment = risk_manager.assess_trade_risk(test_signal, 10000.0)
+            assessment = risk_manager.assess_trade_risk(test_signal, db_manager.get_global_initial_balance())
             self.log_success(f"Risk assessment: Score {assessment.overall_risk_score:.1f}/100")
             self.log_success(f"Trade approved: {assessment.is_approved}")
             
@@ -881,7 +881,7 @@ class SystemTester:
             
             # 2. Evaluar riesgo
             risk_manager = EnhancedRiskManager()
-            assessment = risk_manager.assess_trade_risk(signal, 10000.0)
+            assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
             self.log_success(f"2. Riesgo evaluado: Score {assessment.overall_risk_score:.1f}/100")
             
             # 3. Ejecutar en paper trading si aprobado

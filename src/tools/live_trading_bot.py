@@ -145,7 +145,7 @@ class LiveTradingBot:
             logger.info(f"   • Tamaño máximo por posición: {self.trading_bot.paper_trader.max_position_size:.1f}%")
             logger.info(f"   • Exposición máxima total: {self.trading_bot.paper_trader.max_total_exposure:.1f}%")
             logger.info(f"   • Valor mínimo por trade: ${self.trading_bot.paper_trader.min_trade_value}")
-            logger.info(f"   • Valor actual del portfolio: ${portfolio_performance.get('total_value', 0):,.2f}")
+            logger.info(f"   • Valor actual del portfolio: ${portfolio_performance.get('total_value', 0.0):,.2f}")
             
             # Mostrar configuración del bot
             logger.info("⚙️ CONFIGURACIÓN DEL BOT:")
@@ -777,9 +777,9 @@ class LiveTradingBot:
             
             # Obtener balance de USDT correctamente
             current_balance = self.trading_bot.paper_trader.get_balance('USDT')
-            total_value = portfolio_performance.get('total_value', 0)
-            pnl = portfolio_performance.get('total_pnl', 0)
-            pnl_pct = portfolio_performance.get('total_return_percentage', 0)
+            total_value = portfolio_performance.get('total_value', 0.0)
+            pnl = portfolio_performance.get('total_pnl', 0.0)
+            pnl_pct = portfolio_performance.get('total_return_percentage', 0.0)
             
             logger.info("\n" + "="*60)
             logger.info("📊 ESTADÍSTICAS ACTUALES")
@@ -821,9 +821,9 @@ class LiveTradingBot:
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
             # Obtener balance final de USDT correctamente
             final_balance = self.trading_bot.paper_trader.get_balance('USDT')
-            total_value = portfolio_performance.get('total_value', 0)
-            total_pnl = portfolio_performance.get('total_pnl', 0)
-            pnl_pct = portfolio_performance.get('total_return_percentage', 0)
+            total_value = portfolio_performance.get('total_value', 0.0)
+            total_pnl = portfolio_performance.get('total_pnl', 0.0)
+            pnl_pct = portfolio_performance.get('total_return_percentage', 0.0)
             
             logger.info("\n" + "="*80)
             logger.info("🏁 RESUMEN FINAL DE LA SESIÓN")

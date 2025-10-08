@@ -150,7 +150,7 @@ class BacktestResult(Base):
     total_days = Column(Integer, nullable=False)
     
     # Capital inicial
-    initial_capital = Column(Float, nullable=False, default=10000.0)
+    initial_capital = Column(Float, nullable=False, default=0.0)
     final_capital = Column(Float, nullable=False)
     
     # Performance metrics

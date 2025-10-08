@@ -190,7 +190,7 @@ async def get_bot_status():
                 "win_rate": (status.successful_trades / max(1, status.total_trades_executed)) * 100,
                 "current_portfolio_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - 10000) / 10000) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - db_manager.get_global_initial_balance()) / max(1e-9, db_manager.get_global_initial_balance())) * 100,
                 "active_strategies": status.active_strategies,
                 "last_analysis_time": status.last_analysis_time.isoformat(),
                 "next_analysis_time": status.next_analysis_time.isoformat()
@@ -589,7 +589,7 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
         if test_mode in ["full", "risk_analysis"]:
             try:
                 risk_manager = EnhancedRiskManager()
-                risk_assessment = risk_manager.assess_trade_risk(signal, 10000)
+                risk_assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
                 risk_analysis = {
                     "overall_risk_score": risk_assessment.overall_risk_score,
                     "risk_level": risk_assessment.risk_level.value,
@@ -615,7 +615,7 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
                     symbols=[symbol],
                     start_date=start_date,
                     end_date=end_date,
-                    initial_capital=10000,
+                    initial_capital=db_manager.get_global_initial_balance(),
                     timeframe=timeframe
                 )
                 
@@ -667,7 +667,7 @@ async def get_enhanced_risk_analysis(symbol: str):
         
         # Analizar riesgo
         risk_manager = EnhancedRiskManager()
-        risk_assessment = risk_manager.assess_trade_risk(signal, 10000)
+        risk_assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
         
         return {
             "symbol": symbol,

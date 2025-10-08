@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 TRADING_PROFILE = "OPTIMO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
-GLOBAL_INITIAL_BALANCE = 1000.0
+PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
 
 # Precio base de USDT (stablecoin)
 USDT_BASE_PRICE = 1.0
@@ -50,7 +50,6 @@ GLOBAL_SYMBOLS: List[str] = [
     "XRPUSDT",    # XRP - Caso legal resuelto + adopción institucional
     
     # EMERGING: Alto potencial 3-10x (25% peso recomendado)
-    "ATOMUSDT",   # Cosmos - Interoperabilidad + ecosystem growth
     "NEARUSDT",   # NEAR - Escalabilidad + herramientas dev-friendly
     "LINKUSDT",   # Chainlink - Oráculos esenciales + partnerships
     "BNBUSDT"     # BNB - Utilidad Binance + burn mechanism
@@ -633,7 +632,7 @@ class TradingBotConfig:
         return TradingProfiles.get_current_profile()["timeframes"]
     
     # Valor por defecto del portfolio para cálculos cuando no hay datos
-    DEFAULT_PORTFOLIO_VALUE: float = GLOBAL_INITIAL_BALANCE
+    DEFAULT_PORTFOLIO_VALUE: float = PAPER_GLOBAL_INITIAL_BALANCE
     
     # 🎯 CONFIGURACIÓN DINÁMICA ADICIONAL BASADA EN PERFIL
     @classmethod
@@ -719,7 +718,7 @@ class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
     
     # Balance inicial en USDT para simulación
-    INITIAL_BALANCE: float = GLOBAL_INITIAL_BALANCE
+    INITIAL_BALANCE: float = PAPER_GLOBAL_INITIAL_BALANCE
     
     @classmethod
     def get_max_position_size(cls) -> float:

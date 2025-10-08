@@ -136,6 +136,28 @@ def run_status_check():
     print("📊 VERIFICACIÓN DE ESTADO GENERAL")
     print("-" * 40)
     
+    # Mostrar resumen de portfolio (balance inicial y métricas actuales)
+    try:
+        try:
+            initial_balance_db = db_manager.get_global_initial_balance()
+        except Exception:
+            initial_balance_db = 0.0
+        
+        paper = PaperTrader()
+        perf = paper.calculate_portfolio_performance()
+        total_value = perf.get('total_value', 0.0)
+        total_pnl = perf.get('total_pnl', 0.0)
+        total_return_pct = perf.get('total_return_percentage', 0.0)
+        
+        print("💼 RESUMEN DEL PORTFOLIO")
+        print(f"   💰 Balance inicial (DB): ${initial_balance_db:,.2f}")
+        print(f"   📈 Valor actual del portfolio: ${total_value:,.2f}")
+        print(f"   💵 PnL total: ${total_pnl:,.2f} ({total_return_pct:+.2f}%)")
+        print("-" * 40)
+    except Exception as e:
+        print(f"⚠️ No se pudo obtener el resumen del portfolio: {e}")
+        print("-" * 40)
+    
     # Mostrar posiciones activas básicas
     show_active_positions_summary()
     
