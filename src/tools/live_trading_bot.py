@@ -153,13 +153,13 @@ class LiveTradingBot:
             logger.info(f"   • Intervalo de análisis: {self.update_interval} segundos")
             logger.info(f"   • Confianza mínima para trades: {self.config.get_min_confidence_threshold()}%")
             
-            # Configurar callback para ajustes de TP/SL dinámicos
-            try:
-                if hasattr(self.trading_bot, 'position_adjuster') and self.trading_bot.position_adjuster:
-                    self.trading_bot.position_adjuster.set_adjustment_callback(self._display_adjustment_event)
-                    logger.info("✅ Callback de ajustes de posición configurado")
-            except Exception as adj_e:
-                logger.error(f"⚠️ Error configurando callback de ajustes: {adj_e}")
+            # Ajustes de TP/SL desactivados (Opción A): no configurar callback
+            # try:
+            #     if hasattr(self.trading_bot, 'position_adjuster') and self.trading_bot.position_adjuster:
+            #         self.trading_bot.position_adjuster.set_adjustment_callback(self._display_adjustment_event)
+            #         logger.info("✅ Callback de ajustes de posición configurado")
+            # except Exception as adj_e:
+            #     logger.error(f"⚠️ Error configurando callback de ajustes: {adj_e}")
             
             # Configurar callback para eventos de trades
             try:

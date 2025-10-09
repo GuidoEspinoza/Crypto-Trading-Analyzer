@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
+TRADING_PROFILE = "OPTIMO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
 PAPER_GLOBAL_INITIAL_BALANCE = 1000.0

@@ -100,11 +100,8 @@ class TradingBot:
             paper_trader=self.paper_trader
         )
         
-        # Sistema de ajuste de posiciones TP/SL
-        self.position_adjuster = PositionAdjuster(
-            config=None,
-            simulation_mode=True
-        )
+        # Sistema de ajuste de posiciones TP/SL (desactivado - Opción A)
+        self.position_adjuster = None
         
         # Sistema de eventos para comunicación con LiveTradingBot
         profile_config = TradingProfiles.get_current_profile()
@@ -292,8 +289,8 @@ class TradingBot:
         # Iniciar monitoreo de posiciones
         self.position_monitor.start_monitoring()
         
-        # Iniciar sistema de ajuste de posiciones TP/SL
-        self._start_position_adjustment_monitoring()
+        # Sistema de ajuste TP/SL desactivado (Opción A): no se inicia monitoreo
+        # self._start_position_adjustment_monitoring()
         
         # Programar primer análisis para evitar bloqueo
         schedule.every(self.config.get_first_analysis_delay()).seconds.do(self._run_first_analysis).tag('first_analysis')
@@ -302,7 +299,7 @@ class TradingBot:
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
         self.logger.info(f"🧠 Active strategies: {', '.join(self.strategies.keys())}")
         self.logger.info("🔍 Position monitoring started")
-        self.logger.info("🎯 TP/SL adjustment monitoring started")
+        self.logger.info("🎯 TP/SL adjustment monitoring disabled")
     
     def stop(self):
         """
@@ -319,8 +316,9 @@ class TradingBot:
         # Detener monitoreo de posiciones
         self.position_monitor.stop_monitoring()
         
-        # Detener sistema de ajuste de posiciones
-        self.position_adjuster.stop_monitoring()
+        # Sistema de ajuste TP/SL desactivado (Opción A): no hay monitoreo que detener
+        # if self.position_adjuster:
+        #     self.position_adjuster.stop_monitoring()
         
         # Limpiar ThreadPoolExecutor
         if hasattr(self, 'executor') and self.executor:
@@ -344,7 +342,7 @@ class TradingBot:
         
         self.logger.info("🛑 Trading Bot stopped")
         self.logger.info("🔍 Position monitoring stopped")
-        self.logger.info("🎯 TP/SL adjustment monitoring stopped")
+        self.logger.info("🎯 TP/SL adjustment monitoring disabled")
         self.logger.info("💾 Cache cleaned up")
     
     def _get_current_price(self, symbol: str) -> float:
