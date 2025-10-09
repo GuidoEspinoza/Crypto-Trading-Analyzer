@@ -211,12 +211,16 @@ class PaperTrader:
                 usdt_balance = self._get_usdt_balance()
                 max_trade_value = usdt_balance * (self.max_position_size)  # porcentaje en decimal
                 
+                # Limitar por uso máximo de balance y por exposición total permitida
+                allowed_exposure = self._get_allowed_additional_exposure()
+                effective_max_trade_value = min(max_trade_value, usdt_balance * self.max_balance_usage, allowed_exposure)
+                
                 if usdt_balance < self.min_trade_value:
                     self.logger.info(f"❌ Insufficient USDT balance: ${usdt_balance:.2f} < ${self.min_trade_value:.2f}")
                     return False
                     
-                if max_trade_value < self.min_trade_value:
-                    self.logger.info(f"❌ Max trade value too low: ${max_trade_value:.2f} < ${self.min_trade_value:.2f}")
+                if effective_max_trade_value < self.min_trade_value:
+                    self.logger.info(f"❌ Max trade value too low (after exposure limits): ${effective_max_trade_value:.2f} < ${self.min_trade_value:.2f}")
                     return False
             
             elif signal.signal_type == "SELL":
@@ -250,7 +254,10 @@ class PaperTrader:
                 # Calcular cantidad a comprar
                 usdt_balance = self._get_usdt_balance()
                 max_trade_value = usdt_balance * (self.max_position_size)  # Ya en decimal
-                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage))  # Límite configurable para fees (decimal)
+                
+                # Aplicar límites de uso de balance y de exposición total
+                allowed_exposure = self._get_allowed_additional_exposure()
+                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage), allowed_exposure)  # Límite configurable y exposición
                 
                 if trade_value < self.min_trade_value:
                     return TradeResult(
@@ -518,6 +525,34 @@ class PaperTrader:
         📊 Obtener resumen del portfolio
         """
         return db_manager.get_portfolio_summary(is_paper=True)
+    
+    def _get_total_exposure_value(self) -> float:
+        """
+        📈 Valor total expuesto en activos (excluye USDT disponible)
+        """
+        try:
+            summary = self._get_portfolio_summary()
+            total_value = float(summary.get("total_value", 0.0))
+            available_balance = float(summary.get("available_balance", 0.0))
+            exposed_value = max(total_value - available_balance, 0.0)
+            return exposed_value
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating total exposure: {e}")
+            return 0.0
+    
+    def _get_allowed_additional_exposure(self) -> float:
+        """
+        ✅ Exposición adicional permitida según max_total_exposure del perfil
+        """
+        try:
+            portfolio_value = float(self.get_portfolio_value())
+            max_allowed_exposure = portfolio_value * float(self.max_total_exposure)
+            current_exposure = self._get_total_exposure_value()
+            remaining = max(max_allowed_exposure - current_exposure, 0.0)
+            return remaining
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating allowed exposure: {e}")
+            return 0.0
     
     def _ensure_portfolio_initialized(self):
         """
@@ -906,14 +941,25 @@ class PaperTrader:
             if trade_value < self.min_trade_value:
                 return False
             
-            # Validar tamaño máximo de posición
-            if trade_value > self.max_position_size:
-                return False
+            # Calcular límites efectivos para el tamaño de trade según perfil
+            current_usdt = self.get_balance("USDT")
+            max_allowed_by_position = current_usdt * float(self.max_position_size)
+            max_allowed_by_balance_usage = current_usdt * float(self.max_balance_usage)
+            allowed_exposure = self._get_allowed_additional_exposure()
+            effective_allowed = min(max_allowed_by_position, max_allowed_by_balance_usage, allowed_exposure)
             
-            # Para compras, verificar balance suficiente
+            # Para compras, verificar balance y límites
             if side == "BUY":
-                current_balance = self.get_balance("USDT")
-                if trade_value > current_balance:
+                if trade_value > current_usdt:
+                    return False
+                if effective_allowed < self.min_trade_value:
+                    return False
+                if trade_value > effective_allowed:
+                    return False
+            else:  # SELL
+                asset_symbol = symbol.split('/')[0] if '/' in symbol else symbol
+                asset_qty = self.get_balance(asset_symbol)
+                if quantity > asset_qty:
                     return False
             
             return True

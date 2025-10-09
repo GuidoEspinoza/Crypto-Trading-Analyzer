@@ -85,11 +85,11 @@ class PositionMonitor:
         self.processed_trades = set()  # Set de trade_ids ya procesados para cierre
         self.failed_close_attempts = {}  # Dict para contar intentos fallidos por trade_id
         profile = TradingProfiles.get_current_profile()
-        self.max_close_attempts = profile['max_close_attempts']  # Máximo número de intentos antes de marcar como procesado
+        self.max_close_attempts = profile.get('max_close_attempts', 3)  # Máximo número de intentos antes de marcar como procesado
         
         # Configuración de monitoreo desde TradingBotConfig
         self.monitor_interval = TradingBotConfig.get_monitoring_interval()  # segundos entre checks
-        self.price_cache_duration = profile['price_cache_duration']  # segundos de validez del cache
+        self.price_cache_duration = profile.get('price_cache_duration', 30)  # segundos de validez del cache
         
         # Inicializar estadísticas del monitor
         self.stats = {

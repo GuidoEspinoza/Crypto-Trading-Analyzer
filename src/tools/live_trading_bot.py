@@ -142,8 +142,8 @@ class LiveTradingBot:
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
             logger.info("💰 CONFIGURACIÓN DEL PAPER TRADER:")
             logger.info(f"   • Balance inicial: ${self.trading_bot.paper_trader.initial_balance:,.2f}")
-            logger.info(f"   • Tamaño máximo por posición: {self.trading_bot.paper_trader.max_position_size:.1f}%")
-            logger.info(f"   • Exposición máxima total: {self.trading_bot.paper_trader.max_total_exposure:.1f}%")
+            logger.info(f"   • Tamaño máximo por posición: {self.trading_bot.paper_trader.max_position_size*100:.1f}%")
+            logger.info(f"   • Exposición máxima total: {self.trading_bot.paper_trader.max_total_exposure*100:.1f}%")
             logger.info(f"   • Valor mínimo por trade: ${self.trading_bot.paper_trader.min_trade_value}")
             logger.info(f"   • Valor actual del portfolio: ${portfolio_performance.get('total_value', 0.0):,.2f}")
             

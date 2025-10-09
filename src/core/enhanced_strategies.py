@@ -909,12 +909,15 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
         
         # Configuración desde archivo centralizado
         self.config = StrategyConfig.MultiTimeframe()
-        self.timeframes = getattr(self.config, 'TIMEFRAMES', ["1m", "5m", "15m"])
+        self.timeframes = self.config.get_timeframes()
         self.min_confidence = self.config.get_min_confidence()
+        self.enhanced_confidence = self.config.get_enhanced_confidence()
         self.rsi_config = getattr(self.config, 'RSI_CONFIG', {"1m": {"oversold": 35, "overbought": 65}})
-        self.timeframe_weights = getattr(self.config, 'TIMEFRAME_WEIGHTS', {"1m": 0.5, "5m": 0.3, "15m": 0.2})
-        self.min_timeframe_consensus = getattr(self.config, 'MIN_TIMEFRAME_CONSENSUS', 2)
-        self.trend_alignment_required = getattr(self.config, 'TREND_ALIGNMENT_REQUIRED', True)
+        # Usar pesos dinámicos por timeframe según perfil activo
+        self.timeframe_weights = self.config.get_timeframe_weights()
+        self.min_timeframe_consensus = self.config.get_min_timeframe_consensus()
+        self.trend_alignment_required = self.config.get_trend_alignment_required()
+        self.min_consensus_ratio = self.config.get_min_consensus()
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis multi-timeframe"""
@@ -960,20 +963,32 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             buy_votes = sum(1 for s in signals.values() if s == "BUY")
             sell_votes = sum(1 for s in signals.values() if s == "SELL")
             
-            # Ponderar por timeframe (mayor peso a timeframes más largos)
-            weights = {"1h": 1, "4h": 2, "1d": 3}
-            weighted_buy = sum(weights.get(tf, 1) for tf, signal in signals.items() if signal == "BUY")
-            weighted_sell = sum(weights.get(tf, 1) for tf, signal in signals.items() if signal == "SELL")
+            # Ponderar por timeframe usando configuración del perfil
+            weights = self.timeframe_weights
+            weighted_buy = sum(weights.get(tf, 1.0) for tf, signal in signals.items() if signal == "BUY")
+            weighted_sell = sum(weights.get(tf, 1.0) for tf, signal in signals.items() if signal == "SELL")
             
             current_price = self.get_current_price(symbol)
             df_main = self.get_market_data(symbol, timeframe)
             
-            if weighted_buy > weighted_sell and buy_votes >= 2:
+            # Reglas de consenso dinámicas
+            required_votes = int(self.min_timeframe_consensus)
+            total_tfs = max(1, len(self.timeframes))
+            buy_ratio = buy_votes / total_tfs
+            sell_ratio = sell_votes / total_tfs
+            
+            # Alineación de tendencia si es requerida por el perfil
+            up_trends = sum(1 for t in trends.values() if str(t).upper() == "UP")
+            down_trends = sum(1 for t in trends.values() if str(t).upper() == "DOWN")
+            alignment_ok_buy = (up_trends >= required_votes) if self.trend_alignment_required else True
+            alignment_ok_sell = (down_trends >= required_votes) if self.trend_alignment_required else True
+            
+            if weighted_buy > weighted_sell and buy_votes >= required_votes and buy_ratio >= self.min_consensus_ratio and alignment_ok_buy:
                 signal_type = "BUY"
-                confidence = self.config.ENHANCED_CONFIDENCE + (weighted_buy * 5)
-            elif weighted_sell > weighted_buy and sell_votes >= 2:
+                confidence = self.enhanced_confidence + (weighted_buy * 5)
+            elif weighted_sell > weighted_buy and sell_votes >= required_votes and sell_ratio >= self.min_consensus_ratio and alignment_ok_sell:
                 signal_type = "SELL"
-                confidence = self.config.ENHANCED_CONFIDENCE + (weighted_sell * 5)
+                confidence = self.enhanced_confidence + (weighted_sell * 5)
             else:
                 signal_type = "HOLD"
                 confidence = self.config.HOLD_CONFIDENCE
@@ -991,12 +1006,15 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', FutureWarning)
                 warnings.simplefilter('ignore', UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.DEFAULT_ATR_PERIOD)
+                atr = ta.atr(high_float, low_float, close_float, length=StrategyConfig.Base.get_default_atr_period())
             current_atr = atr.iloc[-1] if atr is not None else current_price * 0.02
             
             stop_loss, take_profit, risk_reward = self.calculate_risk_reward(
                 current_price, signal_type, current_atr
             )
+            
+            # Elegir confirmación de tendencia basada en el timeframe con mayor peso
+            key_tf = max(self.timeframes, key=lambda tf: self.timeframe_weights.get(tf, 1.0)) if self.timeframes else timeframe
             
             return EnhancedSignal(
                 symbol=symbol,

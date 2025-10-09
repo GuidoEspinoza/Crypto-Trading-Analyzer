@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "OPTIMO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
+TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
 PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
@@ -66,7 +66,7 @@ class TradingProfiles:
         "RAPIDO": {
             "name": "🚀 Ultra-Rápido",
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
-            "timeframes": ["1m", "5m"],
+            "timeframes": ["1m", "5m", "15m"],
             "analysis_interval": 30,  # Corregido: mínimo 30 segundos
             "min_confidence": 65.0,  # Aumentado para mejor calidad de señales
             "max_daily_trades": 20,  # Reducido para mejor selección
@@ -74,10 +74,10 @@ class TradingProfiles:
             # Circuit Breaker Config - Optimizado
             "max_consecutive_losses": 7,  # Aumentado para tolerancia
             "circuit_breaker_cooldown_hours": 1.5,  # Reducido para eficiencia
-            "max_drawdown_threshold": 0.12,  # Corregido: 12% como decimal
+            "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
-            "max_position_size": 0.8,  # Corregido: 80% como decimal
+            "max_position_size": 0.05,  # Corregido: 80% como decimal
             "max_total_exposure": 0.75,  # Corregido: 75% como decimal
             "min_trade_value": 5.0,  # Reducido para permitir pruebas  # Aumentado para calidad
             "paper_min_confidence": 60.0,  # Aumentado
@@ -86,7 +86,7 @@ class TradingProfiles:
             # Risk Manager Config - Optimizado
             "max_risk_per_trade": 1.5,  # Optimizado para mejor control
             "max_daily_risk": 6.0,  # Reducido para mayor protección
-            "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
+            "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
             "correlation_threshold": 0.75,  # Optimizado
             "min_position_size": 12.0,  # Reducido para flexibilidad
             "risk_max_position_size": 0.8,  # Corregido: consistente con max_position_size
@@ -106,7 +106,7 @@ class TradingProfiles:
             "tp_max_percentage": 0.055,  # TP máximo optimizado (decimal)
             "sl_min_percentage": 0.008,  # SL mínimo más ajustado (decimal)
             "sl_max_percentage": 0.025,  # SL máximo optimizado (decimal)
-            "tp_increment_percentage": 1.0,  # Incremento base de TP
+            "tp_increment_percentage": 1.0,  # Factor base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
             # Umbrales y Límites Adicionales
@@ -199,7 +199,7 @@ class TradingProfiles:
         "AGRESIVO": {
             "name": "⚡ Agresivo",
             "description": "Timeframes 15m-1h, balance velocidad/control optimizado",
-            "timeframes": ["15m", "30m"],
+            "timeframes": ["15m", "30m", "1h"],
             "analysis_interval": 30,  # Corregido: mínimo 30 segundos
             "min_confidence": 72.0,  # Optimizado para mejor calidad
             "max_daily_trades": 15,  # Aumentado para más oportunidades
@@ -210,7 +210,7 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
-            "max_position_size": 0.6,  # Corregido: 60% como decimal
+            "max_position_size": 0.1,  # Corregido: 60% como decimal
             "max_total_exposure": 0.65,  # Corregido: 65% como decimal
             "min_trade_value": 5.0,  # Reducido para permitir pruebas
             "paper_min_confidence": 68.0,  # Aumentado para calidad
@@ -239,7 +239,7 @@ class TradingProfiles:
             "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
             "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
             "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
-            "tp_increment_percentage": 1.0,  # Incremento base de TP
+            "tp_increment_percentage": 1.0,  # Factor base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
             # Umbrales y Límites Adicionales
@@ -320,7 +320,7 @@ class TradingProfiles:
         "OPTIMO": {
             "name": "🎯 Óptimo",
             "description": "Timeframes 1h-4h, máxima precisión optimizada",
-            "timeframes": ["1h", "4h"],
+            "timeframes": ["1h", "4h", "1d"],
             "analysis_interval": 30,
             "min_confidence": 80.0,  # Aumentado para máxima calidad
             "max_daily_trades": 10,  # Aumentado para más oportunidades
@@ -328,10 +328,10 @@ class TradingProfiles:
             # Circuit Breaker Config - Optimizado
             "max_consecutive_losses": 3,  # Aumentado para tolerancia
             "circuit_breaker_cooldown_hours": 4,  # Reducido para eficiencia
-            "max_drawdown_threshold": 8.0,  # Mantenido estricto
+            "max_drawdown_threshold": 0.06,  # Estandarizado: 6% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
-            "max_position_size": 1.0,  # Corregido: 100% como decimal (máximo permitido)
+            "max_position_size": 0.18,  # Corregido: 100% como decimal (máximo permitido)
             "max_total_exposure": 0.55,  # Corregido: 55% como decimal
             "min_trade_value": 30.0,  # Aumentado para calidad
             "paper_min_confidence": 75.0,  # Aumentado
@@ -360,7 +360,7 @@ class TradingProfiles:
             "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
             "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
             "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
-            "tp_increment_percentage": 1.0,  # Incremento base de TP
+            "tp_increment_percentage": 1.0,  # Factor base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
             # Umbrales y Límites Adicionales
@@ -452,19 +452,19 @@ class TradingProfiles:
         },
         "CONSERVADOR": {
             "name": "🛡️ Conservador",
-            "description": "Timeframes 1d-1s, máxima preservación de capital",
-            "timeframes": ["1d", "1s"],  # Timeframes más largos
-            "analysis_interval": 45,  # Análisis menos frecuente
+            "description": "Timeframes 4h-1d, máxima preservación de capital",
+            "timeframes": ["4h", "1d"],  # Timeframes más largos
+            "analysis_interval": 60,  # Análisis menos frecuente (segundos)
             "min_confidence": 85.0,  # Aumentado para máxima seguridad
             "max_daily_trades": 6,  # Aumentado ligeramente para oportunidades
             "max_positions": 3,  # Aumentado para diversificación mínima
             # Circuit Breaker Config - Ultra conservador
             "max_consecutive_losses": 2,  # Muy estricto
             "circuit_breaker_cooldown_hours": 8,  # Cooldown largo
-            "max_drawdown_threshold": 5.0,  # Muy estricto
+            "max_drawdown_threshold": 0.05,  # Estandarizado: 5% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Conservador
-            "max_position_size": 0.4,  # Corregido: 40% como decimal
+            "max_position_size": 0.25,  # Corregido: 40% como decimal
             "max_total_exposure": 0.35,  # Corregido: 35% como decimal
             "min_trade_value": 50.0,  # Alto para calidad
             "paper_min_confidence": 80.0,  # Muy alto
@@ -493,7 +493,7 @@ class TradingProfiles:
             "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
             "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
             "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
-            "tp_increment_percentage": 0.8,  # Incremento conservador de TP
+            "tp_increment_percentage": 0.8,  # Factor base de TP (conservador)
             "max_tp_adjustments": 3,  # Menos ajustes para conservador
             "tp_confidence_threshold": 0.8,  # Umbral más alto para conservador
             # Umbrales y Límites Adicionales
@@ -609,12 +609,12 @@ class TradingBotConfig:
     SYMBOLS = GLOBAL_SYMBOLS
 
     # Símbolos para el bot en vivo - Misma lista optimizada
-    SYMBOLS_LIVE_BOT = GLOBAL_SYMBOLS[3]
+    SYMBOLS_LIVE_BOT = GLOBAL_SYMBOLS
     
     # 🎯 CONFIGURACIÓN DINÁMICA BASADA EN PERFIL SELECCIONADO
     @classmethod
     def get_analysis_interval(cls) -> int:
-        """Intervalo de análisis en minutos según perfil activo."""
+        """Intervalo de análisis en segundos según perfil activo."""
         return TradingProfiles.get_current_profile()["analysis_interval"]
     
     @classmethod
@@ -1043,6 +1043,32 @@ class StrategyConfig:
             """Consenso mínimo según perfil activo."""
             return TradingProfiles.get_current_profile().get("mtf_min_consensus", 0.6)
         
+        @classmethod
+        def get_timeframes(cls) -> List[str]:
+            """Timeframes dinámicos según el perfil activo."""
+            return TradingProfiles.get_current_profile().get("timeframes", ["1m", "5m", "15m"])
+        
+        @classmethod
+        def get_min_timeframe_consensus(cls) -> int:
+            """Consenso mínimo de timeframes requerido según perfil activo."""
+            return TradingProfiles.get_current_profile().get("mtf_min_timeframe_consensus", 1)
+        
+        @classmethod
+        def get_trend_alignment_required(cls) -> bool:
+            """Requisito de alineación de tendencia entre timeframes según perfil activo."""
+            return TradingProfiles.get_current_profile().get("mtf_trend_alignment_required", False)
+        
+        @classmethod
+        def get_timeframe_weights(cls) -> Dict[str, float]:
+            """Pesos por timeframe derivados dinámicamente del perfil activo (normalizados a 1.0)."""
+            tfs = TradingProfiles.get_current_profile().get("timeframes", ["1m", "5m", "15m"])
+            if not tfs:
+                return {}
+            # Asignar pesos crecientes del corto al largo y normalizar
+            raw = {tf: (i + 1) for i, tf in enumerate(tfs)}
+            total = sum(raw.values())
+            return {tf: (w / total) for tf, w in raw.items()}
+         
         # Valores estáticos
         BASE_CONFIDENCE: float = 50.0
         HOLD_CONFIDENCE: float = 45.0
@@ -1164,7 +1190,7 @@ class LiveTradingConfig:
     INITIAL_BALANCE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
     
     # Comisiones de Binance en % por trade (rápido: 0.1 - agresivo: 0.1 - óptimo: 0.075)
-    TRADING_FEES: float = 0.1  # Estrategia rápida
+    TRADING_FEES: float = 0.001  # Comisión por trade (0.1%)
     
     # Timeout para órdenes en segundos (rápido: 15 - agresivo: 30 - óptimo: 60)
     ORDER_TIMEOUT: int = 15  # Estrategia rápida
@@ -1271,7 +1297,7 @@ class TestingConfig:
     TEST_MAX_DAILY_TRADES: int = 5
     
     # Configuración de análisis para testing
-    TEST_ANALYSIS_INTERVAL: int = 5  # minutos
+    TEST_ANALYSIS_INTERVAL: int = 300  # segundos
     
     # Balance para testing
     TEST_PAPER_BALANCE: float = 100.0

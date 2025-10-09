@@ -2227,9 +2227,11 @@ class RealTimeDashboard:
             tp_pct = RiskManagerConfig.get_tp_min_percentage()
             max_drawdown_pct = RiskManagerConfig.get_max_drawdown_threshold() * 100.0
             position_size_pct = PaperTraderConfig.get_max_position_size() * 100.0
+            sl_pct_pct = sl_pct * 100.0
+            tp_pct_pct = tp_pct * 100.0
         except Exception:
-            sl_pct = 2.0
-            tp_pct = 4.0
+            sl_pct_pct = 2.0
+            tp_pct_pct = 4.0
             max_drawdown_pct = 10.0
             position_size_pct = 20.0
         
@@ -2238,8 +2240,8 @@ class RealTimeDashboard:
         
         with col1:
             st.write("**Stop Loss:**")
-            st.write(f"• Stop Loss: {sl_pct:.1f}%")
-            st.write(f"• Take Profit: {tp_pct:.1f}%")
+            st.write(f"• Stop Loss: {sl_pct_pct:.1f}%")
+            st.write(f"• Take Profit: {tp_pct_pct:.1f}%")
         
         with col2:
             st.write("**Gestión de Posición:**")
@@ -2324,8 +2326,8 @@ class RealTimeDashboard:
             
             with col1:
                 st.write("**Parámetros de Riesgo:**")
-                st.write(f"• Stop Loss: {RiskManagerConfig.get_sl_min_percentage():.1f}%")
-                st.write(f"• Take Profit: {RiskManagerConfig.get_tp_min_percentage():.1f}%")
+                st.write(f"• Stop Loss: {RiskManagerConfig.get_sl_min_percentage() * 100.0:.1f}%")
+                st.write(f"• Take Profit: {RiskManagerConfig.get_tp_min_percentage() * 100.0:.1f}%")
                 st.write(f"• Max Drawdown: {RiskManagerConfig.get_max_drawdown_threshold() * 100.0:.1f}%")
             
             with col2:
