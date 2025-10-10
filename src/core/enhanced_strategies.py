@@ -43,6 +43,12 @@ class TradingStrategy(ABC):
         self.config = StrategyConfig.Base()  # Configuración base centralizada
         self.min_confidence = StrategyConfig.Base.DEFAULT_MIN_CONFIDENCE  # Mínima confianza desde config
         self.advanced_indicators = AdvancedIndicators()
+        # Referencia opcional al TradingBot para fuente centralizada de precios
+        self.trading_bot = None
+
+    def set_trading_bot(self, bot):
+        """Asignar referencia al TradingBot para delegar operaciones comunes (precios, cache, etc.)"""
+        self.trading_bot = bot
     
     @abstractmethod
     def analyze(self, symbol: str, timeframe: str = "1h") -> TradingSignal:
@@ -64,18 +70,40 @@ class TradingStrategy(ABC):
         return df
     
     def get_current_price(self, symbol: str) -> float:
-        """Obtener precio actual del símbolo"""
+        """Obtener precio actual del símbolo usando fuente centralizada si está disponible, con cache TTL"""
         try:
+            # Si hay TradingBot asignado, delegar para usar cache centralizado y normalización consistente
+            if hasattr(self, 'trading_bot') and self.trading_bot:
+                price = self.trading_bot._get_current_price(symbol)
+                if price and price > 0:
+                    return float(price)
+            
+            # Fallback: comportamiento anterior con CCXT + cache local
+            norm_symbol = symbol if '/' in symbol else (symbol[:-4] + '/USDT' if symbol.endswith('USDT') else symbol)
+            cache_key = self._get_cache_key("strategy_current_price", norm_symbol)
+            cached = self._get_from_cache(cache_key)
+            if cached is not None:
+                return float(cached)
+            
             import ccxt
             exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(symbol)
-            return float(ticker['last']) if ticker['last'] else 0.0
+            ticker = exchange.fetch_ticker(norm_symbol)
+            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
+            
+            if current_price > 0:
+                self._store_in_cache(cache_key, current_price)
+            
+            return current_price
         except Exception as e:
             logging.error(f"Error getting current price for {symbol}: {e}")
             # Fallback: usar el último precio de los datos históricos
             try:
                 df = self.get_market_data(symbol, "1m", limit=1)
-                return float(df['close'].iloc[-1]) if not df.empty else 0.0
+                fallback = float(df['close'].iloc[-1]) if not df.empty else 0.0
+                if fallback > 0:
+                    cache_key = self._get_cache_key("strategy_current_price", symbol)
+                    self._store_in_cache(cache_key, fallback)
+                return fallback
             except:
                 return 0.0
 
@@ -108,7 +136,7 @@ class EnhancedTradingStrategy(TradingStrategy):
     # Cache compartido entre instancias
     _cache = {}
     _cache_timestamps = {}
-    _cache_ttl = CacheConfig.DEFAULT_TTL  # TTL desde configuración centralizada
+    _cache_ttl = CacheConfig.get_ttl_for_operation("price_data")  # TTL desde configuración centralizada
     
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)

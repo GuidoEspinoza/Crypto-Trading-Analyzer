@@ -372,7 +372,7 @@ class PositionManager:
                 trade.notes = f"{trade.notes or ''} | Auto closed: {reason}"
                 
                 # Actualizar portfolio
-                asset_symbol = trade.symbol.split('/')[0]
+                asset_symbol = (trade.symbol.split('/')[0] if '/' in trade.symbol else (trade.symbol[:-4] if trade.symbol.endswith(('USDT')) else trade.symbol))
                 
                 if trade.trade_type == "BUY":
                     # Vender el asset, obtener USDT

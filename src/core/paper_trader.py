@@ -3,9 +3,10 @@
 Ejecutor de trades virtuales con gestión automática de portfolio
 """
 
+from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from sqlalchemy.orm import Session
 from dataclasses import dataclass
 
@@ -14,11 +15,16 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.main_config import PaperTraderConfig, TradingBotConfig, USDT_BASE_PRICE
+from src.config.main_config import PaperTraderConfig, TradingBotConfig, USDT_BASE_PRICE, TRADING_FEES
+
+# Asegurar conversión a float consistente desde configuración
+FEE_RATE: float = float(TRADING_FEES)
 
 from database.database import db_manager
 from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
-from .enhanced_strategies import TradingSignal
+# Evitar import en tiempo de ejecución para no arrastrar dependencias pesadas
+if TYPE_CHECKING:
+    from .enhanced_strategies import TradingSignal
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -225,7 +231,7 @@ class PaperTrader:
             
             elif signal.signal_type == "SELL":
                 # Verificar si tenemos el asset para vender
-                asset_symbol = signal.symbol.split('/')[0]  # BTC de BTC/USDT
+                asset_symbol = (signal.symbol.split('/')[0] if '/' in signal.symbol else (signal.symbol[:-4] if signal.symbol.endswith(('USDT')) else signal.symbol))  # Normaliza base: BTC de BTC/USDT o BTCUSDT
                 asset_balance = self._get_asset_balance(asset_symbol)
                 
                 if asset_balance <= 0:
@@ -257,19 +263,24 @@ class PaperTrader:
                 
                 # Aplicar límites de uso de balance y de exposición total
                 allowed_exposure = self._get_allowed_additional_exposure()
-                trade_value = min(max_trade_value, usdt_balance * (self.max_balance_usage), allowed_exposure)  # Límite configurable y exposición
+                trade_value_pre_fee = min(max_trade_value, usdt_balance * (self.max_balance_usage), allowed_exposure)  # Límite configurable y exposición
                 
-                if trade_value < self.min_trade_value:
+                if trade_value_pre_fee < self.min_trade_value:
                     return TradeResult(
                         success=False,
                         trade_id=None,
-                        message=f"❌ Trade value too small: ${trade_value:.2f}",
+                        message=f"❌ Trade value too small: ${trade_value_pre_fee:.2f}",
                         entry_price=signal.price,
                         quantity=0.0,
                         entry_value=0.0
                     )
                 
-                quantity = trade_value / signal.price
+                # Ejecutar a precio de mercado (sin slippage) y aplicar fee
+                execution_price = float(signal.price)
+                trade_value = trade_value_pre_fee / (1.0 + FEE_RATE)
+                quantity = trade_value / execution_price
+                fee_usdt = trade_value * FEE_RATE
+                total_cost = trade_value + fee_usdt
                 
                 # Obtener TP/SL de la señal o calcularlos automáticamente
                 stop_loss_price = None
@@ -300,7 +311,7 @@ class PaperTrader:
                                 strategy_name=signal.strategy_name,
                                 timestamp=signal.timestamp,
                                 indicators_data=getattr(signal, 'indicators_data', {}),
-                                notes=signal.notes,
+                                notes=f"{signal.notes or ''} | Fee: ${fee_usdt:.4f}",
                                 stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
                                 take_profit_price=getattr(signal, 'take_profit_price', 0.0),
                                 market_regime='NORMAL',
@@ -310,7 +321,8 @@ class PaperTrader:
                             enhanced_signal = signal
                         
                         # Calcular evaluación de riesgo
-                        risk_assessment = risk_manager.evaluate_signal_risk(enhanced_signal)
+                        current_portfolio_value = self.get_portfolio_value()
+                        risk_assessment = risk_manager.assess_trade_risk(enhanced_signal, current_portfolio_value)
                         
                         # Usar TP/SL calculados si no están disponibles
                         if stop_loss_price is None:
@@ -335,18 +347,19 @@ class PaperTrader:
                         self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
 
                 # Crear trade en base de datos
+                normalized_symbol = self._normalize_to_usdt_ticker(signal.symbol)
                 new_trade = Trade(
-                    symbol=signal.symbol,
+                    symbol=normalized_symbol,
                     strategy_name=signal.strategy_name,
                     trade_type="BUY",
-                    entry_price=signal.price,
+                    entry_price=execution_price,
                     quantity=quantity,
-                    entry_value=trade_value,
+                    entry_value=total_cost,
                     status="OPEN",
                     is_paper_trade=True,
                     timeframe=TradingBotConfig.get_primary_timeframe(),
                     confidence_score=signal.confidence_score,
-                    notes=signal.notes,
+                    notes=f"{signal.notes or ''} | Fee: ${fee_usdt:.4f}",
                     stop_loss=stop_loss_price,
                     take_profit=take_profit_price
                 )
@@ -354,12 +367,12 @@ class PaperTrader:
                 session.add(new_trade)
                 session.flush()  # Para obtener el ID
                 
-                # Actualizar portfolio - Reducir USDT
-                self._update_usdt_balance(-trade_value, session)
+                # Actualizar portfolio - Reducir USDT (incluye fees)
+                self._update_usdt_balance(-total_cost, session)
                 
                 # Actualizar portfolio - Aumentar asset
-                asset_symbol = signal.symbol.split('/')[0]
-                self._update_asset_balance(asset_symbol, quantity, signal.price, session)
+                asset_symbol = (signal.symbol.split('/')[0] if '/' in signal.symbol else (signal.symbol[:-4] if signal.symbol.endswith(('USDT')) else signal.symbol))
+                self._update_asset_balance(asset_symbol, quantity, execution_price, session)
                 
                 # Guardar señal en base de datos
                 self._save_signal_to_db(signal, new_trade.id, "EXECUTED", session)
@@ -369,16 +382,16 @@ class PaperTrader:
                 # Obtener balance de USDT después de la compra
                 usdt_balance_after = self._get_usdt_balance()
                 
-                self.logger.info(f"✅ BUY executed: {quantity:.6f} {asset_symbol} @ ${signal.price:.2f}")
+                self.logger.info(f"✅ BUY executed: {quantity:.6f} {asset_symbol} @ ${execution_price:.2f}")
                 self.logger.info(f"💰 USDT Balance after purchase: ${usdt_balance_after:.2f}")
                 
                 return TradeResult(
                     success=True,
                     trade_id=new_trade.id,
-                    message=f"✅ Bought {quantity:.6f} {asset_symbol} for ${trade_value:.2f}",
-                    entry_price=signal.price,
+                    message=f"✅ Bought {quantity:.6f} {asset_symbol} for ${total_cost:.2f}",
+                    entry_price=execution_price,
                     quantity=quantity,
-                    entry_value=trade_value
+                    entry_value=total_cost
                 )
                 
         except Exception as e:
@@ -404,7 +417,7 @@ class PaperTrader:
         """
         try:
             with db_manager.get_db_session() as session:
-                asset_symbol = signal.symbol.split('/')[0]
+                asset_symbol = (signal.symbol.split('/')[0] if '/' in signal.symbol else (signal.symbol[:-4] if signal.symbol.endswith('USDT') else signal.symbol))
                 asset_balance = self._get_asset_balance(asset_symbol)
                 
                 if asset_balance <= 0:
@@ -419,11 +432,16 @@ class PaperTrader:
                 
                 # Vender todo el balance del asset
                 quantity = asset_balance
-                sale_value = quantity * signal.price
                 
+                # Ejecutar a precio de mercado (sin slippage) y aplicar fee
+                execution_price = float(signal.price)
+                sale_value_gross = quantity * execution_price
+                fee_usdt_total = sale_value_gross * FEE_RATE
+
+                normalized_symbol = self._normalize_to_usdt_ticker(signal.symbol)
                 # Buscar trades abiertos para cerrar
                 open_trades = session.query(Trade).filter(
-                    Trade.symbol == signal.symbol,
+                    Trade.symbol == normalized_symbol,
                     Trade.status == "OPEN",
                     Trade.is_paper_trade == True
                 ).all()
@@ -432,8 +450,10 @@ class PaperTrader:
                 
                 # Cerrar trades abiertos
                 for trade in open_trades:
-                    trade.exit_price = signal.price
-                    trade.exit_value = trade.quantity * signal.price
+                    trade.exit_price = execution_price
+                    exit_value_gross = trade.quantity * execution_price
+                    fee_usdt_trade = exit_value_gross * FEE_RATE
+                    trade.exit_value = exit_value_gross - fee_usdt_trade
                     trade.pnl = trade.exit_value - trade.entry_value
                     trade.pnl_percentage = (trade.pnl / trade.entry_value) * 100
                     trade.status = "CLOSED"
@@ -442,31 +462,31 @@ class PaperTrader:
                 
                 # Crear nuevo trade de venta
                 new_trade = Trade(
-                    symbol=signal.symbol,
+                    symbol=normalized_symbol,
                     strategy_name=signal.strategy_name,
                     trade_type="SELL",
-                    entry_price=signal.price,
-                    exit_price=signal.price,
+                    entry_price=execution_price,
+                    exit_price=execution_price,
                     quantity=quantity,
-                    entry_value=sale_value,
-                    exit_value=sale_value,
+                    entry_value=sale_value_gross,
+                    exit_value=sale_value_gross - fee_usdt_total,
                     pnl=0.0,  # Para trades de venta directa
                     status="CLOSED",
                     is_paper_trade=True,
                     timeframe=TradingBotConfig.get_primary_timeframe(),
                     confidence_score=signal.confidence_score,
-                    notes=signal.notes,
+                    notes=f"{signal.notes or ''} | Fee: ${fee_usdt_total:.4f}",
                     exit_time=datetime.now()
                 )
                 
                 session.add(new_trade)
                 session.flush()
                 
-                # Actualizar portfolio - Aumentar USDT
-                self._update_usdt_balance(sale_value, session)
+                # Actualizar portfolio - Aumentar USDT (neto de fees)
+                self._update_usdt_balance(sale_value_gross - fee_usdt_total, session)
                 
                 # Actualizar portfolio - Reducir asset a 0
-                self._update_asset_balance(asset_symbol, -asset_balance, signal.price, session)
+                self._update_asset_balance(asset_symbol, -asset_balance, execution_price, session)
                 
                 # Guardar señal en base de datos
                 self._save_signal_to_db(signal, new_trade.id, "EXECUTED", session)
@@ -476,16 +496,16 @@ class PaperTrader:
                 # Obtener balance de USDT después de la venta
                 usdt_balance_after = self._get_usdt_balance()
                 
-                self.logger.info(f"✅ SELL executed: {quantity:.6f} {asset_symbol} @ ${signal.price:.2f} (PnL: ${total_pnl:.2f})")
+                self.logger.info(f"✅ SELL executed: {quantity:.6f} {asset_symbol} @ ${execution_price:.2f} (PnL: ${total_pnl:.2f})")
                 self.logger.info(f"💰 USDT Balance after sale: ${usdt_balance_after:.2f}")
                 
                 return TradeResult(
                     success=True,
                     trade_id=new_trade.id,
-                    message=f"✅ Sold {quantity:.6f} {asset_symbol} for ${sale_value:.2f} (PnL: ${total_pnl:.2f})",
-                    entry_price=signal.price,
+                    message=f"✅ Sold {quantity:.6f} {asset_symbol} for ${sale_value_gross - fee_usdt_total:.2f} (PnL: ${total_pnl:.2f})",
+                    entry_price=execution_price,
                     quantity=quantity,
-                    entry_value=sale_value
+                    entry_value=sale_value_gross - fee_usdt_total
                 )
                 
         except Exception as e:
@@ -618,6 +638,28 @@ class PaperTrader:
         except Exception as e:
             self.logger.error(f"❌ Error getting {asset_symbol} balance: {e}")
             return 0.0
+
+    def _normalize_to_usdt_ticker(self, symbol: str) -> str:
+        """
+        Normaliza cualquier símbolo de entrada al ticker USDT (BASEUSDT) en mayúsculas.
+        Acepta formatos como "BTCUSDT", "BTC/USDT", "BTCUSDC", "BTC/BUSD" o "BTC" y devuelve "BTCUSDT".
+        """
+        try:
+            if not symbol:
+                return ""
+            s = symbol.upper()
+            if s == "USDT":
+                return "USDT"
+            if '/' in s:
+                base, _quote = s.split('/')
+                return f"{base}USDT"
+            if s.endswith(("USDT")):
+                base = s[:-4]
+                return f"{base}USDT"
+            # Caso sin sufijo
+            return f"{s}USDT"
+        except Exception:
+            return symbol
     
     def _update_usdt_balance(self, amount: float, session: Session):
         """
@@ -957,7 +999,7 @@ class PaperTrader:
                 if trade_value > effective_allowed:
                     return False
             else:  # SELL
-                asset_symbol = symbol.split('/')[0] if '/' in symbol else symbol
+                asset_symbol = (symbol.split('/')[0] if '/' in symbol else (symbol[:-4] if symbol.endswith(('USDT')) else symbol))
                 asset_qty = self.get_balance(asset_symbol)
                 if quantity > asset_qty:
                     return False

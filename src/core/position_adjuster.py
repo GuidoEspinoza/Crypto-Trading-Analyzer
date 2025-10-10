@@ -6,12 +6,13 @@ Maneja el ajuste dinámico de Take Profit y Stop Loss para posiciones activas
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.config.main_config import RiskManagerConfig, TradingProfiles, TradingBotConfig, APIConfig
+from src.config.main_config import RiskManagerConfig, TradingProfiles, TradingBotConfig, APIConfig, CacheConfig
 from src.database.database import db_manager
 
 # Configurar logger
@@ -174,21 +175,41 @@ class PositionAdjuster:
             return []
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual del símbolo (simulado)"""
+        """💰 Obtener precio actual del símbolo (simulado o CCXT con cache)"""
         try:
-            # En modo simulación, usar precio de la base de datos + variación aleatoria
-            import random
+            if self.simulation_mode:
+                # En modo simulación, usar precio de la base de datos + variación aleatoria
+                import random
+                last_trade_price = db_manager.get_last_trade_for_symbol(symbol, is_paper=True)
+                if last_trade_price:
+                    variation = random.uniform(-0.02, 0.02)
+                    return last_trade_price * (1 + variation)
+                return 0.0
             
-            # Obtener último precio conocido
-            last_trade_price = db_manager.get_last_trade_for_symbol(symbol, is_paper=True)
-            if last_trade_price:
-                # Simular variación de precio ±2%
-                variation = random.uniform(-0.02, 0.02)
-                return last_trade_price * (1 + variation)
+            # Modo real: usar CCXT con cache TTL centralizado
+            if '/' in symbol:
+                base, quote = symbol.split('/')
+                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
+            else:
+                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
+            ttl = CacheConfig.get_ttl_for_operation("price_data")
+            now = time.time()
+            cache = getattr(self, '_price_cache', {})
+            cache_ts = getattr(self, '_price_cache_ts', {})
+            last_ts = cache_ts.get(norm_symbol, 0)
+            if norm_symbol in cache and (now - last_ts) < ttl:
+                return float(cache[norm_symbol])
             
-            # Fallback: precio base simulado
-            return 0.0  # Precio base para simulación
+            import ccxt
+            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
+            ticker = exchange.fetch_ticker(norm_symbol)
+            current_price = float(ticker['last']) if ticker.get('last') else 0.0
             
+            cache[norm_symbol] = current_price
+            cache_ts[norm_symbol] = now
+            setattr(self, '_price_cache', cache)
+            setattr(self, '_price_cache_ts', cache_ts)
+            return current_price
         except Exception as e:
             logger.error(f"❌ Error obteniendo precio para {symbol}: {e}")
             return 0.0

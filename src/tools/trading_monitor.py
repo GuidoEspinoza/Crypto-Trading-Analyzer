@@ -18,6 +18,7 @@ import sys
 import os
 import argparse
 import requests
+import time
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -31,7 +32,7 @@ from src.core.position_manager import PositionManager
 from src.config.main_config import TradingBotConfig, APIConfig
 from src.core.paper_trader import PaperTrader
 from src.config.main_config import TradingProfiles
-from src.config.main_config import TradingBotConfig, APIConfig, MonitoringConfig
+from src.config.main_config import TradingBotConfig, APIConfig, MonitoringConfig, CacheConfig
 from src.database.database import db_manager
 from src.database.models import Trade
 
@@ -623,18 +624,19 @@ def show_missed_executions_detailed(missed_executions: List[Any]):
     print(f"📊 EJECUCIONES PERDIDAS: {len(missed_executions)}")
 
 def get_current_price(symbol: str) -> float:
-    """💰 Obtener precio actual de Binance"""
+    """💰 Obtener precio actual usando feed unificado de db_manager con cache TTL."""
     try:
-        url = APIConfig.get_binance_url("ticker_price")
-        params = {'symbol': symbol}
-        
-        request_config = APIConfig.get_request_config()
-        response = requests.get(url, params=params, timeout=request_config['timeout'])
-        response.raise_for_status()
-        
-        data = response.json()
-        return float(data['price'])
-        
+        # Manejo especial de monedas base estables
+        if symbol and symbol.upper() == "USDT":
+            return 1.0
+        # Normalizar símbolo para formato CCXT (BTCUSDT/BTC/USDT -> BASE/USDT)
+        if '/' in symbol:
+            base, quote = symbol.split('/')
+            norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
+        else:
+            norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
+        # Delegar al gestor de base de datos que maneja cache TTL centralizada
+        return float(db_manager._get_current_price(norm_symbol))
     except Exception:
         return 0.0
 

@@ -11,6 +11,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
 from typing import Generator, Optional
 from datetime import datetime
+import time
+
+import ccxt
+from src.config.main_config import CacheConfig
 
 from .models import Base, Trade, Portfolio, Strategy, BacktestResult, TradingSignal, Settings
 
@@ -170,6 +174,44 @@ class DatabaseManager:
         except SQLAlchemyError as e:
             logger.error(f"❌ Error initializing portfolio: {e}")
     
+    def _get_current_price(self, symbol: str) -> float:
+        """
+        Obtener precio actual del símbolo usando CCXT con cache TTL.
+        """
+        try:
+            if symbol and symbol.upper() == "USDT":
+                return 1.0
+            # Normalizar símbolos a formato CCXT "BASE/USDT"
+            if '/' in symbol:
+                base, quote = symbol.split('/')
+                norm_symbol = f"{base.upper()}/USDT"
+            else:
+                upper = symbol.upper()
+                if upper.endswith(("USDT")):
+                    norm_symbol = f"{upper[:-4]}/USDT"
+                else:
+                    norm_symbol = f"{upper}/USDT"
+            now = time.time()
+            ttl = CacheConfig.get_ttl_for_operation("price_data")
+            cache = getattr(self, "_price_cache", {})
+            cache_ts = getattr(self, "_price_cache_ts", {})
+            last_ts = cache_ts.get(norm_symbol, 0)
+            if norm_symbol in cache and (now - last_ts) < ttl:
+                return float(cache[norm_symbol])
+            
+            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
+            ticker = exchange.fetch_ticker(norm_symbol)
+            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
+            
+            cache[norm_symbol] = current_price
+            cache_ts[norm_symbol] = now
+            setattr(self, "_price_cache", cache)
+            setattr(self, "_price_cache_ts", cache_ts)
+            return current_price
+        except Exception as e:
+            logger.error(f"❌ Error fetching current price for {symbol}: {e}")
+            return 0.0
+    
     def get_portfolio_summary(self, is_paper: bool = True) -> dict:
         """
         📊 Obtener resumen del portfolio
@@ -185,6 +227,26 @@ class DatabaseManager:
                 portfolio_items = session.query(Portfolio).filter(
                     Portfolio.is_paper == is_paper
                 ).all()
+                
+                # Refrescar precios y valores actuales
+                for item in portfolio_items:
+                    try:
+                        if item.symbol == "USDT":
+                            item.current_price = 1.0
+                            item.current_value = float(item.quantity or 0.0)
+                        else:
+                            price = self._get_current_price(item.symbol)
+                            if price > 0:
+                                item.current_price = price
+                                item.current_value = float(item.quantity or 0.0) * price
+                                if (item.quantity or 0.0) > 0 and (item.avg_price or 0.0) > 0:
+                                    cost_basis = float(item.quantity) * float(item.avg_price)
+                                    item.unrealized_pnl = item.current_value - cost_basis
+                                    item.unrealized_pnl_percentage = (item.unrealized_pnl / cost_basis) * 100 if cost_basis > 0 else 0.0
+                        item.last_updated = datetime.now()
+                    except Exception as e:
+                        logger.error(f"❌ Error refreshing portfolio item {item.symbol}: {e}")
+                session.commit()
                 
                 total_value = sum(item.current_value or 0 for item in portfolio_items)
                 total_pnl = sum(item.unrealized_pnl or 0 for item in portfolio_items)

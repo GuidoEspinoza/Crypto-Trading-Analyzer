@@ -1103,11 +1103,11 @@ class AdvancedIndicators:
             divergence = "BULLISH" if price_trend == "DOWN" and rsi_trend == "UP" else \
                         "BEARISH" if price_trend == "UP" and rsi_trend == "DOWN" else "NONE"
             
-            # Obtener umbrales configurables
-            from src.config.main_config import TradingProfiles, TRADING_PROFILE
-            config = TradingProfiles.PROFILES[TRADING_PROFILE]
-            rsi_oversold = config.get('rsi_oversold', 30)
-            rsi_overbought = config.get('rsi_overbought', 70)
+            # Obtener umbrales configurables desde el perfil activo
+            from src.config.main_config import TradingProfiles
+            current_profile_cfg = TradingProfiles.get_current_profile()
+            rsi_oversold = current_profile_cfg.get('rsi_oversold', 30)
+            rsi_overbought = current_profile_cfg.get('rsi_overbought', 70)
             
             # Generar señales mejoradas con umbrales configurables
             if current_rsi <= (rsi_oversold - 10):  # Extremadamente oversold

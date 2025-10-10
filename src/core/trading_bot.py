@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig
+from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig, CacheConfig
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
@@ -70,8 +70,7 @@ class TradingBot:
     # Cache TTL se obtiene de la configuración del perfil
     @classmethod
     def _get_cache_ttl(cls):
-        profile_config = TradingProfiles.get_current_profile()
-        return profile_config.get('cache_ttl_seconds', 180)
+        return CacheConfig.get_ttl_for_operation("price_data")
     
     def __init__(self, analysis_interval_minutes: int = None):
         """
@@ -220,6 +219,10 @@ class TradingBot:
                 "MultiTimeframe": MultiTimeframeStrategy(),
                 "Ensemble": EnsembleStrategy()
             }
+            # Inyectar referencia del bot en las estrategias para delegar operaciones comunes
+            for s in self.strategies.values():
+                if hasattr(s, 'set_trading_bot'):
+                    s.set_trading_bot(self)
             self.logger.info(f"✅ {len(self.strategies)} strategies initialized")
         except Exception as e:
             self.logger.error(f"❌ Error initializing strategies: {e}")
@@ -293,7 +296,7 @@ class TradingBot:
         # self._start_position_adjustment_monitoring()
         
         # Programar primer análisis para evitar bloqueo
-        schedule.every(self.config.get_first_analysis_delay()).seconds.do(self._run_first_analysis).tag('first_analysis')
+        schedule.every(self.config.get_first_analysis_delay()).minutes.do(self._run_first_analysis).tag('first_analysis')
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
@@ -348,8 +351,15 @@ class TradingBot:
     def _get_current_price(self, symbol: str) -> float:
         """💰 Obtener precio actual del símbolo con cache para el position monitor"""
         try:
-            # Generar clave de cache para precio
-            cache_key = self._get_cache_key("current_price", symbol)
+            # Normalizar símbolo: aceptar 'BTCUSDT', 'BTC/USDT' y convertir a 'BASE/USDT'
+            if '/' in symbol:
+                base, quote = symbol.split('/')
+                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
+            else:
+                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
+            
+            # Generar clave de cache para precio basada en símbolo normalizado
+            cache_key = self._get_cache_key("current_price", norm_symbol)
             
             # Verificar cache (TTL más corto para precios)
             cached_price = self._get_from_cache(cache_key)
@@ -358,8 +368,8 @@ class TradingBot:
             
             import ccxt
             exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(symbol)
-            current_price = float(ticker['last']) if ticker['last'] else 0.0
+            ticker = exchange.fetch_ticker(norm_symbol)
+            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
             
             # Almacenar en cache
             if current_price > 0:

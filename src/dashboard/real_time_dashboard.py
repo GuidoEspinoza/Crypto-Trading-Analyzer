@@ -36,7 +36,7 @@ sys.path.insert(0, project_root)
 from src.database.database import db_manager
 from src.database.models import Trade, Portfolio, TradingSignal
 from src.core.paper_trader import PaperTrader
-from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, TRADING_PROFILE
+from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, CacheConfig
 
 # Configuración del modo de trading (centralizada)
 INITIAL_BALANCE = PaperTraderConfig.INITIAL_BALANCE
@@ -161,7 +161,8 @@ class MetricsCalculator:
                             trade.trade_type, 
                             trade.entry_price, 
                             current_price, 
-                            trade.quantity
+                            trade.quantity,
+                            getattr(trade, 'entry_value', None)
                         )
                         current_unrealized += unrealized_pnl
                 
@@ -350,7 +351,8 @@ class MetricsCalculator:
                             trade.trade_type, 
                             trade.entry_price, 
                             current_price, 
-                            trade.quantity
+                            trade.quantity,
+                            getattr(trade, 'entry_value', None)
                         )
                         unrealized_pnl_total += unrealized_pnl
                 
@@ -393,6 +395,8 @@ class MetricsCalculator:
                     'total_fees_paid': total_fees_paid,
                     'unrealized_pnl_total': unrealized_pnl_total,
                     'realized_pnl': realized_pnl_total,
+                    'realized_return_pct': (realized_pnl_total / initial_equity) * 100 if initial_equity > 0 else 0.0,
+                    'real_balance': initial_equity + realized_pnl_total,
                     'total_trades': total_trades,
                     'trades_today': trades_today,
                     'win_rate_pct': win_rate,
@@ -542,15 +546,26 @@ class MetricsCalculator:
             'available_balance': 0.0
         }
     
-    def _calculate_unrealized_pnl(self, trade_type: str, entry_price: float, current_price: float, quantity: float) -> float:
-        """Calcular PnL no realizado para un trade"""
-        if entry_price <= 0 or current_price <= 0 or quantity <= 0:
+    def _calculate_unrealized_pnl(self, trade_type: str, entry_price: float, current_price: float, quantity: float, entry_value: float = None) -> float:
+        """Calcular PnL no realizado para un trade, considerando fees si entry_value está disponible"""
+        if current_price <= 0 or quantity <= 0:
             return 0.0
         
-        if trade_type.upper() == 'BUY':
-            return (current_price - entry_price) * quantity
-        else:  # SELL
-            return (entry_price - current_price) * quantity
+        t = trade_type.upper() if trade_type else 'BUY'
+        # Si tenemos entry_value (USDT), ya incluye fees en BUY y salida neta en SELL
+        if entry_value is not None and entry_value > 0:
+            if t == 'BUY':
+                return (current_price * quantity) - entry_value
+            else:  # SELL
+                return entry_value - (current_price * quantity)
+        
+        # Fallback a cálculo por precios si no hay entry_value
+        if entry_price and entry_price > 0:
+            if t == 'BUY':
+                return (current_price - entry_price) * quantity
+            else:  # SELL
+                return (entry_price - current_price) * quantity
+        return 0.0
     
     def _calculate_total_fees(self, trades: List) -> float:
         """
@@ -580,40 +595,64 @@ class MetricsCalculator:
         return round(total_fees, 4)
     
     def _get_current_price_simple(self, symbol: str, entry_price: float = None) -> float:
-        """Obtener precio actual con cache para mejor rendimiento"""
+        """Obtener precio actual con cache para mejor rendimiento usando fuente centralizada cuando sea posible"""
         try:
-            # Cache simple para evitar llamadas repetidas a la API
-            cache_key = f"price_{symbol.replace('/', '')}"
-            current_time = time.time()
+            # Normalización robusta de símbolo
+            norm_symbol = symbol if '/' in symbol else (symbol[:-4] + '/USDT' if symbol.endswith(('USDT')) else symbol)
+            if symbol == 'USDT' or symbol.replace('/', '') == 'USDT':
+            # Stablecoins: precio base 1.0 (USDT-only)
+                return 1.0
             
-            # Verificar si tenemos el precio en cache (válido por 30 segundos)
+            cache_key = f"price_{norm_symbol.replace('/', '')}"
+            current_time = time.time()
+            ttl = CacheConfig.get_ttl_for_operation("price_data")
+            
+            # Verificar cache local
             if hasattr(self, '_price_cache'):
                 if cache_key in self._price_cache:
                     cached_price, cached_time = self._price_cache[cache_key]
-                    if current_time - cached_time < 30:  # Cache válido por 30 segundos
+                    if current_time - cached_time < ttl:
                         return cached_price
             else:
                 self._price_cache = {}
             
-            # Importar la función del trading monitor
+            # Intentar usar TradingBot global para precios con cache centralizado
+            try:
+                from src.core.trading_bot import trading_bot
+                if trading_bot:
+                    price = float(trading_bot._get_current_price(norm_symbol))
+                    if price > 0:
+                        self._price_cache[cache_key] = (price, current_time)
+                        return price
+            except Exception:
+                pass
+            
+            # Fallback: usar feed unificado del gestor de base de datos (TTL cache)
+            try:
+                from src.database.database import db_manager
+                price = float(db_manager._get_current_price(norm_symbol))
+                if price > 0:
+                    self._price_cache[cache_key] = (price, current_time)
+                    return price
+            except Exception:
+                pass
+            
+            # Fallback: usar trading_monitor
             from src.tools.trading_monitor import get_current_price
+            current_price = float(get_current_price(norm_symbol))
             
-            # Usar la función real de precios del trading monitor
-            current_price = get_current_price(symbol.replace('/', ''))
-            
-            # Guardar en cache
             if current_price > 0:
                 self._price_cache[cache_key] = (current_price, current_time)
                 return current_price
             
-            # Si no se pudo obtener el precio, usar el precio de entrada como fallback
+            # Fallback adicional: precio de entrada
             if entry_price and entry_price > 0:
-                return entry_price
+                return float(entry_price)
             
             return current_price
         except Exception as e:
             print(f"Error obteniendo precio para {symbol}: {e}")
-            return entry_price or 0.0
+            return float(entry_price) if entry_price else 0.0
 
     def get_active_trades(self) -> List[Dict]:
         """Obtener trades activos desde la base de datos"""
@@ -635,7 +674,8 @@ class MetricsCalculator:
                         trade.trade_type, 
                         trade.entry_price or 0, 
                         current_price, 
-                        trade.quantity or 0
+                        trade.quantity or 0,
+                        (trade.entry_value or 0)
                     )
                     
                     trades_data.append({
@@ -643,6 +683,7 @@ class MetricsCalculator:
                         'symbol': trade.symbol,
                         'type': trade.trade_type,
                         'entry_price': trade.entry_price or 0,
+                        'entry_value': trade.entry_value or 0,
                         'quantity': trade.quantity or 0,
                         'entry_time': trade.entry_time or datetime.now(),
                         'strategy': trade.strategy_name or 'Unknown',
@@ -704,7 +745,8 @@ class MetricsCalculator:
                     trade['type'], 
                     trade['entry_price'], 
                     current_price, 
-                    trade['quantity']
+                    trade['quantity'],
+                    trade.get('entry_value', None)
                 )
                 total_unrealized_pnl += trade_unrealized_pnl
             
@@ -1880,16 +1922,14 @@ class RealTimeDashboard:
             )
         
         with col2:
-            # Valor Portfolio (Valor total incluyendo posiciones y PnL)
-            total_value = metrics['current_equity']
+            # Valor Portfolio Real (solo PnL realizado)
             initial_balance = metrics.get('initial_balance', 0.0)
-            growth = total_value - initial_balance
-            growth_pct = (growth / initial_balance) * 100 if initial_balance > 0 else 0
-            
-            emoji = "📊" if growth >= 0 else "📉"
+            real_balance = metrics.get('real_balance', initial_balance)
+            growth_real = real_balance - initial_balance
+            emoji = "📊" if growth_real >= 0 else "📉"
             st.metric(
-                f"{emoji} Valor Portfolio (USDT)",
-                f"${total_value:,.2f}"
+                f"{emoji} Valor Portfolio Real (USDT)",
+                f"${real_balance:,.2f}"
             )
         
         with col3:
@@ -1916,12 +1956,13 @@ class RealTimeDashboard:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Retorno Total
+            # Retorno Realizado (solo PnL de trades cerrados)
             delta_color = "normal"
-            emoji = "🚀" if metrics['total_return_pct'] > 10 else "📈" if metrics['total_return_pct'] > 0 else "📉"
+            realized_return = metrics.get('realized_return_pct', metrics.get('total_return_pct', 0.0))
+            emoji = "🚀" if realized_return > 10 else "📈" if realized_return > 0 else "📉"
             st.metric(
-                f"{emoji} Retorno Total",
-                f"{metrics['total_return_pct']:.2f}%"
+                f"{emoji} Retorno Realizado",
+                f"{realized_return:.2f}%"
             )
         
         with col2:
@@ -2084,7 +2125,7 @@ class RealTimeDashboard:
         try:
             # Usar configuración centralizada
             current_profile_cfg = TradingProfiles.get_current_profile()
-            profile_name = current_profile_cfg.get('name', TRADING_PROFILE)
+            profile_name = current_profile_cfg.get('name', 'DESCONOCIDO')
             max_positions = TradingBotConfig.get_max_concurrent_positions()
             min_confidence = RiskManagerConfig.get_min_confidence_threshold()
             return {
@@ -2097,24 +2138,45 @@ class RealTimeDashboard:
             }
         except Exception as e:
             print(f"Error obteniendo trading mode info: {e}")
+            # Usar nombre del perfil actual como fallback
+            current_profile_cfg = TradingProfiles.get_current_profile()
             return {
                 'mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
-                'profile': TRADING_PROFILE,
+                'profile': current_profile_cfg.get('name', 'DESCONOCIDO'),
                 'description': 'Modo de trading virtual para pruebas',
-                'risk_level': self._get_profile_risk_level(TRADING_PROFILE),
+                'risk_level': self._get_profile_risk_level(current_profile_cfg.get('name', 'DESCONOCIDO')),
                 'max_positions': TradingBotConfig.get_max_concurrent_positions(),
                 'min_confidence': RiskManagerConfig.get_min_confidence_threshold()
             }
     
     def _get_profile_risk_level(self, profile: str) -> str:
-        """Obtener nivel de riesgo del perfil"""
-        risk_levels = {
-            "CONSERVADOR": "LOW",
-            "ÓPTIMO": "MEDIUM",
-            "AGRESIVO": "HIGH",
-            "RÁPIDO": "VERY_HIGH"
-        }
-        return risk_levels.get(profile, "MEDIUM")
+        """Obtener nivel de riesgo del perfil.
+        Acepta tanto la clave del perfil (e.g. 'OPTIMO', 'AGRESIVO') como el nombre descriptivo (e.g. '🎯 Óptimo').
+        """
+        if not profile:
+            return "MEDIUM"
+        # Normalizar entrada para facilitar coincidencias
+        p_upper = profile.upper()
+        p_lower = profile.lower()
+        # Coincidencias por clave directa
+        if p_upper in {"CONSERVADOR"}:
+            return "LOW"
+        if p_upper in {"OPTIMO", "ÓPTIMO"}:
+            return "MEDIUM"
+        if p_upper in {"AGRESIVO"}:
+            return "HIGH"
+        if p_upper in {"RAPIDO", "RÁPIDO"}:
+            return "VERY_HIGH"
+        # Coincidencias por nombre descriptivo (con emojis/acentos)
+        if ("conservador" in p_lower):
+            return "LOW"
+        if ("optimo" in p_lower) or ("óptimo" in p_lower):
+            return "MEDIUM"
+        if ("agresivo" in p_lower):
+            return "HIGH"
+        if ("rápido" in p_lower) or ("rapido" in p_lower) or ("ultra-rápido" in p_lower) or ("ultra rapido" in p_lower):
+            return "VERY_HIGH"
+        return "MEDIUM"
     
     def stop_dashboard(self):
         """Detener dashboard"""

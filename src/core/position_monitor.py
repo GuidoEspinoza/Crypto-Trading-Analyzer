@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 # Importaciones locales
-from src.config.main_config import TradingBotConfig, RiskManagerConfig, TradingProfiles
+from src.config.main_config import TradingBotConfig, RiskManagerConfig, TradingProfiles, CacheConfig
 from database.database import db_manager
 from database.models import Trade
 from .enhanced_strategies import TradingSignal
@@ -89,7 +89,7 @@ class PositionMonitor:
         
         # Configuración de monitoreo desde TradingBotConfig
         self.monitor_interval = TradingBotConfig.get_monitoring_interval()  # segundos entre checks
-        self.price_cache_duration = profile.get('price_cache_duration', 30)  # segundos de validez del cache
+        self.price_cache_duration = CacheConfig.get_ttl_for_operation("price_data")  # segundos de validez del cache
         
         # Inicializar estadísticas del monitor
         self.stats = {

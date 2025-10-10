@@ -16,10 +16,26 @@ Para cambiar entre configuraciones, simplemente modifica la variable TRADING_PRO
 """
 
 import logging
+import os
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+
+# Carga de variables de entorno desde .env si está presente
+load_dotenv()
 
 # Configurar logger para validación
 logger = logging.getLogger(__name__)
+
+# Utilidad para leer variables de entorno como float con fallback seguro
+def _get_env_float(var_name: str, default: float) -> float:
+    value = os.getenv(var_name)
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except Exception:
+        logger.warning(f"Valor inválido para {var_name}: {value}, usando default {default}")
+        return default
 
 # ============================================================================
 # 🎯 SELECTOR DE PERFIL DE TRADING - CAMBIAR AQUÍ
@@ -67,7 +83,7 @@ class TradingProfiles:
             "name": "🚀 Ultra-Rápido",
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
             "timeframes": ["1m", "5m", "15m"],
-            "analysis_interval": 30,  # Corregido: mínimo 30 segundos
+            "analysis_interval": 30,  # Intervalo de análisis (minutos)
             "min_confidence": 65.0,  # Aumentado para mejor calidad de señales
             "max_daily_trades": 20,  # Reducido para mejor selección
             "max_positions": 8,  # Reducido para mejor control
@@ -77,19 +93,19 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
-            "max_position_size": 0.05,  # Corregido: 80% como decimal
-            "max_total_exposure": 0.75,  # Corregido: 75% como decimal
-            "min_trade_value": 5.0,  # Reducido para permitir pruebas  # Aumentado para calidad
+            "max_position_size": 0.06,  # 6% como decimal
+            "max_total_exposure": 0.70,  # Exposición total máxima 70%
+            "min_trade_value": 5.0,  # Reducido para permitir pruebas
             "paper_min_confidence": 60.0,  # Aumentado
-            "max_slippage": 0.10,  # Reducido para mejor ejecución
-            "min_liquidity": 4.0,  # Aumentado para liquidez
+            "max_slippage": 0.06,  # Reducido para mejor ejecución
+            "min_liquidity": 5.0,  # Aumentado para liquidez
             # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.5,  # Optimizado para mejor control
-            "max_daily_risk": 6.0,  # Reducido para mayor protección
+            "max_risk_per_trade": 1.2,  # Control de riesgo por operación
+            "max_daily_risk": 5.0,  # Protección diaria
             "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
             "correlation_threshold": 0.75,  # Optimizado
             "min_position_size": 12.0,  # Reducido para flexibilidad
-            "risk_max_position_size": 0.8,  # Corregido: consistente con max_position_size
+            "risk_max_position_size": 0.06,  # Consistente con max_position_size
             "kelly_fraction": 0.28,  # Optimizado
             "volatility_adjustment": 1.25,  # Optimizado
             "atr_multiplier_min": 1.8,  # Optimizado más ajustado
@@ -200,7 +216,7 @@ class TradingProfiles:
             "name": "⚡ Agresivo",
             "description": "Timeframes 15m-1h, balance velocidad/control optimizado",
             "timeframes": ["15m", "30m", "1h"],
-            "analysis_interval": 30,  # Corregido: mínimo 30 segundos
+            "analysis_interval": 30,  # Intervalo de análisis (minutos)
             "min_confidence": 72.0,  # Optimizado para mejor calidad
             "max_daily_trades": 15,  # Aumentado para más oportunidades
             "max_positions": 7,  # Aumentado para diversificación
@@ -210,19 +226,19 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
-            "max_position_size": 0.1,  # Corregido: 60% como decimal
-            "max_total_exposure": 0.65,  # Corregido: 65% como decimal
-            "min_trade_value": 5.0,  # Reducido para permitir pruebas
+            "max_position_size": 0.12,  # 12% como decimal
+            "max_total_exposure": 0.68,  # Exposición total máxima 68%
+            "min_trade_value": 5.0,  # Mantener bajo para más oportunidades
             "paper_min_confidence": 68.0,  # Aumentado para calidad
-            "max_slippage": 0.06,  # Reducido para mejor ejecución
-            "min_liquidity": 6.0,  # Aumentado para mejor liquidez
+            "max_slippage": 0.05,  # Más estricto para mejor ejecución
+            "min_liquidity": 8.0,  # Aumentado para mejor liquidez
             # Risk Manager Config - Optimizado
             "max_risk_per_trade": 1.0,  # Optimizado para control
             "max_daily_risk": 4.5,  # Reducido para mayor protección
             "max_drawdown_threshold": 0.08,  # Corregido: 8% como decimal
             "correlation_threshold": 0.65,  # Optimizado
             "min_position_size": 8.0,  # Reducido
-            "risk_max_position_size": 0.6,  # Corregido: consistente con max_position_size
+            "risk_max_position_size": 0.12,  # Consistente con max_position_size
             "kelly_fraction": 0.20,  # Optimizado conservador
             "volatility_adjustment": 1.10,  # Reducido para estabilidad
             "atr_multiplier_min": 2.2,  # Optimizado
@@ -321,7 +337,7 @@ class TradingProfiles:
             "name": "🎯 Óptimo",
             "description": "Timeframes 1h-4h, máxima precisión optimizada",
             "timeframes": ["1h", "4h", "1d"],
-            "analysis_interval": 30,
+            "analysis_interval": 30,  # Intervalo de análisis (minutos)
             "min_confidence": 80.0,  # Aumentado para máxima calidad
             "max_daily_trades": 10,  # Aumentado para más oportunidades
             "max_positions": 5,  # Aumentado para diversificación
@@ -332,8 +348,8 @@ class TradingProfiles:
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
             "max_position_size": 0.18,  # Corregido: 100% como decimal (máximo permitido)
-            "max_total_exposure": 0.55,  # Corregido: 55% como decimal
-            "min_trade_value": 30.0,  # Aumentado para calidad
+            "max_total_exposure": 0.65,  # Optimizado: 65% como decimal para mayor flexibilidad
+            "min_trade_value": 10.0,  # Reducido para permitir entradas y pruebas
             "paper_min_confidence": 75.0,  # Aumentado
             "max_slippage": 0.04,  # Reducido para mejor ejecución
             "min_liquidity": 10.0,  # Aumentado para liquidez
@@ -343,7 +359,7 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.06,  # Corregido: 6% como decimal
             "correlation_threshold": 0.55,  # Optimizado
             "min_position_size": 20.0,  # Aumentado para calidad
-            "risk_max_position_size": 1.0,  # Corregido: consistente con max_position_size
+            "risk_max_position_size": 0.18,  # Consistente con max_position_size
             "kelly_fraction": 0.15,  # Muy conservador para precisión
             "volatility_adjustment": 0.90,  # Reducido para estabilidad
             "atr_multiplier_min": 2.2,  # Optimizado
@@ -454,7 +470,7 @@ class TradingProfiles:
             "name": "🛡️ Conservador",
             "description": "Timeframes 4h-1d, máxima preservación de capital",
             "timeframes": ["4h", "1d"],  # Timeframes más largos
-            "analysis_interval": 60,  # Análisis menos frecuente (segundos)
+            "analysis_interval": 60,  # Análisis menos frecuente (minutos)
             "min_confidence": 85.0,  # Aumentado para máxima seguridad
             "max_daily_trades": 6,  # Aumentado ligeramente para oportunidades
             "max_positions": 3,  # Aumentado para diversificación mínima
@@ -464,9 +480,9 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.05,  # Estandarizado: 5% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Conservador
-            "max_position_size": 0.25,  # Corregido: 40% como decimal
-            "max_total_exposure": 0.35,  # Corregido: 35% como decimal
-            "min_trade_value": 50.0,  # Alto para calidad
+            "max_position_size": 0.25,  # 25% como decimal
+            "max_total_exposure": 0.35,  # 35% como decimal
+            "min_trade_value": 30.0,  # Reducido para permitir entradas de alta calidad
             "paper_min_confidence": 80.0,  # Muy alto
             "max_slippage": 0.03,  # Muy estricto
             "min_liquidity": 15.0,  # Muy alto
@@ -476,7 +492,7 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.05,  # Corregido: 5% como decimal (mínimo permitido)
             "correlation_threshold": 0.4,  # Muy estricto
             "min_position_size": 30.0,  # Alto para calidad
-            "risk_max_position_size": 0.4,  # Corregido: consistente con max_position_size
+            "risk_max_position_size": 0.25,  # Consistente con max_position_size
             "kelly_fraction": 0.08,  # Extremadamente conservador
             "volatility_adjustment": 0.75,  # Muy reducido para estabilidad
             "atr_multiplier_min": 3.5,  # Stops más amplios
@@ -614,7 +630,7 @@ class TradingBotConfig:
     # 🎯 CONFIGURACIÓN DINÁMICA BASADA EN PERFIL SELECCIONADO
     @classmethod
     def get_analysis_interval(cls) -> int:
-        """Intervalo de análisis en segundos según perfil activo."""
+        """Intervalo de análisis en minutos según perfil activo."""
         return TradingProfiles.get_current_profile()["analysis_interval"]
     
     @classmethod
@@ -666,12 +682,12 @@ class TradingBotConfig:
     
     @classmethod
     def get_live_update_interval(cls) -> int:
-        """Intervalo de actualización para live bot según perfil."""
+        """Intervalo de actualización del live bot en minutos según perfil."""
         return TradingProfiles.get_current_profile()["analysis_interval"]
     
     @classmethod
     def get_first_analysis_delay(cls) -> int:
-        """Delay para primer análisis según perfil."""
+        """Delay para primer análisis (en minutos) según perfil."""
         # Usar el doble del intervalo de análisis como delay inicial
         return TradingProfiles.get_current_profile()["analysis_interval"] * 2
     
@@ -1189,8 +1205,12 @@ class LiveTradingConfig:
     # Balance inicial real en USDT - Se alimenta automáticamente del PaperTrader para consistencia
     INITIAL_BALANCE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
     
-    # Comisiones de Binance en % por trade (rápido: 0.1 - agresivo: 0.1 - óptimo: 0.075)
-    TRADING_FEES: float = 0.001  # Comisión por trade (0.1%)
+    # Comisiones de exchange en % por trade; configurable vía entorno TRADING_FEES
+    # Fallback: perfil actual TradingProfiles["trading_fees"] si existe, sino 0.001
+    TRADING_FEES: float = _get_env_float(
+        "TRADING_FEES",
+        TradingProfiles.get_current_profile().get("trading_fees", 0.001)
+    )
     
     # Timeout para órdenes en segundos (rápido: 15 - agresivo: 30 - óptimo: 60)
     ORDER_TIMEOUT: int = 15  # Estrategia rápida
@@ -1201,6 +1221,9 @@ class LiveTradingConfig:
     # Intervalo de verificación de órdenes en segundos (rápido: 2 - agresivo: 5 - óptimo: 10)
     ORDER_CHECK_INTERVAL: int = 2  # Estrategia rápida
 
+
+# Expone TRADING_FEES a nivel de módulo para compatibilidad retroactiva
+TRADING_FEES: float = LiveTradingConfig.TRADING_FEES
 
 # ============================================================================
 # FUNCIÓN DE UTILIDAD PARA OBTENER CONFIGURACIONES
@@ -1297,7 +1320,7 @@ class TestingConfig:
     TEST_MAX_DAILY_TRADES: int = 5
     
     # Configuración de análisis para testing
-    TEST_ANALYSIS_INTERVAL: int = 300  # segundos
+    TEST_ANALYSIS_INTERVAL: int = 300  # 300 segundos (5 minutos)
     
     # Balance para testing
     TEST_PAPER_BALANCE: float = 100.0
@@ -1793,16 +1816,18 @@ def initialize_config() -> bool:
         logger.error("Falló la validación de perfiles. Revise la configuración.")
         return False
     
-    # Verificar que el perfil actual existe
-    if TRADING_PROFILE not in TradingProfiles.PROFILES:
-        logger.error(f"Perfil '{TRADING_PROFILE}' no existe. Perfiles disponibles: {list(TradingProfiles.PROFILES.keys())}")
+    # Validar perfil actual mediante getters
+    try:
+        current_profile = TradingProfiles.get_current_profile()
+    except ValueError:
+        logger.error(f"Perfil actual no existe. Perfiles disponibles: {list(TradingProfiles.PROFILES.keys())}")
         return False
     
     # Mostrar configuración actual
-    current_profile = TradingProfiles.get_current_profile()
-    logger.info(f"Perfil activo: {TRADING_PROFILE} - {current_profile['name']}")
+    profile_name = current_profile.get('name', 'DESCONOCIDO')
+    logger.info(f"Perfil activo: {profile_name}")
     logger.info(f"Timeframes: {current_profile['timeframes']}")
-    logger.info(f"Intervalo de análisis: {current_profile['analysis_interval']}s")
+    logger.info(f"Intervalo de análisis: {current_profile['analysis_interval']} min")
     logger.info(f"Confianza mínima: {current_profile['min_confidence']}%")
     
     logger.info("✅ Configuración inicializada correctamente")

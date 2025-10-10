@@ -38,9 +38,7 @@ try:
     from src.core.position_manager import PositionManager
     from src.core.position_monitor import PositionMonitor
     # Importar configuraciones centralizadas
-    from src.config.main_config import (
-        TradingProfiles, TRADING_PROFILE
-    )
+    from src.config.main_config import TradingProfiles
     # Configuraciones de production_config removidas (no utilizadas)
     # Importar LiveTradingBot desde el nuevo módulo
     from src.tools.live_trading_bot import LiveTradingBot
@@ -79,7 +77,7 @@ class SystemTester:
         
         # Configuraciones centralizadas
         # Configuraciones de production_config removidas (no utilizadas)
-        self.bot_config = TradingProfiles.PROFILES[TRADING_PROFILE]
+        self.bot_config = TradingProfiles.get_current_profile()
         
         # Símbolos para testing
         self.test_symbols = ["BTCUSDT", "ETHUSDT", "ADAUSDT"]

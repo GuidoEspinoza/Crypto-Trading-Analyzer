@@ -12,7 +12,7 @@ import pandas_ta as ta
 from typing import Dict, List, Optional
 import uvicorn
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Importar nuestros indicadores avanzados
 from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
@@ -80,16 +80,44 @@ exchange = ccxt.binance({
 
 # Modelos Pydantic para requests
 class BotConfigUpdate(BaseModel):
-    analysis_interval_minutes: Optional[int] = None
-    max_daily_trades: Optional[int] = None
-    min_confidence_threshold: Optional[float] = None
-    enable_trading: Optional[bool] = None
-    symbols: Optional[List[str]] = None
-    trading_mode: Optional[str] = None  # "paper" or "live"
+    analysis_interval_minutes: Optional[int] = Field(None, ge=1, description="Intervalo de análisis en minutos")
+    max_daily_trades: Optional[int] = Field(None, ge=1, description="Límite máximo de operaciones diarias")
+    min_confidence_threshold: Optional[float] = Field(None, ge=0, le=100, description="Umbral mínimo de confianza (%) entre 0 y 100")
+    enable_trading: Optional[bool] = Field(None, description="Habilitar/deshabilitar ejecución de trades")
+    symbols: Optional[List[str]] = Field(None, description="Lista de símbolos a monitorear")
+    trading_mode: Optional[str] = Field(None, description="Modo de trading ('paper' o 'live') - actualmente solo 'paper'")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "analysis_interval_minutes": 15,
+                "max_daily_trades": 10,
+                "min_confidence_threshold": 65,
+                "enable_trading": True,
+                "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+                "trading_mode": "paper"
+            }
+        }
+    }
 
 class TradingModeUpdate(BaseModel):
     trading_mode: str  # "paper" or "live"
-    confirm_live_trading: Optional[bool] = False  # Confirmación requerida para trading real
+    confirm_live_trading: Optional[bool] = Field(False, description="Confirmación requerida para trading real")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "summary": "Activar paper trading",
+                    "value": {"trading_mode": "paper"}
+                },
+                {
+                    "summary": "Solicitar trading en vivo (no implementado)",
+                    "value": {"trading_mode": "live", "confirm_live_trading": True}
+                }
+            ]
+        }
+    }
 
 # 🔧 **UTILIDADES**
 
@@ -192,8 +220,8 @@ async def get_bot_status():
                 "total_pnl": status.total_pnl,
                 "total_return_percentage": ((status.current_portfolio_value - db_manager.get_global_initial_balance()) / max(1e-9, db_manager.get_global_initial_balance())) * 100,
                 "active_strategies": status.active_strategies,
-                "last_analysis_time": status.last_analysis_time.isoformat(),
-                "next_analysis_time": status.next_analysis_time.isoformat()
+                "last_analysis_time": status.last_analysis_time.isoformat() if status.last_analysis_time else None,
+                "next_analysis_time": status.next_analysis_time.isoformat() if status.next_analysis_time else None
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -222,10 +250,10 @@ async def start_trading_bot():
             "message": "🚀 Trading bot started successfully!",
             "bot_status": {
                 "is_running": True,
-                "analysis_interval": getattr(bot, 'analysis_interval', 60),
+                "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
                 "strategies": list(getattr(bot, 'strategies', {}).keys()),
                 "symbols": getattr(bot, 'symbols', []),
-                "min_confidence": getattr(bot, 'min_confidence_threshold', 0.7)
+                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 50)
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -286,16 +314,16 @@ async def get_bot_configuration():
     """
     try:
         bot = get_trading_bot()
+        current_config = bot.get_configuration() if hasattr(bot, 'get_configuration') else {
+            "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
+            "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
+            "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 50),
+            "enable_trading": getattr(bot, 'enable_trading', False),
+            "symbols": getattr(bot, 'symbols', []),
+        }
         return {
             "status": "success",
-            "configuration": {
-                "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
-                "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
-                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 0.7),
-                "enable_trading": getattr(bot, 'enable_trading', False),
-                "symbols": getattr(bot, 'symbols', []),
-                "strategies": list(getattr(bot, 'strategies', {}).keys())
-            },
+            "configuration": current_config,
             "current_stats": {
                 "daily_trades": getattr(bot, 'stats', {}).get("daily_trades", 0),
                 "signals_generated": getattr(bot, 'stats', {}).get("signals_generated", 0),
@@ -313,7 +341,7 @@ async def update_bot_configuration(config: BotConfigUpdate):
     """
     try:
         # Convertir a diccionario eliminando valores None
-        config_dict = {k: v for k, v in config.dict().items() if v is not None}
+        config_dict = config.model_dump(exclude_none=True)
         
         if not config_dict:
             raise HTTPException(status_code=400, detail="No configuration parameters provided")
@@ -327,17 +355,18 @@ async def update_bot_configuration(config: BotConfigUpdate):
                 if hasattr(bot, key):
                     setattr(bot, key, value)
         
+        current_config = bot.get_configuration() if hasattr(bot, 'get_configuration') else {
+            "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
+            "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
+            "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 50),
+            "enable_trading": getattr(bot, 'enable_trading', False),
+            "symbols": getattr(bot, 'symbols', [])
+        }
         return {
             "status": "success",
             "message": "⚙️ Bot configuration updated successfully",
             "updated_config": config_dict,
-            "current_config": {
-                "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
-                "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
-                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 0.7),
-                "enable_trading": getattr(bot, 'enable_trading', False),
-                "symbols": getattr(bot, 'symbols', [])
-            },
+            "current_config": current_config,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:

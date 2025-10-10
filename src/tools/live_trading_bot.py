@@ -114,7 +114,9 @@ class LiveTradingBot:
         
         # Configuración del bot
         self.symbols = TradingBotConfig.SYMBOLS_LIVE_BOT
-        self.update_interval = self.config.get_live_update_interval()
+        # Intervalo de análisis configurado en minutos; convertir a segundos para asyncio.sleep
+        self.update_interval_minutes = self.config.get_live_update_interval()
+        self.update_interval = max(60, int(self.update_interval_minutes * 60))
         self.running = False
         
         # Inicializar estrategias del trading bot
@@ -150,7 +152,7 @@ class LiveTradingBot:
             # Mostrar configuración del bot
             logger.info("⚙️ CONFIGURACIÓN DEL BOT:")
             logger.info(f"   • Símbolos: {', '.join(self.symbols)}")
-            logger.info(f"   • Intervalo de análisis: {self.update_interval} segundos")
+            logger.info(f"   • Intervalo de análisis: {self.update_interval_minutes} minutos ({self.update_interval} segundos)")
             logger.info(f"   • Confianza mínima para trades: {self.config.get_min_confidence_threshold()}%")
             
             # Ajustes de TP/SL desactivados (Opción A): no configurar callback
@@ -278,16 +280,13 @@ class LiveTradingBot:
             for symbol in self.symbols:
                 logger.info(f"📊 Analizando {symbol}...")
                 
-                # Obtener precio actual
+                # Obtener precio actual usando fuente centralizada con cache TTL
                 try:
-                    import ccxt
-                    exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-                    ticker = exchange.fetch_ticker(symbol)
-                    current_price = ticker['last']
+                    current_price = float(self.trading_bot._get_current_price(symbol))
                     logger.info(f"💰 {symbol} - Precio actual: ${current_price:,.2f}")
                 except Exception as e:
                     logger.error(f"❌ Error obteniendo precio para {symbol}: {e}")
-                    current_price = 0
+                    current_price = 0.0
                 
                 # Analizar con cada estrategia del trading bot (igual que trading_bot.py)
                 all_signals = []
@@ -744,7 +743,7 @@ class LiveTradingBot:
                 # Mostrar estadísticas actuales
                 self.show_current_stats()
                 
-                logger.info(f"⏱️ Esperando {self.update_interval} segundos antes del próximo análisis...")
+                logger.info(f"⏱️ Esperando {self.update_interval_minutes} minutos ({self.update_interval} segundos) antes del próximo análisis...")
                 
                 # Esperar antes del siguiente ciclo
                 await asyncio.sleep(self.update_interval)

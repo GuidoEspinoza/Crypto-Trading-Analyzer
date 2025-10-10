@@ -9,6 +9,7 @@ Este módulo implementa:
 
 import logging
 import requests
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from sqlalchemy.orm import Session
 from database.database import db_manager
 from database.models import Trade, Portfolio
 from .position_manager import PositionManager
-from src.config.main_config import APIConfig, MonitoringConfig
+from src.config.main_config import APIConfig, MonitoringConfig, CacheConfig
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -211,25 +212,36 @@ class MarketValidator:
             return []
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual
-        
-        Args:
-            symbol: Símbolo (ej: BTCUSDT)
-            
-        Returns:
-            Precio actual
-        """
+        """💰 Obtener precio actual delegando en la fuente centralizada del TradingBot"""
         try:
-            url = APIConfig.get_binance_url("ticker_price")
-            params = {'symbol': symbol}
+            # Si tenemos referencia a TradingBot, usar su método centralizado (con TTL y fallback)
+            if hasattr(self, 'trading_bot') and self.trading_bot:
+                return float(self.trading_bot._get_current_price(symbol))
             
-            request_config = APIConfig.get_request_config()
-            response = requests.get(url, params=params, timeout=request_config['timeout'])
-            response.raise_for_status()
+            # Fallback: usar CCXT con TTL cache local (mismo comportamiento que antes)
+            if '/' in symbol:
+                base, quote = symbol.split('/')
+                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
+            else:
+                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
+            ttl = CacheConfig.get_ttl_for_operation("price_data")
+            now = time.time()
+            cache = getattr(self, '_price_cache', {})
+            cache_ts = getattr(self, '_price_cache_ts', {})
+            last_ts = cache_ts.get(norm_symbol, 0)
+            if norm_symbol in cache and (now - last_ts) < ttl:
+                return float(cache[norm_symbol])
             
-            data = response.json()
-            return float(data['price'])
+            import ccxt
+            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
+            ticker = exchange.fetch_ticker(norm_symbol)
+            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
             
+            cache[norm_symbol] = current_price
+            cache_ts[norm_symbol] = now
+            setattr(self, '_price_cache', cache)
+            setattr(self, '_price_cache_ts', cache_ts)
+            return current_price
         except Exception as e:
             self.logger.error(f"❌ Error fetching current price for {symbol}: {e}")
             return 0.0
