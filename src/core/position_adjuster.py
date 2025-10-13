@@ -265,7 +265,7 @@ class PositionAdjuster:
             
             # Condición 1: Escalado de ganancias (posición ganadora > threshold%)
             profit_threshold = self.profile['profit_scaling_threshold']
-            if pnl_pct > profit_threshold:
+            if (pnl_pct / 100.0) > profit_threshold:
                 # Mover SL más cerca para proteger ganancias
                 sl_pct = self.profile['profit_protection_sl_pct']
                 tp_pct = self.profile['profit_protection_tp_pct']
@@ -281,7 +281,7 @@ class PositionAdjuster:
             # Condición 2: Trailing Stop (posición muy ganadora)
             trailing_activation = risk_config.get_trailing_stop_activation()
             if (pnl_pct / 100.0) > trailing_activation:
-                # Implementar trailing stop más agresivo
+                # Implementar trailing stop más ajustado
                 sl_pct = self.profile['trailing_stop_sl_pct']  # 2% por defecto
                 tp_pct = self.profile['trailing_stop_tp_pct']  # 5% por defecto
                 if side == 'BUY':
@@ -295,7 +295,7 @@ class PositionAdjuster:
             
             # Condición 3: Gestión de riesgo (posición perdedora < threshold%)
             risk_threshold = self.profile['risk_management_threshold']
-            if pnl_pct < risk_threshold:
+            if (pnl_pct / 100.0) < risk_threshold:
                 # Ajustar SL más conservador
                 sl_pct = self.profile['risk_management_sl_pct']
                 tp_pct = self.profile['risk_management_tp_pct']

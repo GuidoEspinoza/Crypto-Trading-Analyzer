@@ -1,17 +1,16 @@
 """Configuración centralizada para el sistema de trading.
 
 Este archivo contiene todas las configuraciones principales del bot de trading,
-con tres niveles de configuración disponibles:
+con tres perfiles disponibles basados en timeframe:
 
-🚀 RÁPIDA: Timeframes de 1m-15m, máxima frecuencia de trades, mayor riesgo
-⚡ AGRESIVA: Timeframes de 15m-1h, balance entre velocidad y control de riesgo  
-🛡️ ÓPTIMA: Timeframes de 1h-1d, enfoque en calidad y preservación de capital
+🚀 Rápido: Timeframes de 1m-15m, alta frecuencia, protección agresiva de pérdidas
+🏛️ Elite: Timeframes de 1h-1d, enfoque balanceado con alta protección de ganancias
+🛡️ Conservador: Timeframes de 4h-1d, prioridad en estabilidad y baja pérdida
 
 🎯 CAMBIO RÁPIDO DE PERFILES:
 Para cambiar entre configuraciones, simplemente modifica la variable TRADING_PROFILE:
-- "RAPIDO" para estrategia ultra-rápida
-- "AGRESIVO" para estrategia rápida enfocada en ganancias rápidas
-- "OPTIMO" para estrategia balanceada, enfocada en calidad y preservación de capital
+- "RAPIDO" para estrategia de alta velocidad
+- "ELITE" para estrategia balanceada de precisión
 - "CONSERVADOR" para estrategia lenta, enfocada en estabilidad y reducción de riesgo
 """
 
@@ -42,7 +41,7 @@ def _get_env_float(var_name: str, default: float) -> float:
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "OPTIMO"  # Opciones: "RAPIDO", "AGRESIVO", "OPTIMO", "CONSERVADOR"
+TRADING_PROFILE = "ELITE"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 
 # Balance inicial global para todas las posiciones en USDT
 PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
@@ -58,18 +57,9 @@ GLOBAL_SYMBOLS: List[str] = [
     "BTCUSDT",    # Bitcoin - Líder del mercado, alta liquidez
     "ETHUSDT",    # Ethereum - ETFs institucionales + DeFi dominance
     "SOLUSDT",    # Solana - Alto rendimiento + ecosistema maduro
-    
-    # HIGH GROWTH: Potencial 2-5x (35% peso recomendado)
-    "AVAXUSDT",   # Avalanche - Subnets + partnerships institucionales
-    "MATICUSDT",  # Polygon - POL transition + zkEVM
-    "ADAUSDT",    # Cardano - Potencial ETF + desarrollo sólido
-    "XRPUSDT",    # XRP - Caso legal resuelto + adopción institucional
-    
-    # EMERGING: Alto potencial 3-10x (25% peso recomendado)
-    "NEARUSDT",   # NEAR - Escalabilidad + herramientas dev-friendly
-    "LINKUSDT",   # Chainlink - Oráculos esenciales + partnerships
-    "BNBUSDT"     # BNB - Utilidad Binance + burn mechanism
-    ]
+    "AVAXUSDT",   # Avalanche - Ecosistema en crecimiento + alto rendimiento
+    "XRPUSDT"     # XRP - Caso legal resuelto + adopción institucional
+]
 
 # ============================================================================
 # 📊 DEFINICIÓN DE PERFILES DE TRADING
@@ -80,7 +70,7 @@ class TradingProfiles:
     
     PROFILES = {
         "RAPIDO": {
-            "name": "🚀 Ultra-Rápido",
+            "name": "Rápido",
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
             "timeframes": ["1m", "5m", "15m"],
             "analysis_interval": 30,  # Intervalo de análisis (minutos)
@@ -113,8 +103,8 @@ class TradingProfiles:
             "atr_default": 1.8,
             "atr_volatile": 2.8,  # Optimizado
             "atr_sideways": 1.4,  # Optimizado
-            "trailing_stop_activation": 0.15,  # Corregido: 15% como decimal
-            "breakeven_threshold": 0.6,  # Optimizado
+            "trailing_stop_activation": 0.05,  # Activación de trailing al 5% (decimal)
+            "breakeven_threshold": 0.006,  # Umbral de breakeven al 0.6% (decimal)
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
@@ -166,12 +156,12 @@ class TradingProfiles:
             "position_monitoring_interval": 30,  # Intervalo de monitoreo en segundos
             "price_cache_duration": 30,  # Duración del cache de precio (segundos)
             "max_close_attempts": 3,  # Máximo intentos de cierre antes de marcar procesado
-            "profit_scaling_threshold": 2.0,  # Umbral para escalado de ganancias (%)
+            "profit_scaling_threshold": 0.02,  # Umbral para escalado de ganancias (2% en decimal)
             "trailing_stop_sl_pct": 0.02,  # SL dinámico para trailing stop (2%)
             "trailing_stop_tp_pct": 0.05,  # TP dinámico para trailing stop (5%)
             "profit_protection_sl_pct": 0.01,  # SL para protección de ganancias (1%)
             "profit_protection_tp_pct": 0.03,  # TP para protección de ganancias (3%)
-            "risk_management_threshold": -1.0,  # Umbral para gestión de riesgo (%)
+            "risk_management_threshold": -0.01,  # Umbral para gestión de riesgo (-1% en decimal)
             "risk_management_sl_pct": 0.015,  # SL más conservador para pérdidas (1.5%)
             "risk_management_tp_pct": 0.02,  # TP más conservador para pérdidas (2%)
             # Enhanced Risk Manager Config
@@ -212,262 +202,136 @@ class TradingProfiles:
             "circuit_breaker_threshold": 10,  # Umbral para circuit breaker
             "circuit_breaker_timeout": 300  # Timeout del circuit breaker (seg)
         },
-        "AGRESIVO": {
-            "name": "⚡ Agresivo",
-            "description": "Timeframes 15m-1h, balance velocidad/control optimizado",
-            "timeframes": ["15m", "30m", "1h"],
-            "analysis_interval": 30,  # Intervalo de análisis (minutos)
-            "min_confidence": 72.0,  # Optimizado para mejor calidad
-            "max_daily_trades": 15,  # Aumentado para más oportunidades
-            "max_positions": 7,  # Aumentado para diversificación
-            # Circuit Breaker Config - Optimizado
-            "max_consecutive_losses": 4,  # Mantenido para tolerancia
-            "circuit_breaker_cooldown_hours": 3,  # Optimizado para recuperación
-            "max_drawdown_threshold": 0.10,  # Corregido: 10% como decimal
-            "gradual_reactivation": True,  # Nueva funcionalidad
-            # Paper Trader Config - Optimizado
-            "max_position_size": 0.12,  # 12% como decimal
-            "max_total_exposure": 0.68,  # Exposición total máxima 68%
-            "min_trade_value": 5.0,  # Mantener bajo para más oportunidades
-            "paper_min_confidence": 68.0,  # Aumentado para calidad
-            "max_slippage": 0.05,  # Más estricto para mejor ejecución
-            "min_liquidity": 8.0,  # Aumentado para mejor liquidez
-            # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.0,  # Optimizado para control
-            "max_daily_risk": 4.5,  # Reducido para mayor protección
-            "max_drawdown_threshold": 0.08,  # Corregido: 8% como decimal
-            "correlation_threshold": 0.65,  # Optimizado
-            "min_position_size": 8.0,  # Reducido
-            "risk_max_position_size": 0.12,  # Consistente con max_position_size
-            "kelly_fraction": 0.20,  # Optimizado conservador
-            "volatility_adjustment": 1.10,  # Reducido para estabilidad
-            "atr_multiplier_min": 2.2,  # Optimizado
-            "atr_multiplier_max": 3.8,  # Optimizado
-            "atr_default": 2.5,
-            "atr_volatile": 3.8,  # Optimizado
-            "atr_sideways": 2.2,  # Optimizado
-            "trailing_stop_activation": 0.15,  # Corregido: 15% como decimal
-            "breakeven_threshold": 0.8,  # Optimizado
-            "intelligent_trailing": True,  # Nueva funcionalidad
-            "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 0.03,  # TP mínimo 3% (decimal)
-            "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
-            "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
-            "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
-            "tp_increment_percentage": 1.0,  # Factor base de TP
-            "max_tp_adjustments": 5,  # Máximo ajustes de TP
-            "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
-            # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 4.0,  # Pérdida máxima diaria (más agresivo)
-            "max_drawdown_threshold": 0.08,  # Corregido: 8% como decimal
-            "min_confidence_threshold": 0.65,  # Confianza mínima para trades
-            "position_size_multiplier": 1.2,  # Multiplicador de tamaño de posición
-            "volatility_adjustment_factor": 1.3,  # Factor de ajuste por volatilidad
-            # Strategy Config - Optimizado
-            "default_min_confidence": 65.0,  # Aumentado
-            "default_atr_period": 14,
-            "rsi_min_confidence": 72.0,  # Aumentado para calidad
-            "rsi_oversold": 28,  # Optimizado
-            "rsi_overbought": 72,  # Optimizado
-            "rsi_period": 14,
-            "min_volume_ratio": 1.8,  # Aumentado para calidad
-            "min_confluence": 3,
-            "trend_strength_threshold": 32,  # Optimizado
-            "min_atr_ratio": 1.1,  # Optimizado
-            "max_spread_threshold": 0.0012,  # Optimizado
-            "volume_weight": 0.15,  # Nuevo peso para volumen
-            "confluence_threshold": 0.68,  # Nuevo umbral de confluencia
-            # Multi-Timeframe Config - Optimizado
-            "mtf_enhanced_confidence": 68.0,  # Optimizado
-            "mtf_min_confidence": 72.0,  # Aumentado
-            "mtf_min_consensus": 0.68,  # Optimizado
-            "mtf_require_trend_alignment": True,
-            "mtf_min_timeframe_consensus": 2,
-            "mtf_trend_alignment_required": True,
-            "volume_timeframe": "1h",  # Nuevo timeframe para volumen
-            # Ensemble Config - Optimizado
-            "ensemble_min_consensus_threshold": 0.65,  # Optimizado
-            "ensemble_confidence_boost_factor": 1.18,  # Optimizado
-            # Live Trading Config - Optimizado
-            "trading_fees": 0.001,
-            "order_timeout": 40,  # Optimizado
-            "max_order_retries": 3,
-            "order_check_interval": 2,  # Optimizado
-            "live_first_analysis_delay": 25,  # Optimizado
-            # Enhanced Risk Manager Config
-            "kelly_win_rate": 0.68,  # Tasa de ganancia asumida para Kelly Criterion
-            "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
-            "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 0.022,  # Distancia de trailing por defecto (decimal)
-            "tp_increment_base_pct": 0.013,  # Incremento base de TP (decimal)
-            # Trading Bot Config
-            "cache_ttl_seconds": 150,  # TTL del cache en segundos (2.5 min)
-            "event_queue_maxsize": 600,  # Tamaño máximo de la cola de eventos
-            "executor_shutdown_timeout": 25,  # Timeout para shutdown del executor (seg)
-            "thread_join_timeout": 8,  # Timeout para join de threads (seg)
-            "analysis_future_timeout": 25,  # Timeout para análisis paralelo (seg)
-            
-            # Connection and Network Config
-            "connection_timeout": 25,  # Timeout de conexión más agresivo
-            "read_timeout": 45,  # Timeout de lectura más rápido
-            "retry_delay": 3,  # Delay entre reintentos más corto
-            "max_retries": 5,  # Más reintentos para agresividad
-            "backoff_factor": 1.5,  # Factor de backoff más agresivo
-            
-            # Monitoring and Intervals Config
-            "position_check_interval": 20,  # Verificación más frecuente
-            "market_data_refresh_interval": 45,  # Actualización más frecuente
-            "health_check_interval": 240,  # Health check más frecuente
-            "log_rotation_interval": 3600,  # Rotación de logs estándar
-            
-            # Performance and Optimization Config
-            "max_concurrent_requests": 15,  # Más requests concurrentes
-            "request_rate_limit": 150,  # Mayor límite de requests
-            "memory_threshold_mb": 768,  # Mayor umbral de memoria
-            "cpu_threshold_percent": 85,  # Mayor umbral de CPU
-            
-            # Error Handling Config
-            "error_cooldown_seconds": 45,  # Menor tiempo de espera
-            "max_consecutive_errors": 7,  # Más tolerancia a errores
-            "circuit_breaker_threshold": 12,  # Mayor umbral para circuit breaker
-            "circuit_breaker_timeout": 240  # Menor timeout del circuit breaker
-        },
-        "OPTIMO": {
-            "name": "🎯 Óptimo",
-            "description": "Timeframes 1h-4h, máxima precisión optimizada",
+        "ELITE": {
+            "name": "Elite",
+            "description": "Timeframes 1h-1d, precisión institucional con alta protección de ganancias",
             "timeframes": ["1h", "4h", "1d"],
-            "analysis_interval": 30,  # Intervalo de análisis (minutos)
-            "min_confidence": 80.0,  # Aumentado para máxima calidad
-            "max_daily_trades": 10,  # Aumentado para más oportunidades
-            "max_positions": 5,  # Aumentado para diversificación
-            # Circuit Breaker Config - Optimizado
-            "max_consecutive_losses": 3,  # Aumentado para tolerancia
-            "circuit_breaker_cooldown_hours": 4,  # Reducido para eficiencia
-            "max_drawdown_threshold": 0.06,  # Estandarizado: 6% como decimal
-            "gradual_reactivation": True,  # Nueva funcionalidad
-            # Paper Trader Config - Optimizado
-            "max_position_size": 0.18,  # Corregido: 100% como decimal (máximo permitido)
-            "max_total_exposure": 0.65,  # Optimizado: 65% como decimal para mayor flexibilidad
-            "min_trade_value": 10.0,  # Reducido para permitir entradas y pruebas
-            "paper_min_confidence": 75.0,  # Aumentado
-            "max_slippage": 0.04,  # Reducido para mejor ejecución
-            "min_liquidity": 10.0,  # Aumentado para liquidez
-            # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 0.7,  # Optimizado para máximo control
-            "max_daily_risk": 3.0,  # Reducido para máxima protección
-            "max_drawdown_threshold": 0.06,  # Corregido: 6% como decimal
-            "correlation_threshold": 0.55,  # Optimizado
-            "min_position_size": 20.0,  # Aumentado para calidad
-            "risk_max_position_size": 0.18,  # Consistente con max_position_size
-            "kelly_fraction": 0.15,  # Muy conservador para precisión
-            "volatility_adjustment": 0.90,  # Reducido para estabilidad
-            "atr_multiplier_min": 2.2,  # Optimizado
-            "atr_multiplier_max": 3.2,  # Optimizado
-            "atr_default": 2.2,
-            "atr_volatile": 3.2,  # Optimizado
-            "atr_sideways": 2.0,  # Optimizado
-            "trailing_stop_activation": 0.15,  # Corregido: 15% como decimal
-            "breakeven_threshold": 0.6,  # Optimizado
-            "intelligent_trailing": True,  # Nueva funcionalidad
-            "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 0.03,  # TP mínimo 3% (decimal)
-            "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
-            "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
-            "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
-            "tp_increment_percentage": 1.0,  # Factor base de TP
-            "max_tp_adjustments": 5,  # Máximo ajustes de TP
-            "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
+            "analysis_interval": 30,
+            "min_confidence": 86.0,
+            "max_daily_trades": 8,
+            "max_positions": 4,
+            # Circuit Breaker Config
+            "max_consecutive_losses": 3,
+            "circuit_breaker_cooldown_hours": 6,
+            "max_drawdown_threshold": 0.05,  # 5% como decimal
+            "gradual_reactivation": True,
+            # Paper Trader Config
+            "max_position_size": 0.15,  # 15% del balance
+            "max_total_exposure": 0.55,  # 55% exposición total
+            "min_trade_value": 15.0,
+            "paper_min_confidence": 82.0,
+            "max_slippage": 0.03,
+            "min_liquidity": 12.0,
+            # Risk Manager Config
+            "max_risk_per_trade": 0.6,   # 0.6% (se convierte a decimal en EnhancedRiskManager)
+            "max_daily_risk": 2.5,       # 2.5% (se convierte a decimal en EnhancedRiskManager)
+            "max_drawdown_threshold": 0.05,
+            "correlation_threshold": 0.50,
+            "min_position_size": 20.0,
+            "risk_max_position_size": 0.15,
+            "kelly_fraction": 0.12,
+            "volatility_adjustment": 0.85,
+            "atr_multiplier_min": 1.6,
+            "atr_multiplier_max": 2.4,
+            "atr_default": 1.8,
+            "atr_volatile": 2.4,
+            "atr_sideways": 1.4,
+            "trailing_stop_activation": 0.04,  # 4% en decimal
+            "breakeven_threshold": 0.006,      # 0.6% en decimal
+            "intelligent_trailing": True,
+            "dynamic_position_sizing": True,
+            # Take Profit y Stop Loss Config (decimales)
+            "tp_min_percentage": 0.04,   # 4%
+            "tp_max_percentage": 0.12,   # 12%
+            "sl_min_percentage": 0.006,  # 0.6%
+            "sl_max_percentage": 0.015,  # 1.5%
+            "tp_increment_percentage": 1.0,
+            "max_tp_adjustments": 6,
+            "tp_confidence_threshold": 0.75,
             # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 3.0,  # Pérdida máxima diaria (óptimo)
-            "max_drawdown_threshold": 0.06,  # Corregido: 6% como decimal
-            "min_confidence_threshold": 0.7,  # Confianza mínima para trades
-            "position_size_multiplier": 1.0,  # Multiplicador de tamaño de posición
-            "volatility_adjustment_factor": 1.1,  # Factor de ajuste por volatilidad
-            # Strategy Config - Optimizado
-            "default_min_confidence": 72.0,  # Aumentado
+            "max_daily_loss_percent": 2.5,
+            "min_confidence_threshold": 0.75,
+            "position_size_multiplier": 1.0,
+            "volatility_adjustment_factor": 1.0,
+            # Strategy Config
+            "default_min_confidence": 80.0,
             "default_atr_period": 14,
-            "rsi_min_confidence": 82.0,  # Aumentado para máxima calidad
-            "rsi_oversold": 25,  # Optimizado para mejor balance
-            "rsi_overbought": 75,  # Optimizado para mejor balance
+            "rsi_min_confidence": 88.0,
+            "rsi_oversold": 28,
+            "rsi_overbought": 72,
             "rsi_period": 14,
-            "min_volume_ratio": 2.2,  # Aumentado para calidad
-            "min_confluence": 4,
-            "trend_strength_threshold": 42,  # Optimizado
-            "min_atr_ratio": 1.3,  # Optimizado
-            "max_spread_threshold": 0.0008,  # Optimizado más estricto
-            "volume_weight": 0.18,  # Nuevo peso para volumen
-            "confluence_threshold": 0.72,  # Nuevo umbral alto
-            # Multi-Timeframe Config - Optimizado
-            "mtf_enhanced_confidence": 78.0,  # Optimizado
-            "mtf_min_confidence": 82.0,  # Aumentado para calidad
-            "mtf_min_consensus": 0.78,  # Optimizado
+            "min_volume_ratio": 2.0,
+            "min_confluence": 5,
+            "trend_strength_threshold": 45,
+            "min_atr_ratio": 1.35,
+            "max_spread_threshold": 0.0007,
+            "volume_weight": 0.20,
+            "confluence_threshold": 0.80,
+            # Multi-Timeframe Config
+            "mtf_enhanced_confidence": 82.0,
+            "mtf_min_confidence": 86.0,
+            "mtf_min_consensus": 0.80,
             "mtf_require_trend_alignment": True,
             "mtf_min_timeframe_consensus": 3,
             "mtf_trend_alignment_required": True,
-            "volume_timeframe": "2h",  # Nuevo timeframe para volumen
-            # Ensemble Config - Optimizado
-            "ensemble_min_consensus_threshold": 0.72,  # Optimizado
-            "ensemble_confidence_boost_factor": 1.25,  # Optimizado
-            # Live Trading Config - Optimizado
+            "volume_timeframe": "2h",
+            # Ensemble Config
+            "ensemble_min_consensus_threshold": 0.75,
+            "ensemble_confidence_boost_factor": 1.20,
+            # Live Trading Config
             "trading_fees": 0.001,
-            "order_timeout": 50,  # Optimizado
+            "order_timeout": 55,
             "max_order_retries": 3,
-            "order_check_interval": 4,  # Optimizado
-            "live_first_analysis_delay": 15,  # Optimizado
-            # Position Adjuster Config - Optimizado
-            "position_monitoring_interval": 45,  # Intervalo de monitoreo en segundos
-            "price_cache_duration": 45,  # Duración del cache de precio (segundos)
-            "max_close_attempts": 3,  # Máximo intentos de cierre antes de marcar procesado
-            "profit_scaling_threshold": 2.5,  # Umbral para escalado de ganancias (%)
-            "trailing_stop_sl_pct": 0.025,  # SL dinámico para trailing stop (2.5%)
-            "trailing_stop_tp_pct": 0.06,  # TP dinámico para trailing stop (6%)
-            "profit_protection_sl_pct": 0.012,  # SL para protección de ganancias (1.2%)
-            "profit_protection_tp_pct": 0.035,  # TP para protección de ganancias (3.5%)
-            "risk_management_threshold": -1.2,  # Umbral para gestión de riesgo (%)
-            "risk_management_sl_pct": 0.018,  # SL más conservador para pérdidas (1.8%)
-            "risk_management_tp_pct": 0.025,  # TP más conservador para pérdidas (2.5%)
+            "order_check_interval": 2,
+            "live_first_analysis_delay": 20,
+            # Position Adjuster Config (decimales)
+            "position_monitoring_interval": 40,
+            "price_cache_duration": 30,
+            "max_close_attempts": 3,
+            "profit_scaling_threshold": 0.02,    # 2% en decimal
+            "trailing_stop_sl_pct": 0.015,       # 1.5% en decimal
+            "trailing_stop_tp_pct": 0.05,        # 5% en decimal
+            "profit_protection_sl_pct": 0.008,   # 0.8% en decimal
+            "profit_protection_tp_pct": 0.03,    # 3% en decimal
+            "risk_management_threshold": -0.006, # -0.6% en decimal
+            "risk_management_sl_pct": 0.012,     # 1.2% en decimal
+            "risk_management_tp_pct": 0.02,      # 2% en decimal
             # Enhanced Risk Manager Config
-            "kelly_win_rate": 0.62,  # Tasa de ganancia asumida para Kelly Criterion
-            "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly Criterion
-            "default_leverage": 1.0,  # Leverage por defecto
-            "default_trailing_distance": 0.025,  # Distancia de trailing por defecto (decimal)
-            "tp_increment_base_pct": 0.012,  # Incremento base de TP (decimal)
+            "kelly_win_rate": 0.70,
+            "kelly_avg_loss": 1.0,
+            "default_leverage": 1.0,
+            "default_trailing_distance": 0.01,
+            "tp_increment_base_pct": 0.02,
             # Trading Bot Config
-            "cache_ttl_seconds": 180,  # TTL del cache en segundos (3 min)
-            "event_queue_maxsize": 800,  # Tamaño máximo de la cola de eventos
-            "executor_shutdown_timeout": 30,  # Timeout para shutdown del executor (seg)
-            "thread_join_timeout": 10,  # Timeout para join de threads (seg)
-            "analysis_future_timeout": 30,  # Timeout para análisis paralelo (seg)
-            
+            "cache_ttl_seconds": 180,
+            "event_queue_maxsize": 800,
+            "executor_shutdown_timeout": 30,
+            "thread_join_timeout": 10,
+            "analysis_future_timeout": 30,
             # Connection and Network Config
-            "connection_timeout": 35,  # Timeout de conexión balanceado
-            "read_timeout": 70,  # Timeout de lectura balanceado
-            "retry_delay": 7,  # Delay entre reintentos balanceado
-            "max_retries": 3,  # Reintentos estándar
-            "backoff_factor": 2.0,  # Factor de backoff estándar
-            
+            "connection_timeout": 35,
+            "read_timeout": 70,
+            "retry_delay": 5,
+            "max_retries": 3,
+            "backoff_factor": 2.0,
             # Monitoring and Intervals Config
-            "position_check_interval": 40,  # Verificación balanceada
-            "market_data_refresh_interval": 75,  # Actualización balanceada
-            "health_check_interval": 360,  # Health check balanceado
-            "log_rotation_interval": 3600,  # Rotación de logs estándar
-            
+            "position_check_interval": 40,
+            "market_data_refresh_interval": 75,
+            "health_check_interval": 360,
+            "log_rotation_interval": 3600,
             # Performance and Optimization Config
-            "max_concurrent_requests": 8,  # Requests concurrentes balanceados
-            "request_rate_limit": 80,  # Límite de requests balanceado
-            "memory_threshold_mb": 640,  # Umbral de memoria balanceado
-            "cpu_threshold_percent": 75,  # Umbral de CPU balanceado
-            
+            "max_concurrent_requests": 8,
+            "request_rate_limit": 80,
+            "memory_threshold_mb": 640,
+            "cpu_threshold_percent": 75,
             # Error Handling Config
-            "error_cooldown_seconds": 75,  # Tiempo de espera balanceado
-            "max_consecutive_errors": 4,  # Tolerancia a errores balanceada
-            "circuit_breaker_threshold": 8,  # Umbral balanceado para circuit breaker
-            "circuit_breaker_timeout": 360  # Timeout balanceado del circuit breaker
+            "error_cooldown_seconds": 75,
+            "max_consecutive_errors": 4,
+            "circuit_breaker_threshold": 8,
+            "circuit_breaker_timeout": 360
         },
         "CONSERVADOR": {
-            "name": "🛡️ Conservador",
+            "name": "Conservador",
             "description": "Timeframes 4h-1d, máxima preservación de capital",
             "timeframes": ["4h", "1d"],  # Timeframes más largos
             "analysis_interval": 60,  # Análisis menos frecuente (minutos)
@@ -500,8 +364,8 @@ class TradingProfiles:
             "atr_default": 3.5,
             "atr_volatile": 5.5,  # Muy amplio
             "atr_sideways": 3.0,  # Amplio
-            "trailing_stop_activation": 0.20,  # Corregido: 20% como decimal
-            "breakeven_threshold": 1.0,  # Más conservador
+            "trailing_stop_activation": 0.06,  # Activación de trailing al 6% (decimal)
+            "breakeven_threshold": 0.01,  # Umbral de breakeven al 1% (decimal)
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
             # Take Profit y Stop Loss Config - Rangos optimizados
@@ -553,12 +417,12 @@ class TradingProfiles:
             "position_monitoring_interval": 120,  # Intervalo de monitoreo en segundos (2 min)
             "price_cache_duration": 60,  # Duración del cache de precio (segundos)
             "max_close_attempts": 2,  # Máximo intentos de cierre antes de marcar procesado
-            "profit_scaling_threshold": 3.0,  # Umbral para escalado de ganancias (%)
+            "profit_scaling_threshold": 0.03,  # Umbral para escalado de ganancias (3% en decimal)
             "trailing_stop_sl_pct": 0.015,  # SL dinámico para trailing stop (1.5%)
             "trailing_stop_tp_pct": 0.04,  # TP dinámico para trailing stop (4%)
             "profit_protection_sl_pct": 0.008,  # SL para protección de ganancias (0.8%)
             "profit_protection_tp_pct": 0.025,  # TP para protección de ganancias (2.5%)
-            "risk_management_threshold": -0.8,  # Umbral para gestión de riesgo (%)
+            "risk_management_threshold": -0.008,  # Umbral para gestión de riesgo (-0.8% en decimal)
             "risk_management_sl_pct": 0.012,  # SL más conservador para pérdidas (1.2%)
             "risk_management_tp_pct": 0.018,  # TP más conservador para pérdidas (1.8%)
             # Enhanced Risk Manager Config
@@ -1034,10 +898,10 @@ class StrategyConfig:
         MIN_CONFLUENCE: int = 2
         TREND_STRENGTH_THRESHOLD: float = 25.0
         
-        # Ratio ATR mínimo para volatilidad (rápido: 0.8 - agresivo: 1.0 - óptimo: 1.2)
+        # Ratio ATR mínimo por perfil (Rápido: 0.8 - Elite: 1.0 - Conservador: 1.2)
         MIN_ATR_RATIO: float = 0.8  # Estrategia rápida
         
-        # Spread máximo permitido en % (rápido: 0.0025 - agresivo: 0.0015 - óptimo: 0.0010)
+        # Spread máximo permitido en % por perfil (Rápido: 0.0025 - Elite: 0.0015 - Conservador: 0.0010)
         MAX_SPREAD_THRESHOLD: float = 0.0025  # Estrategia rápida
     
     # ---- Estrategia Multi-Timeframe ----
@@ -1093,7 +957,7 @@ class StrategyConfig:
         ENHANCED_CONFIDENCE: float = 60.0
         MIN_CONFIDENCE: float = 62.0
         
-        # Timeframes utilizados para análisis (rápido: ["1m", "5m", "15m"] - agresivo: ["15m", "30m", "1h"] - óptimo: ["1h", "4h", "1d"])
+        # Timeframes utilizados por perfil (Rápido: ["1m", "5m", "15m"] - Elite: ["15m", "30m", "1h"] - Conservador: ["1h", "4h", "1d"])
         TIMEFRAMES: List[str] = ["1m", "5m", "15m"]  # Estrategia rápida
         
         # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra (rápido)
@@ -1114,16 +978,16 @@ class StrategyConfig:
         
 
         
-        # Consenso mínimo de timeframes requerido (rápido: 1 - agresivo: 2 - óptimo: 3)
+        # Consenso mínimo de timeframes requerido (Rápido: 1 - Elite: 2 - Conservador: 3)
         MIN_CONSENSUS: int = 1  # Estrategia rápida
         
-        # Requiere alineación de tendencias entre timeframes (rápido: False - agresivo: True - óptimo: True)
+        # Requiere alineación de tendencias entre timeframes (Rápido: False - Elite: True - Conservador: True)
         REQUIRE_TREND_ALIGNMENT: bool = False  # Estrategia rápida
         
-        # Consenso mínimo de timeframes para señal válida (rápido: 1 - agresivo: 2 - óptimo: 3)
+        # Consenso mínimo de timeframes para señal válida (Rápido: 1 - Elite: 2 - Conservador: 3)
         MIN_TIMEFRAME_CONSENSUS: int = 1  # Estrategia rápida
         
-        # Requiere alineación de tendencias entre timeframes (rápido: False - agresivo: True - óptimo: True)
+        # Requiere alineación de tendencias entre timeframes (Rápido: False - Elite: True - Conservador: True)
         TREND_ALIGNMENT_REQUIRED: bool = False  # Estrategia rápida
     
     # ---- Estrategia Ensemble ----
@@ -1162,13 +1026,13 @@ class StrategyConfig:
 class DatabaseConfig:
     """Configuración de la base de datos."""
     
-    # Nombre del archivo de base de datos SQLite (óptimo: "trading_data.db")
+    # Nombre del archivo de base de datos SQLite (por defecto: "trading_data.db")
     DATABASE_NAME: str = "trading_data.db"
     
-    # Días de retención de datos históricos (óptimo: 90)
+    # Días de retención de datos históricos (por defecto: 90)
     DATA_RETENTION_DAYS: int = 90
     
-    # Intervalo de limpieza automática en horas (óptimo: 24)
+    # Intervalo de limpieza automática en horas (por defecto: 24)
     CLEANUP_INTERVAL_HOURS: int = 24
 
 
@@ -1179,19 +1043,19 @@ class DatabaseConfig:
 class LoggingConfig:
     """Configuración del sistema de logging."""
     
-    # Nivel de logging por defecto (óptimo: "INFO")
+    # Nivel de logging por defecto (por defecto: "INFO")
     LOG_LEVEL: str = "INFO"
     
-    # Formato de logs con timestamp (óptimo: incluir timestamp y nivel)
+    # Formato de logs con timestamp (incluye timestamp y nivel)
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
-    # Archivo de logs (óptimo: "trading_bot.log")
+    # Archivo de logs (por defecto: "trading_bot.log")
     LOG_FILE: str = "trading_bot.log"
     
-    # Tamaño máximo del archivo de log en MB (óptimo: 10)
+    # Tamaño máximo del archivo de log en MB (por defecto: 10)
     MAX_LOG_SIZE_MB: int = 10
     
-    # Número de archivos de backup de logs (óptimo: 5)
+    # Número de archivos de backup de logs (por defecto: 5)
     LOG_BACKUP_COUNT: int = 5
 
 
@@ -1212,13 +1076,13 @@ class LiveTradingConfig:
         TradingProfiles.get_current_profile().get("trading_fees", 0.001)
     )
     
-    # Timeout para órdenes en segundos (rápido: 15 - agresivo: 30 - óptimo: 60)
+    # Timeout para órdenes en segundos (Rápido: 15 - Elite: 30 - Conservador: 60)
     ORDER_TIMEOUT: int = 15  # Estrategia rápida
     
-    # Reintentos máximos para órdenes fallidas (rápido: 2 - agresivo: 3 - óptimo: 5)
+    # Reintentos máximos para órdenes fallidas (Rápido: 2 - Elite: 3 - Conservador: 5)
     MAX_ORDER_RETRIES: int = 2  # Estrategia rápida
     
-    # Intervalo de verificación de órdenes en segundos (rápido: 2 - agresivo: 5 - óptimo: 10)
+    # Intervalo de verificación de órdenes en segundos (Rápido: 2 - Elite: 5 - Conservador: 10)
     ORDER_CHECK_INTERVAL: int = 2  # Estrategia rápida
 
 

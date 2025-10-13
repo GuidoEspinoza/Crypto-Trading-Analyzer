@@ -24,6 +24,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 # Helpers para cargar módulos por ruta, evitando imports de paquetes que arrastren dependencias pesadas
 import importlib.util
+import ccxt
 
 def load_module_from_path(module_name: str, file_path: str):
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -124,7 +125,69 @@ def simulate_paper_trader():
     res_validate = pt.validate_trade({'symbol': 'SOLUSD', 'side': 'SELL', 'quantity': 1.0, 'price': 150.0})
     print('validate_trade SELL SOLUSD ->', res_validate)
 
+def rank_symbols_performance():
+    """
+    📈 Ranking de performance por símbolo usando datos OHLCV de Binance (ccxt)
+    Métricas:
+    - Retorno total últimos 60 días
+    - Volatilidad (std de retornos diarios)
+    - Sharpe ratio simple (media/std * sqrt(n))
+    """
+    print("\n=== Ranking de Símbolos por Performance (ccxt/Binance) ===")
+    exchange = ccxt.binance()
+    candidates = [
+        'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT', 'LINK/USDT',
+        'MATIC/USDT', 'ADA/USDT', 'XRP/USDT', 'NEAR/USDT', 'BNB/USDT'
+    ]
+    timeframe = '1d'
+    limit = 60
+
+    results = []
+    for sym in candidates:
+        try:
+            ohlcv = exchange.fetch_ohlcv(sym, timeframe=timeframe, limit=limit)
+            closes = [c[4] for c in ohlcv]
+            if len(closes) < 2:
+                raise ValueError('insufficient data')
+            total_return = (closes[-1] - closes[0]) / closes[0]
+            # Retornos diarios
+            daily_returns = []
+            for i in range(1, len(closes)):
+                if closes[i-1] > 0:
+                    daily_returns.append((closes[i] - closes[i-1]) / closes[i-1])
+            if len(daily_returns) == 0:
+                raise ValueError('no daily returns')
+            mean_ret = sum(daily_returns) / len(daily_returns)
+            # std
+            variance = sum((r - mean_ret) ** 2 for r in daily_returns) / max(1, (len(daily_returns) - 1))
+            std_ret = variance ** 0.5
+            sharpe = (mean_ret / std_ret) * (len(daily_returns) ** 0.5) if std_ret > 0 else 0.0
+            results.append({
+                'symbol': sym,
+                'total_return_pct': total_return * 100,
+                'sharpe': sharpe,
+                'volatility': std_ret * 100
+            })
+        except Exception as e:
+            print(f"⚠️ {sym}: error obteniendo OHLCV ({e})")
+
+    # Ordenar por retorno, desempate por sharpe
+    results.sort(key=lambda x: (x['total_return_pct'], x['sharpe']), reverse=True)
+    for i, r in enumerate(results, start=1):
+        print(f"{i:2d}. {r['symbol']:10s} | Return: {r['total_return_pct']:+6.2f}% | Sharpe: {r['sharpe']:.2f} | Vol: {r['volatility']:.2f}%")
+
+    top5 = [r['symbol'] for r in results[:5]]
+    print("\n🏆 Top 5 sugeridos por performance (últimos 60d):", ', '.join(top5))
+    return top5
 
 if __name__ == '__main__':
     smoke_test_prices()
     simulate_paper_trader()
+    run_ranking = os.getenv('RUN_RANKING', '0').lower() in ('1', 'true', 'yes', 'y')
+    if run_ranking:
+        try:
+            rank_symbols_performance()
+        except Exception as e:
+            print(f"⚠️ Ranking de símbolos omitido: {e}")
+    else:
+        print("ℹ️ Ranking de símbolos omitido: establece RUN_RANKING=1 para ejecutarlo.")

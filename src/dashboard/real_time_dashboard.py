@@ -2151,7 +2151,7 @@ class RealTimeDashboard:
     
     def _get_profile_risk_level(self, profile: str) -> str:
         """Obtener nivel de riesgo del perfil.
-        Acepta tanto la clave del perfil (e.g. 'OPTIMO', 'AGRESIVO') como el nombre descriptivo (e.g. '🎯 Óptimo').
+        Acepta tanto la clave del perfil (e.g. 'RAPIDO', 'ELITE', 'CONSERVADOR') como el nombre descriptivo (e.g. 'Rápido', 'Elite', 'Conservador').
         """
         if not profile:
             return "MEDIUM"
@@ -2161,20 +2161,16 @@ class RealTimeDashboard:
         # Coincidencias por clave directa
         if p_upper in {"CONSERVADOR"}:
             return "LOW"
-        if p_upper in {"OPTIMO", "ÓPTIMO"}:
+        if p_upper in {"ELITE"}:
             return "MEDIUM"
-        if p_upper in {"AGRESIVO"}:
-            return "HIGH"
         if p_upper in {"RAPIDO", "RÁPIDO"}:
             return "VERY_HIGH"
-        # Coincidencias por nombre descriptivo (con emojis/acentos)
+        # Coincidencias por nombre descriptivo (con acentos)
         if ("conservador" in p_lower):
             return "LOW"
-        if ("optimo" in p_lower) or ("óptimo" in p_lower):
+        if ("elite" in p_lower):
             return "MEDIUM"
-        if ("agresivo" in p_lower):
-            return "HIGH"
-        if ("rápido" in p_lower) or ("rapido" in p_lower) or ("ultra-rápido" in p_lower) or ("ultra rapido" in p_lower):
+        if ("rápido" in p_lower) or ("rapido" in p_lower):
             return "VERY_HIGH"
         return "MEDIUM"
     

@@ -103,7 +103,7 @@ class EnhancedRiskManager:
         # Stop loss dinámico profesional desde configuración centralizada
         self.atr_multiplier_range = (self.config.get_atr_multiplier_min(), self.config.get_atr_multiplier_max())
         self.trailing_stop_activation = self.config.get_trailing_stop_activation()  # Ya en decimal
-        self.breakeven_stop_threshold = self.config.get_breakeven_threshold() / 100  # Convertir de % a decimal
+        self.breakeven_stop_threshold = self.config.get_breakeven_threshold()  # Ya en decimal
         
         # Métricas de portfolio desde configuración centralizada
         self.portfolio_value = self.config.INITIAL_PORTFOLIO_VALUE
@@ -394,7 +394,7 @@ class EnhancedRiskManager:
             
             # Ajustar según régimen de mercado
             if signal.market_regime == "TRENDING":
-                tp_increment_pct = 0.015  # Más agresivo en tendencias (decimal)
+                tp_increment_pct = 0.015  # Incremento en tendencias (decimal)
                 confidence_threshold = max(0.5, confidence_threshold - 0.1)  # Reducir umbral
             elif signal.market_regime == "VOLATILE":
                 tp_increment_pct = 0.008  # Más conservador en volatilidad (decimal)
@@ -424,8 +424,8 @@ class EnhancedRiskManager:
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=tp_price,
-                confidence_threshold=risk_config.get_tp_confidence_threshold(),
-                max_tp_adjustments=risk_config.get_max_tp_adjustments(),
+                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold(),
+                max_tp_adjustments=RiskManagerConfig().get_max_tp_adjustments(),
                 adjustments_made=0
             )
     
@@ -775,7 +775,7 @@ class EnhancedRiskManager:
             )
             
             # Solo actualizar si hay ganancias significativas
-            if current_profit_pct < RiskManagerConfig.get_tp_min_percentage() * 100:  # Umbral mínimo configurado (convertido a %)
+            if current_profit_pct < RiskManagerConfig.get_tp_min_percentage():  # Umbral mínimo configurado (decimal)
                 return updated_tp
             
             # Verificar si ya se alcanzó el máximo de ajustes
@@ -787,7 +787,7 @@ class EnhancedRiskManager:
             
             if signal_type == "BUY":
                 # Para BUY: incrementar TP hacia arriba
-                if current_profit_pct >= RiskManagerConfig.get_tp_max_percentage() * 100:  # Umbral máximo configurado (convertido a %)
+                if current_profit_pct >= RiskManagerConfig.get_tp_max_percentage():  # Umbral máximo configurado (decimal)
                     profit_multiplier = 1 + updated_tp.tp_increment_pct
                     new_tp = updated_tp.current_tp * profit_multiplier
                     
@@ -799,11 +799,11 @@ class EnhancedRiskManager:
                         updated_tp.adjustments_made += 1
                         
                         logger.info(f"TP dinámico actualizado (BUY): {updated_tp.current_tp} "
-                                  f"(ganancia: {current_profit_pct:.2f}%)")
+                                  f"(ganancia: {current_profit_pct*100:.2f}%)")
             
             else:  # SELL
                 # Para SELL: decrementar TP hacia abajo
-                if current_profit_pct >= RiskManagerConfig.get_tp_max_percentage() * 100:  # Umbral máximo configurado (convertido a %)
+                if current_profit_pct >= RiskManagerConfig.get_tp_max_percentage():  # Umbral máximo configurado (decimal)
                     profit_multiplier = 1 - updated_tp.tp_increment_pct
                     new_tp = updated_tp.current_tp * profit_multiplier
                     
@@ -815,7 +815,7 @@ class EnhancedRiskManager:
                         updated_tp.adjustments_made += 1
                         
                         logger.info(f"TP dinámico actualizado (SELL): {updated_tp.current_tp} "
-                                  f"(ganancia: {current_profit_pct:.2f}%)")
+                                  f"(ganancia: {current_profit_pct*100:.2f}%)")
             
             return updated_tp
         

@@ -9,7 +9,7 @@
 - **🔄 Análisis Simultáneo**: Monitorea 15 activos en paralelo con procesamiento multi-hilo
 - **🧠 IA Avanzada**: Estrategias de trading con machine learning y análisis de confluencia
 - **🛡️ Gestión de Riesgo**: Circuit breakers, stop-loss dinámico y protección de capital
-- **📊 Trading Profesional**: Paper trading validado con 4 perfiles optimizados
+- **📊 Trading Profesional**: Paper trading validado con 3 perfiles optimizados
 - **⚡ Velocidad Extrema**: Análisis cada 5 minutos con timeframes de 1m, 5m, 15m
 - **🎯 Precisión Quirúrgica**: Señales con confianza mínima del 65-85% según perfil
 
@@ -23,21 +23,13 @@
 - **Confianza mínima**: 65%
 - **Riesgo por trade**: 1.5%
 
-### ⚔️ AGRESIVO - Alto Rendimiento
-- **Objetivo**: Balance óptimo riesgo/rentabilidad
-- **Timeframes**: 5m, 15m, 1h
-- **Análisis**: Cada 10 minutos
-- **Trades diarios**: Hasta 15
-- **Confianza mínima**: 70%
-- **Riesgo por trade**: 2.0%
-
-### 🎯 ÓPTIMO - Máxima Precisión
+### 🏛️ ELITE - Precisión Institucional
 - **Objetivo**: Señales de alta calidad y precisión
-- **Timeframes**: 15m, 1h, 4h
-- **Análisis**: Cada 15 minutos
+- **Timeframes**: 15m, 30m, 1h
+- **Análisis**: Cada 10 minutos
 - **Trades diarios**: Hasta 10
-- **Confianza mínima**: 80%
-- **Riesgo por trade**: 2.5%
+- **Confianza mínima**: 75%
+- **Riesgo por trade**: 1.8%
 
 ### 🛡️ CONSERVADOR - Protección de Capital
 - **Objetivo**: Mínima pérdida, crecimiento estable
@@ -137,7 +129,7 @@ python3 main.py --report
 
 ```env
 # Configuración Principal
-TRADING_PROFILE=RAPIDO     # RAPIDO | AGRESIVO | OPTIMO | CONSERVADOR
+TRADING_PROFILE=RAPIDO     # RAPIDO | ELITE | CONSERVADOR
 TRADING_MODE=paper         # paper | live
 ANALYSIS_INTERVAL=5        # minutos
 
@@ -164,7 +156,7 @@ crypto-trading-analyzer/
 │   ├── position_monitor.py    # Monitor de posiciones
 │   └── advanced_indicators.py # Indicadores técnicos
 ├── ⚙️ config/                 # Configuración optimizada
-│   ├── config.py             # 4 perfiles de trading
+│   ├── config.py             # 3 perfiles de trading
 │   └── production_config.py  # Configuración de producción
 ├── 💾 database/               # Persistencia profesional
 │   ├── models.py             # Modelos de datos
