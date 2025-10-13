@@ -292,59 +292,113 @@ class PaperTrader:
                 if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
                     take_profit_price = signal.take_profit_price
                 
-                # Si faltan TP/SL, calcularlos usando enhanced_risk_manager
+                # Si faltan TP/SL, calcularlos
                 if stop_loss_price is None or take_profit_price is None:
-                    try:
-                        from .enhanced_risk_manager import EnhancedRiskManager
-                        risk_manager = EnhancedRiskManager()
-                        
-                        # Convertir TradingSignal a EnhancedSignal si es necesario
-                        if not hasattr(signal, 'market_regime'):
-                            # Crear EnhancedSignal temporal para el cálculo
-                            from .enhanced_strategies import EnhancedSignal
-                            enhanced_signal = EnhancedSignal(
-                                symbol=signal.symbol,
-                                signal_type=signal.signal_type,
-                                price=signal.price,
-                                confidence_score=signal.confidence_score,
-                                strength=getattr(signal, 'strength', 'Moderate'),
-                                strategy_name=signal.strategy_name,
-                                timestamp=signal.timestamp,
-                                indicators_data=getattr(signal, 'indicators_data', {}),
-                                notes=f"{signal.notes or ''} | Fee: ${fee_usdt:.4f}",
-                                stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
-                                take_profit_price=getattr(signal, 'take_profit_price', 0.0),
-                                market_regime='NORMAL',
-                                timeframe=TradingBotConfig.get_primary_timeframe()
-                            )
-                        else:
-                            enhanced_signal = signal
-                        
-                        # Calcular evaluación de riesgo
-                        current_portfolio_value = self.get_portfolio_value()
-                        risk_assessment = risk_manager.assess_trade_risk(enhanced_signal, current_portfolio_value)
-                        
-                        # Usar TP/SL calculados si no están disponibles
-                        if stop_loss_price is None:
-                            stop_loss_price = risk_assessment.dynamic_stop_loss.stop_loss_price
-                        if take_profit_price is None:
-                            take_profit_price = risk_assessment.dynamic_take_profit.take_profit_price
+                    if TradingBotConfig.is_simple_mode():
+                        # Modo simple: SL/TP basados en ATR con RR=1.5 y fallback porcentual
+                        try:
+                            from src.config.main_config import TradingProfiles, RiskManagerConfig
+                            profile = TradingProfiles.get_current_profile()
+                            min_atr_ratio = profile.get("min_atr_ratio", 0.8)
+                            risk_config = RiskManagerConfig()
                             
-                        self.logger.info(f"🛡️ TP/SL calculados automáticamente: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
-                        
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ Error calculando TP/SL automáticos: {e}")
-                        # Fallback: usar porcentajes fijos desde config
-                        from src.config.main_config import RiskManagerConfig
-                        sl_pct = RiskManagerConfig.get_sl_min_percentage()
-                        tp_pct = RiskManagerConfig.get_tp_min_percentage()
-                        
-                        if stop_loss_price is None:
-                            stop_loss_price = signal.price * (1 - sl_pct)
-                        if take_profit_price is None:
-                            take_profit_price = signal.price * (1 + tp_pct)
+                            entry = execution_price
+                            RR = 1.5
                             
-                        self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
+                            # Obtener ATR desde la señal si disponible
+                            indicators = getattr(signal, 'indicators_data', {}) or {}
+                            atr = indicators.get('atr', None)
+                            
+                            # Selección del multiplicador según régimen de mercado
+                            market_regime = getattr(signal, 'market_regime', 'NORMAL')
+                            if market_regime == "VOLATILE":
+                                m = risk_config.get_atr_volatile()
+                            elif market_regime == "RANGING":
+                                m = risk_config.get_atr_sideways()
+                            else:
+                                m = risk_config.get_atr_default()
+                            
+                            # Clamp a rango permitido
+                            m = max(risk_config.get_atr_multiplier_min(), min(m, risk_config.get_atr_multiplier_max()))
+                            
+                            use_atr = (atr is not None and atr > 0 and entry > 0 and (atr / entry) >= min_atr_ratio)
+                            
+                            if use_atr:
+                                if stop_loss_price is None:
+                                    stop_loss_price = round(entry - (m * atr), 4)
+                                if take_profit_price is None:
+                                    take_profit_price = round(entry + (RR * m * atr), 4)
+                                self.logger.info(f"🛡️ TP/SL (modo simple ATR): SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f} (m={m:.2f}, RR={RR:.2f})")
+                            else:
+                                # Fallback porcentual fijo
+                                sl_pct = 0.015
+                                tp_pct = 0.03
+                                if stop_loss_price is None:
+                                    stop_loss_price = round(entry * (1 - sl_pct), 4)
+                                if take_profit_price is None:
+                                    take_profit_price = round(entry * (1 + tp_pct), 4)
+                                self.logger.info(f"🛡️ TP/SL fallback (modo simple): SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f} (−1.5% / +3%)")
+                        except Exception as e:
+                            # Fallback duro si algo falla
+                            self.logger.warning(f"⚠️ Error en cálculo simple de TP/SL: {e}")
+                            sl_pct = 0.015
+                            tp_pct = 0.03
+                            if stop_loss_price is None:
+                                stop_loss_price = round(execution_price * (1 - sl_pct), 4)
+                            if take_profit_price is None:
+                                take_profit_price = round(execution_price * (1 + tp_pct), 4)
+                            self.logger.info(f"🛡️ TP/SL fallback (error modo simple): SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
+                    else:
+                        try:
+                            from .enhanced_risk_manager import EnhancedRiskManager
+                            risk_manager = EnhancedRiskManager()
+                            
+                            # Convertir TradingSignal a EnhancedSignal si es necesario
+                            if not hasattr(signal, 'market_regime'):
+                                # Crear EnhancedSignal temporal para el cálculo
+                                from .enhanced_strategies import EnhancedSignal
+                                enhanced_signal = EnhancedSignal(
+                                    symbol=signal.symbol,
+                                    signal_type=signal.signal_type,
+                                    price=signal.price,
+                                    confidence_score=signal.confidence_score,
+                                    strength=getattr(signal, 'strength', 'Moderate'),
+                                    strategy_name=signal.strategy_name,
+                                    timestamp=signal.timestamp,
+                                    indicators_data=getattr(signal, 'indicators_data', {}),
+                                    notes=f"{signal.notes or ''} | Fee: ${fee_usdt:.4f}",
+                                    stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
+                                    take_profit_price=getattr(signal, 'take_profit_price', 0.0),
+                                    market_regime='NORMAL',
+                                    timeframe=TradingBotConfig.get_primary_timeframe()
+                                )
+                            else:
+                                enhanced_signal = signal
+                            
+                            # Calcular evaluación de riesgo
+                            current_portfolio_value = self.get_portfolio_value()
+                            risk_assessment = risk_manager.assess_trade_risk(enhanced_signal, current_portfolio_value)
+                            
+                            # Usar TP/SL calculados si no están disponibles
+                            if stop_loss_price is None:
+                                stop_loss_price = risk_assessment.dynamic_stop_loss.stop_loss_price
+                            if take_profit_price is None:
+                                take_profit_price = risk_assessment.dynamic_take_profit.take_profit_price
+                            
+                            self.logger.info(f"🛡️ TP/SL calculados automáticamente: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ Error calculando TP/SL automáticos: {e}")
+                            # Fallback: usar porcentajes fijos desde config
+                            from src.config.main_config import RiskManagerConfig
+                            sl_pct = RiskManagerConfig.get_sl_min_percentage()
+                            tp_pct = RiskManagerConfig.get_tp_min_percentage()
+                            
+                            if stop_loss_price is None:
+                                stop_loss_price = signal.price * (1 - sl_pct)
+                            if take_profit_price is None:
+                                take_profit_price = signal.price * (1 + tp_pct)
+                            
+                            self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
 
                 # Crear trade en base de datos
                 normalized_symbol = self._normalize_to_usdt_ticker(signal.symbol)

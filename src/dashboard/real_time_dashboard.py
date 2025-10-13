@@ -36,11 +36,28 @@ sys.path.insert(0, project_root)
 from src.database.database import db_manager
 from src.database.models import Trade, Portfolio, TradingSignal
 from src.core.paper_trader import PaperTrader
-from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, CacheConfig
+from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
+
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 # Configuración del modo de trading (centralizada)
 INITIAL_BALANCE = PaperTraderConfig.INITIAL_BALANCE
 USE_PAPER_TRADING = True
+
+# Utilidad para calcular próxima hora de reset según configuración y zona horaria
+def get_next_reset_time_str() -> str:
+    tzname = TIMEZONE
+    now = datetime.now(ZoneInfo(tzname)) if ZoneInfo else datetime.now()
+    reset_dt = now.replace(hour=DAILY_RESET_HOUR, minute=DAILY_RESET_MINUTE, second=0, microsecond=0)
+    if now >= reset_dt:
+        reset_dt = reset_dt + timedelta(days=1)
+    try:
+        return reset_dt.strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        return reset_dt.strftime('%Y-%m-%d %H:%M')
 
 warnings.filterwarnings('ignore')
 
@@ -208,8 +225,22 @@ class MetricsCalculator:
                 win_rate = (successful_trades / max(1, len(closed_trades))) * 100
                 
                 # Trades de hoy
-                today = datetime.now().date()
-                trades_today = len([t for t in all_trades if t.entry_time and t.entry_time.date() == today])
+                # Calcular trades en la ventana operativa (11:00→11:00) según configuración
+                try:
+                    now_local = datetime.now()
+                    last_reset_dt = now_local.replace(hour=DAILY_RESET_HOUR, minute=DAILY_RESET_MINUTE, second=0, microsecond=0)
+                    if now_local < last_reset_dt:
+                        # Si aún no se llega al reset de hoy, usar el de ayer
+                        last_reset_dt = last_reset_dt - timedelta(days=1)
+                    next_reset_dt = last_reset_dt + timedelta(days=1)
+                except Exception:
+                    # Fallback simple
+                    now_local = datetime.now()
+                    last_reset_dt = now_local.replace(hour=11, minute=0, second=0, microsecond=0)
+                    if now_local < last_reset_dt:
+                        last_reset_dt = last_reset_dt - timedelta(days=1)
+                    next_reset_dt = last_reset_dt + timedelta(days=1)
+                trades_today = len([t for t in all_trades if t.entry_time and (t.entry_time >= last_reset_dt and t.entry_time < next_reset_dt)])
                 
                 # PnL total
                 total_pnl = sum([t.pnl for t in closed_trades if t.pnl]) or 0.0
@@ -1656,7 +1687,7 @@ class RealTimeDashboard:
     
     def _render_header(self):
         """Renderizar header del dashboard"""
-        col1, col2, col3 = st.columns([2, 1, 1])
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
         
         with col1:
             st.title("📊 Crypto Trading Dashboard")
@@ -1678,6 +1709,13 @@ class RealTimeDashboard:
                     <small>Última actualización:<br>{self.last_update.strftime('%H:%M:%S')}</small>
                 </div>
                 """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 1rem;">
+                <small>Próximo reset:<br>{get_next_reset_time_str()}</small>
+            </div>
+            """, unsafe_allow_html=True)
     
     def _render_sidebar(self):
         """Renderizar sidebar con controles"""
@@ -1724,6 +1762,13 @@ class RealTimeDashboard:
             "Tasa de Ganancia",
             f"{metrics['win_rate_pct']:.1f}%"
         )
+        
+        # Indicadores de reset diario y disponibilidad de trades
+        max_trades = TradingBotConfig.get_max_daily_trades()
+        trades_available = max(0, max_trades - metrics['trades_today'])
+        st.sidebar.metric("Trades disponibles hoy", trades_available)
+        st.sidebar.caption(f"Máx diarios: {max_trades}")
+        st.sidebar.info(f"Próximo reset: {get_next_reset_time_str()}")
         
         # Alertas mejoradas
         st.sidebar.subheader("🚨 Alertas Inteligentes")
@@ -1953,7 +1998,7 @@ class RealTimeDashboard:
             )
         
         # Segunda fila: Métricas de performance
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             # Retorno Realizado (solo PnL de trades cerrados)
@@ -1979,6 +2024,15 @@ class RealTimeDashboard:
             st.metric(
                 "📊 Volatilidad",
                 f"{metrics['volatility_pct']:.1f}%"
+            )
+
+        with col4:
+            # PnL Teórico    
+            theoretical_pnl = metrics.get('realized_pnl', 0.0) + metrics.get('unrealized_pnl_total', 0.0)
+            emoji = "💰" if theoretical_pnl >= 0 else "🔻"
+            st.metric(
+                f"{emoji} PnL Teórico",
+                f"${theoretical_pnl:,.2f}"
             )
         
 

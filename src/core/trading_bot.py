@@ -20,7 +20,11 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig, CacheConfig
+from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
@@ -129,6 +133,28 @@ class TradingBot:
         self.confirmation_timeframe = self.config.get_confirmation_timeframe()
         self.trend_timeframe = self.config.get_trend_timeframe()
         
+        # Inicializar zona horaria y referencia de último reset
+        try:
+            tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
+        except Exception:
+            tz = None
+        now_local = datetime.now(tz) if tz else datetime.now()
+        reset_dt = datetime(
+            now_local.year,
+            now_local.month,
+            now_local.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE,
+            tzinfo=tz
+        ) if tz else datetime(
+            now_local.year,
+            now_local.month,
+            now_local.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE
+        )
+        initial_last_reset_day = now_local.date() if now_local >= reset_dt else (now_local.date() - timedelta(days=1))
+        
         # Estadísticas
         self.stats = {
             "signals_generated": 0,
@@ -136,7 +162,7 @@ class TradingBot:
             "successful_trades": 0,
             "total_pnl": 0.0,
             "daily_trades": 0,
-            "last_reset_date": datetime.now().date()
+            "last_reset_day": initial_last_reset_day
         }
         
         # Circuit breaker avanzado
@@ -284,6 +310,14 @@ class TradingBot:
         # Configurar schedule para análisis periódico
         schedule.clear()
         schedule.every(self.analysis_interval).minutes.do(self._run_analysis_cycle)
+        
+        # Programar reset diario exacto a la hora configurada (usa hora local del sistema)
+        try:
+            reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+            schedule.every().day.at(reset_time_str).do(self._reset_daily_stats_if_needed).tag('daily_reset')
+            self.logger.info(f"⏰ Daily reset scheduled at {reset_time_str} ({TIMEZONE})")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not schedule daily reset: {e}")
         
         # Iniciar thread de ejecución (sin análisis inicial inmediato)
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
@@ -631,17 +665,41 @@ class TradingBot:
     
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias si es un nuevo día
+        📅 Resetear estadísticas diarias a las 11:00 AM hora Chile (America/Santiago)
         """
-        today = datetime.now().date()
-        if today != self.stats["last_reset_date"]:
+        try:
+            tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
+        except Exception:
+            tz = None
+        now_local = datetime.now(tz) if tz else datetime.now()
+        current_day = now_local.date()
+        reset_dt = datetime(
+            current_day.year,
+            current_day.month,
+            current_day.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE,
+            tzinfo=tz
+        ) if tz else datetime(
+            current_day.year,
+            current_day.month,
+            current_day.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE
+        )
+
+        # Realizar reset solo una vez por día cuando la hora local haya alcanzado o superado el reset
+        if now_local >= reset_dt and self.stats.get("last_reset_day") != current_day:
             self.stats["daily_trades"] = 0
-            self.stats["last_reset_date"] = today
-            # Resetear circuit breaker al inicio de un nuevo día
+            self.stats["last_reset_day"] = current_day
+            # Resetear circuit breaker al inicio del nuevo periodo diario
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
             self.circuit_breaker_activated_at = None
-            self.logger.info(f"📅 Daily stats reset for {today} - Circuit breaker reset")
+            self.logger.info(f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset")
+        else:
+            # Sin acción antes del horario de reset o si ya se realizó en el día
+            pass
     
     def _check_circuit_breaker(self) -> bool:
         """

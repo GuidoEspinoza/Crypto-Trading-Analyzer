@@ -62,6 +62,26 @@ GLOBAL_SYMBOLS: List[str] = [
 ]
 
 # ============================================================================
+# ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
+# ============================================================================
+
+# Zona horaria para Chile (CLT/CLST)
+# Usado en:
+# - TradingBot para programación de operaciones
+# - DatabaseManager para timestamps
+# - Logging para marcas de tiempo
+TIMEZONE: str = "America/Santiago"
+
+# Alias para compatibilidad con código existente
+CHILE_TZ: str = TIMEZONE
+
+# Horario de reset diario optimizado para trading de criptomonedas en Chile
+# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
+# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
+DAILY_RESET_HOUR: int = 11  # 11:00 AM CLT
+DAILY_RESET_MINUTE: int = 0  # 11:00 AM exacto
+
+# ============================================================================
 # 📊 DEFINICIÓN DE PERFILES DE TRADING
 # ============================================================================
 
