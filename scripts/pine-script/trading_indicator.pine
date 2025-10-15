@@ -1,0 +1,651 @@
+// @version=6
+indicator("Sistema Avanzado de Trading", overlay=true, max_bars_back=500)
+
+// ==========================================
+// Detección de Timeframe y Selección de Perfil
+// ==========================================
+
+// Obtener el timeframe actual
+currentTimeframe = timeframe.period
+
+// Función para determinar el perfil basado en el timeframe
+determineTradingProfile() =>
+    string profile = "OPTIMO"  // Perfil por defecto
+    
+    // Timeframes cortos (1m, 5m, 15m) -> Perfil Agresivo
+    if currentTimeframe == "1" or currentTimeframe == "5" or currentTimeframe == "15"
+        profile := "AGRESIVO"
+    // Timeframes medios (30m, 1h) -> Perfil Óptimo
+    else if currentTimeframe == "30" or currentTimeframe == "60"
+        profile := "OPTIMO"
+    // Timeframes largos (4h, 1D o más) -> Perfil Conservador
+    else if currentTimeframe == "240" or currentTimeframe == "D" or currentTimeframe == "W" or currentTimeframe == "M"
+        profile := "CONSERVADOR"
+    
+    profile
+
+// Determinar el perfil actual basado en el timeframe
+currentProfile = determineTradingProfile()
+
+// Selección de par de trading para optimización de parámetros
+symbolType = input.string("CRYPTO", "Tipo de Mercado", options=["CRYPTO", "FOREX", "STOCKS", "COMMODITIES"])
+
+// Optimización de parámetros según el tipo de mercado
+adjustParametersForMarket() =>
+    if symbolType == "CRYPTO"
+        // Criptomonedas tienen mayor volatilidad
+        [1.2, 1.5, 0.8]  // [volatilityFactor, trendStrengthThreshold, divergenceWeight]
+    else if symbolType == "FOREX"
+        // Forex tiene volatilidad moderada pero movimientos rápidos
+        [0.9, 1.2, 1.0]
+    else if symbolType == "STOCKS"
+        // Acciones tienen volatilidad variable según el sector
+        [1.0, 1.3, 1.2]
+    else  // COMMODITIES
+        // Materias primas tienen movimientos más lentos pero pronunciados
+        [1.1, 1.8, 0.9]
+
+[volatilityFactor, trendStrengthThreshold, divergenceWeight] = adjustParametersForMarket()
+
+// ==========================================
+// Configuración y Parámetros
+// ==========================================
+
+// Parámetros de Fibonacci
+var float[] fibLevels = array.new_float(7)
+array.set(fibLevels, 0, 0.0)    // 0%
+array.set(fibLevels, 1, 0.236)  // 23.6%
+array.set(fibLevels, 2, 0.382)  // 38.2%
+array.set(fibLevels, 3, 0.5)    // 50%
+array.set(fibLevels, 4, 0.618)  // 61.8%
+array.set(fibLevels, 5, 0.786)  // 78.6%
+array.set(fibLevels, 6, 1.0)    // 100%
+
+// Parámetros de Ichimoku según perfil
+ichimokuTenkanPeriod = currentProfile == "AGRESIVO" ? 7 : currentProfile == "CONSERVADOR" ? 12 : 9
+ichimokuKijunPeriod = currentProfile == "AGRESIVO" ? 22 : currentProfile == "CONSERVADOR" ? 30 : 26
+ichimokuSenkouBPeriod = currentProfile == "AGRESIVO" ? 44 : currentProfile == "CONSERVADOR" ? 60 : 52
+ichimokuShift = currentProfile == "AGRESIVO" ? 22 : currentProfile == "CONSERVADOR" ? 30 : 26
+
+// Parámetros de Osciladores según perfil
+stochKPeriod = currentProfile == "AGRESIVO" ? 10 : currentProfile == "CONSERVADOR" ? 18 : 14
+stochDPeriod = currentProfile == "AGRESIVO" ? 3 : currentProfile == "CONSERVADOR" ? 5 : 3
+stochOversold = currentProfile == "AGRESIVO" ? 25 : currentProfile == "CONSERVADOR" ? 15 : 20
+stochOverbought = currentProfile == "AGRESIVO" ? 75 : currentProfile == "CONSERVADOR" ? 85 : 80
+
+williamsRPeriod = currentProfile == "AGRESIVO" ? 10 : currentProfile == "CONSERVADOR" ? 18 : 14
+williamsROversold = currentProfile == "AGRESIVO" ? -75 : currentProfile == "CONSERVADOR" ? -85 : -80
+williamsROverbought = currentProfile == "AGRESIVO" ? -25 : currentProfile == "CONSERVADOR" ? -15 : -20
+
+// Parámetros de RSI según perfil
+rsiPeriod = currentProfile == "AGRESIVO" ? 10 : currentProfile == "CONSERVADOR" ? 18 : 14
+rsiOversoldExtreme = currentProfile == "AGRESIVO" ? 25 : currentProfile == "CONSERVADOR" ? 15 : 20
+rsiOversold = currentProfile == "AGRESIVO" ? 35 : currentProfile == "CONSERVADOR" ? 25 : 30
+rsiOverbought = currentProfile == "AGRESIVO" ? 65 : currentProfile == "CONSERVADOR" ? 75 : 70
+rsiOverboughtExtreme = currentProfile == "AGRESIVO" ? 75 : currentProfile == "CONSERVADOR" ? 85 : 80
+
+// Parámetros de Awesome Oscillator según perfil
+aoFastPeriod = currentProfile == "AGRESIVO" ? 3 : currentProfile == "CONSERVADOR" ? 8 : 5
+aoSlowPeriod = currentProfile == "AGRESIVO" ? 28 : currentProfile == "CONSERVADOR" ? 40 : 34
+
+// Parámetros de Bollinger Bands según perfil
+bbPeriod = currentProfile == "AGRESIVO" ? 15 : currentProfile == "CONSERVADOR" ? 25 : 20
+bbMultiplier = currentProfile == "AGRESIVO" ? 1.8 : currentProfile == "CONSERVADOR" ? 2.2 : 2.0
+
+// Parámetros de ATR para Stop Loss según perfil
+atrPeriod = currentProfile == "AGRESIVO" ? 10 : currentProfile == "CONSERVADOR" ? 18 : 14
+// Multiplicadores ajustados para ser más amplios y evitar salidas por volatilidad temporal
+atrMultiplier = currentProfile == "AGRESIVO" ? 3.5 : currentProfile == "CONSERVADOR" ? 2.0 : 2.5
+
+// Parámetros de Gestión de Riesgo según perfil
+riskPerTrade = (currentProfile == "AGRESIVO" ? 3.0 : currentProfile == "CONSERVADOR" ? 1.0 : 2.0) / 100
+maxPositionSize = (currentProfile == "AGRESIVO" ? 30.0 : currentProfile == "CONSERVADOR" ? 10.0 : 20.0) / 100
+minConfidenceScore = currentProfile == "AGRESIVO" ? 55.0 : currentProfile == "CONSERVADOR" ? 75.0 : 65.0
+
+// Parámetros de Filtro de Tendencia
+longTermTrendPeriod = currentProfile == "AGRESIVO" ? 100 : currentProfile == "CONSERVADOR" ? 200 : 150
+useTrendFilter = input.bool(true, "Usar Filtro de Tendencia", group="Filtros")
+respectTrendDirection = input.bool(true, "Respetar Dirección de Tendencia", tooltip="Si está activado, solo se generarán señales en la dirección de la tendencia principal", group="Filtros")
+
+// Parámetros de Visualización
+showFibLevels = input.bool(false, "Mostrar Niveles de Fibonacci", group="Visualización")
+showIchimoku = input.bool(false, "Mostrar Ichimoku Cloud", group="Visualización")
+showSignals = input.bool(true, "Mostrar Señales de Trading", group="Visualización")
+showStopLoss = input.bool(true, "Mostrar Stop Loss", group="Visualización")
+showTakeProfit = input.bool(true, "Mostrar Take Profit", group="Visualización")
+showTrendLine = input.bool(true, "Mostrar Línea de Tendencia", group="Visualización")
+
+// ==========================================
+// Cálculo de Indicadores
+// ==========================================
+
+// Fibonacci Retracement
+calcFibonacciRetracement(lookback) =>
+    float swingHigh = ta.highest(high, lookback)
+    float swingLow = ta.lowest(low, lookback)
+    float diff = swingHigh - swingLow
+    
+    var fibValues = array.new_float(7)
+    array.set(fibValues, 0, swingHigh)
+    array.set(fibValues, 1, swingHigh - (diff * array.get(fibLevels, 1)))
+    array.set(fibValues, 2, swingHigh - (diff * array.get(fibLevels, 2)))
+    array.set(fibValues, 3, swingHigh - (diff * array.get(fibLevels, 3)))
+    array.set(fibValues, 4, swingHigh - (diff * array.get(fibLevels, 4)))
+    array.set(fibValues, 5, swingHigh - (diff * array.get(fibLevels, 5)))
+    array.set(fibValues, 6, swingLow)
+    
+    fibValues
+
+// Ichimoku Cloud - Implementación manual en lugar de usar ta.ichimoku
+tenkanSen = math.avg(ta.lowest(low, ichimokuTenkanPeriod), ta.highest(high, ichimokuTenkanPeriod))
+kijunSen = math.avg(ta.lowest(low, ichimokuKijunPeriod), ta.highest(high, ichimokuKijunPeriod))
+senkouSpanA = math.avg(tenkanSen, kijunSen)
+senkouSpanB = math.avg(ta.lowest(low, ichimokuSenkouBPeriod), ta.highest(high, ichimokuSenkouBPeriod))
+chikouSpan = close
+
+// Estocástico - Corregido para incluir el parámetro length
+k = ta.stoch(close, ta.highest(high, stochKPeriod), ta.lowest(low, stochKPeriod), stochKPeriod)
+d = ta.sma(k, stochDPeriod)
+stochSignal = k > d ? "BUY" : k < d ? "SELL" : "HOLD"
+stochOverboughtCondition = k >= stochOverbought and d >= stochOverbought
+stochOversoldCondition = k <= stochOversold and d <= stochOversold
+
+// Williams %R
+williamsR = ta.wpr(williamsRPeriod)
+williamsRSignal = williamsR <= williamsROversold ? "BUY" : williamsR >= williamsROverbought ? "SELL" : "HOLD"
+
+// RSI
+rsi = ta.rsi(close, rsiPeriod)
+rsiSignal = rsi <= rsiOversold ? "BUY" : rsi >= rsiOverbought ? "SELL" : "HOLD"
+rsiStrength = rsi
+
+// Awesome Oscillator
+aoMedianPrice = (high + low) / 2
+aoSmaFast = ta.sma(aoMedianPrice, aoFastPeriod)
+aoSmaSlow = ta.sma(aoMedianPrice, aoSlowPeriod)
+ao = aoSmaFast - aoSmaSlow
+aoSignal = ao > 0 and ao[1] <= 0 ? "BUY" : ao < 0 and ao[1] >= 0 ? "SELL" : ao > ao[1] ? "BUY" : ao < ao[1] ? "SELL" : "HOLD"
+
+// Bollinger Bands
+bbMiddle = ta.sma(close, bbPeriod)
+bbStdDev = ta.stdev(close, bbPeriod)
+bbUpper = bbMiddle + bbMultiplier * bbStdDev
+bbLower = bbMiddle - bbMultiplier * bbStdDev
+bbSignal = close < bbLower ? "BUY" : close > bbUpper ? "SELL" : "HOLD"
+
+// ATR para Stop Loss con ajuste dinámico según volatilidad
+atr = ta.atr(atrPeriod)
+atrPercent = atr / close * 100  // ATR como porcentaje del precio
+
+// Calcular ratio de volatilidad comparando volatilidad actual con histórica
+volatilityRatio = ta.stdev(close, 20) / ta.stdev(close, 100)
+
+// Ajuste dinámico del multiplicador ATR basado en volatilidad y tipo de mercado
+dynamicAtrMultiplier = atrMultiplier
+float adjustedVolatilityRatio = volatilityRatio * volatilityFactor  // Aplicar factor específico del mercado
+
+if adjustedVolatilityRatio > 1.8  // Volatilidad extremadamente alta
+    dynamicAtrMultiplier := atrMultiplier * 1.5
+else if adjustedVolatilityRatio > 1.4  // Volatilidad muy alta
+    dynamicAtrMultiplier := atrMultiplier * 1.3
+else if adjustedVolatilityRatio > 1.2  // Volatilidad alta
+    dynamicAtrMultiplier := atrMultiplier * 1.15
+else if adjustedVolatilityRatio < 0.6  // Volatilidad extremadamente baja
+    dynamicAtrMultiplier := atrMultiplier * 0.7
+else if adjustedVolatilityRatio < 0.8  // Volatilidad muy baja
+    dynamicAtrMultiplier := atrMultiplier * 0.85
+
+// Filtro de Tendencia a Largo Plazo ajustado al tipo de mercado
+longTermEma = ta.ema(close, longTermTrendPeriod)
+mediumTermEma = ta.ema(close, math.round(longTermTrendPeriod / 2))
+trendDirection = longTermEma > longTermEma[20] ? "UP" : longTermEma < longTermEma[20] ? "DOWN" : "NEUTRAL"
+trendStrength = math.abs(longTermEma - mediumTermEma) / longTermEma * 100
+isTrendStrong = trendStrength > trendStrengthThreshold
+
+// Detección de Divergencias en RSI
+rsiHighs = ta.pivothigh(rsi, 5, 5)
+rsiLows = ta.pivotlow(rsi, 5, 5)
+priceHighs = ta.pivothigh(high, 5, 5)
+priceLows = ta.pivotlow(low, 5, 5)
+
+// Divergencia alcista: precio hace mínimos más bajos pero RSI hace mínimos más altos
+bullishDivergence = false
+if not na(priceLows) and not na(priceLows[1]) and not na(rsiLows) and not na(rsiLows[1])
+    if priceLows < priceLows[1] and rsiLows > rsiLows[1]
+        bullishDivergence := true
+
+// Divergencia bajista: precio hace máximos más altos pero RSI hace máximos más bajos
+bearishDivergence = false
+if not na(priceHighs) and not na(priceHighs[1]) and not na(rsiHighs) and not na(rsiHighs[1])
+    if priceHighs > priceHighs[1] and rsiHighs < rsiHighs[1]
+        bearishDivergence := true
+
+// Análisis de Volumen
+volumeRatio = volume / ta.sma(volume, 20)
+volumeConfirmation = volumeRatio >= 1.5
+volumeStrength = volumeRatio >= 3.0 ? "VERY_STRONG" : volumeRatio >= 2.0 ? "STRONG" : volumeRatio >= 1.5 ? "MODERATE" : "WEAK"
+
+// ==========================================
+// Cálculo de Señales y Confianza
+// ==========================================
+
+// Determinar Régimen de Mercado
+marketRegime() =>
+    float volatility = ta.stdev(close, 20) / ta.sma(close, 20) * 100
+    float localTrendStrength = math.abs(ta.ema(close, 50) - ta.ema(close, 200)) / ta.ema(close, 200) * 100
+    
+    string regime = "NORMAL"
+    if volatility > 3.0
+        regime := "VOLATILE"
+    else if localTrendStrength > 2.0
+        regime := "TRENDING"
+    else
+        regime := "RANGING"
+    
+    regime
+
+currentMarketRegime = marketRegime()
+
+// Calcular Puntuación de Confianza
+calculateConfidenceScore() =>
+    float score = 50.0  // Puntuación base
+    
+    // Contribución de RSI (0-10 puntos)
+    if rsiSignal == "BUY" and rsi <= rsiOversoldExtreme
+        score += 10.0
+    else if rsiSignal == "BUY" and rsi <= rsiOversold
+        score += 7.0
+    else if rsiSignal == "SELL" and rsi >= rsiOverboughtExtreme
+        score += 10.0
+    else if rsiSignal == "SELL" and rsi >= rsiOverbought
+        score += 7.0
+    
+    // Contribución de Estocástico (0-10 puntos)
+    if stochSignal == "BUY" and stochOversoldCondition
+        score += 10.0
+    else if stochSignal == "BUY"
+        score += 5.0
+    else if stochSignal == "SELL" and stochOverboughtCondition
+        score += 10.0
+    else if stochSignal == "SELL"
+        score += 5.0
+    
+    // Contribución de Williams %R (0-10 puntos)
+    if williamsRSignal == "BUY" and williamsR <= williamsROversold
+        score += 10.0
+    else if williamsRSignal == "BUY"
+        score += 5.0
+    else if williamsRSignal == "SELL" and williamsR >= williamsROverbought
+        score += 10.0
+    else if williamsRSignal == "SELL"
+        score += 5.0
+    
+    // Contribución de Bollinger Bands (0-10 puntos)
+    if bbSignal == "BUY" and close < bbLower
+        score += 10.0
+    else if bbSignal == "SELL" and close > bbUpper
+        score += 10.0
+    
+    // Contribución de Awesome Oscillator (0-10 puntos)
+    if aoSignal == "BUY" and ao > 0 and ao[1] <= 0
+        score += 10.0
+    else if aoSignal == "BUY" and ao > ao[1]
+        score += 5.0
+    else if aoSignal == "SELL" and ao < 0 and ao[1] >= 0
+        score += 10.0
+    else if aoSignal == "SELL" and ao < ao[1]
+        score += 5.0
+    
+    // Contribución de Volumen (0-10 puntos)
+    if volumeConfirmation
+        if volumeStrength == "VERY_STRONG"
+            score += 10.0
+        else if volumeStrength == "STRONG"
+            score += 7.0
+        else if volumeStrength == "MODERATE"
+            score += 5.0
+    
+    // Contribución de Divergencias (0-15 puntos)
+    if bullishDivergence and rsi < 50
+        score += 15.0  // Divergencia alcista es una señal fuerte de compra
+    else if bearishDivergence and rsi > 50
+        score += 15.0  // Divergencia bajista es una señal fuerte de venta
+    
+    // Contribución del Filtro de Tendencia (0-15 puntos)
+    if useTrendFilter
+        // Alineación con la tendencia principal
+        if trendDirection == "UP" and aoSignal == "BUY"
+            score += 15.0  // Señal de compra en tendencia alcista
+        else if trendDirection == "DOWN" and aoSignal == "SELL"
+            score += 15.0  // Señal de venta en tendencia bajista
+        else if trendDirection != "NEUTRAL" and respectTrendDirection
+            score -= 20.0  // Penalizar señales contra la tendencia si respectTrendDirection está activado
+    
+    // Ajuste por régimen de mercado
+    if currentMarketRegime == "VOLATILE"
+        score *= 0.9  // Reducir confianza en mercados volátiles
+    else if currentMarketRegime == "TRENDING"
+        score *= 1.1  // Aumentar confianza en mercados en tendencia
+    
+    // Ajuste por fuerza de la tendencia
+    if isTrendStrong and ((trendDirection == "UP" and aoSignal == "BUY") or (trendDirection == "DOWN" and aoSignal == "SELL"))
+        score *= 1.1  // Aumentar confianza cuando la señal coincide con una tendencia fuerte
+    
+    math.min(score, 100.0)  // Limitar a 100
+
+// Generar Señal Final
+generateSignal() =>
+    string signal = "HOLD"
+    float confidenceScore = calculateConfidenceScore()
+    
+    // Contar señales de compra y venta
+    int buySignals = 0
+    int sellSignals = 0
+    
+    if rsiSignal == "BUY" 
+        buySignals += 1
+    if rsiSignal == "SELL" 
+        sellSignals += 1
+    
+    if stochSignal == "BUY" 
+        buySignals += 1
+    if stochSignal == "SELL" 
+        sellSignals += 1
+    
+    if williamsRSignal == "BUY" 
+        buySignals += 1
+    if williamsRSignal == "SELL" 
+        sellSignals += 1
+    
+    if bbSignal == "BUY" 
+        buySignals += 1
+    if bbSignal == "SELL" 
+        sellSignals += 1
+    
+    if aoSignal == "BUY" 
+        buySignals += 1
+    if aoSignal == "SELL" 
+        sellSignals += 1
+    
+    // Añadir señales de divergencias
+    if bullishDivergence
+        buySignals += 2  // Dar mayor peso a las divergencias
+    if bearishDivergence
+        sellSignals += 2
+    
+    // Determinar señal basada en mayoría y confianza
+    if buySignals > sellSignals and confidenceScore >= minConfidenceScore
+        signal := "BUY"
+        
+        // Aplicar filtro de tendencia si está activado
+        if useTrendFilter and respectTrendDirection and trendDirection == "DOWN"
+            signal := "HOLD"  // No operar contra la tendencia principal
+    
+    else if sellSignals > buySignals and confidenceScore >= minConfidenceScore
+        signal := "SELL"
+        
+        // Aplicar filtro de tendencia si está activado
+        if useTrendFilter and respectTrendDirection and trendDirection == "UP"
+            signal := "HOLD"  // No operar contra la tendencia principal
+    
+    [signal, confidenceScore]
+
+[currentSignal, confidenceScore] = generateSignal()
+
+// ==========================================
+// Cálculo de Stop Loss y Take Profit
+// ==========================================
+
+// Calcular Stop Loss basado en ATR con ajuste dinámico
+calculateStopLoss(signal) =>
+    float stopPrice = 0.0
+    
+    if signal == "BUY"
+        stopPrice := close - (atr * dynamicAtrMultiplier)
+    else if signal == "SELL"
+        stopPrice := close + (atr * dynamicAtrMultiplier)
+    
+    stopPrice
+
+// Calcular Take Profit basado en Risk-Reward con múltiples niveles
+calculateTakeProfit(signal, stopLossPrice) =>
+    float takeProfit = 0.0
+    float riskRewardRatio = 2.0  // Ratio riesgo-beneficio por defecto
+    
+    // Ajustar ratio según régimen de mercado y fuerza de tendencia
+    if currentMarketRegime == "TRENDING" and isTrendStrong
+        riskRewardRatio := 3.0  // Mayor objetivo en tendencias fuertes
+    else if currentMarketRegime == "TRENDING"
+        riskRewardRatio := 2.5
+    else if currentMarketRegime == "VOLATILE"
+        riskRewardRatio := 1.5
+    
+    if signal == "BUY"
+        float risk = close - stopLossPrice
+        takeProfit := close + (risk * riskRewardRatio)
+    else if signal == "SELL"
+        float risk = stopLossPrice - close
+        takeProfit := close - (risk * riskRewardRatio)
+    
+    takeProfit
+
+// Cálculo de niveles de Take Profit para trailing stop
+calculateTakeProfitLevels(signal, stopLossPrice) =>
+    float tp1 = 0.0, tp2 = 0.0, tp3 = 0.0
+    
+    if signal == "BUY"
+        float risk = close - stopLossPrice
+        tp1 := close + (risk * 1.0)  // 1:1 R:R
+        tp2 := close + (risk * 2.0)  // 2:1 R:R
+        tp3 := close + (risk * 3.0)  // 3:1 R:R
+    else if signal == "SELL"
+        float risk = stopLossPrice - close
+        tp1 := close - (risk * 1.0)
+        tp2 := close - (risk * 2.0)
+        tp3 := close - (risk * 3.0)
+    
+    [tp1, tp2, tp3]
+
+// Trailing Stop Logic
+calculateTrailingStop(signal, entryPrice, currentStop) =>
+    float newStop = currentStop
+    
+    if signal == "BUY"
+        // Para posiciones largas, mover el stop loss hacia arriba cuando el precio sube
+        float trailDistance = atr * (dynamicAtrMultiplier * 0.75)  // Distancia de trailing más ajustada
+        float potentialStop = high - trailDistance
+        
+        // Solo actualizar si el nuevo stop es mayor que el anterior
+        if potentialStop > currentStop
+            newStop := potentialStop
+    
+    else if signal == "SELL"
+        // Para posiciones cortas, mover el stop loss hacia abajo cuando el precio baja
+        float trailDistance = atr * (dynamicAtrMultiplier * 0.75)
+        float potentialStop = low + trailDistance
+        
+        // Solo actualizar si el nuevo stop es menor que el anterior
+        if potentialStop < currentStop
+            newStop := potentialStop
+    
+    newStop
+
+// Calcular Position Sizing
+calculatePositionSize(signal, stopLossPrice) =>
+    float positionSize = 0.0
+    
+    if signal == "BUY" or signal == "SELL"
+        float stopDistance = math.abs(close - stopLossPrice)
+        float riskAmount = 10000 * riskPerTrade  // Asumiendo un capital de 10,000
+        
+        if stopDistance > 0
+            positionSize := riskAmount / stopDistance
+        
+        // Limitar al tamaño máximo de posición
+        float maxSize = 10000 * maxPositionSize
+        positionSize := math.min(positionSize, maxSize)
+    
+    positionSize
+
+// Calcular valores para la barra actual
+var float stopLossPrice = na
+var float takeProfitPrice = na
+var float positionSize = na
+
+if currentSignal != "HOLD" and currentSignal != currentSignal[1]
+    stopLossPrice := calculateStopLoss(currentSignal)
+    takeProfitPrice := calculateTakeProfit(currentSignal, stopLossPrice)
+    positionSize := calculatePositionSize(currentSignal, stopLossPrice)
+
+// ==========================================
+// Visualización
+// ==========================================
+
+// Colores
+colorBuy = color.rgb(0, 150, 136, 80)
+colorSell = color.rgb(255, 82, 82, 80)
+colorNeutral = color.rgb(156, 156, 156, 80)
+
+// Visualizar Filtro de Tendencia
+plotTrendEma = showTrendLine and useTrendFilter ? longTermEma : na
+plot(plotTrendEma, "EMA Tendencia", color=trendDirection == "UP" ? color.green : color.red, linewidth=2)
+
+// Mostrar etiqueta de fuerza de tendencia
+if showTrendLine and useTrendFilter and isTrendStrong and barstate.islast
+    label.new(bar_index, high, text="Tendencia Fuerte " + trendDirection, color=trendDirection == "UP" ? color.green : color.red, style=label.style_label_down, textcolor=color.white, size=size.small)
+
+// Visualizar señales
+plotshape(showSignals and currentSignal == "BUY" and currentSignal != currentSignal[1], title="Señal de Compra", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.normal)
+plotshape(showSignals and currentSignal == "SELL" and currentSignal != currentSignal[1], title="Señal de Venta", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.normal)
+
+// Visualizar Stop Loss y Take Profit
+plot(showStopLoss and not na(stopLossPrice) and currentSignal == "BUY" ? stopLossPrice : na, title="Stop Loss (Compra)", color=color.red, style=plot.style_cross, linewidth=2)
+plot(showStopLoss and not na(stopLossPrice) and currentSignal == "SELL" ? stopLossPrice : na, title="Stop Loss (Venta)", color=color.red, style=plot.style_cross, linewidth=2)
+
+plot(showTakeProfit and not na(takeProfitPrice) and currentSignal == "BUY" ? takeProfitPrice : na, title="Take Profit (Compra)", color=color.green, style=plot.style_cross, linewidth=2)
+plot(showTakeProfit and not na(takeProfitPrice) and currentSignal == "SELL" ? takeProfitPrice : na, title="Take Profit (Venta)", color=color.green, style=plot.style_cross, linewidth=2)
+
+// Visualizar Divergencias
+plotshape(bullishDivergence, "Divergencia Alcista", location=location.belowbar, color=color.green, style=shape.diamond, size=size.small)
+plotshape(bearishDivergence, "Divergencia Bajista", location=location.abovebar, color=color.red, style=shape.diamond, size=size.small)
+
+// Visualizar Ichimoku Cloud
+var bool showIchimokuLast = false
+var color ichimokuFillColor = na
+
+// Plots para Ichimoku que se mostrarán condicionalmente
+tenkanPlot = plot(showIchimoku ? tenkanSen : na, "Tenkan-Sen", color.new(#0495ff, 0), 2)
+kijunPlot = plot(showIchimoku ? kijunSen : na, "Kijun-Sen", color.new(#ff0404, 0), 2)
+closePlot = plot(showIchimoku ? close : na, "Price", color.new(#000000, 0), 2)
+chikouPlot = plot(showIchimoku ? chikouSpan : na, "Chikou Span", color.new(#8c41f4, 0), 2)
+senkouAPlot = plot(showIchimoku ? senkouSpanA : na, "Senkou Span A", color.new(#38761d, 0))
+senkouBPlot = plot(showIchimoku ? senkouSpanB : na, "Senkou Span B", color.new(#cc0000, 0))
+
+// Actualizar el color de relleno basado en la condición
+ichimokuFillColor := showIchimoku ? color.new(senkouSpanA > senkouSpanB ? #38761d : #cc0000, 90) : na
+showIchimokuLast := showIchimoku
+
+// Fill para Ichimoku Cloud
+fill(senkouAPlot, senkouBPlot, color=ichimokuFillColor, title="Kumo Cloud")
+
+// Variables para almacenar las líneas de Fibonacci
+var fibLines = array.new_line(7)
+var fibLabels = array.new_label(7)
+
+// Calcular valores de Fibonacci para cada barra
+fibValues = calcFibonacciRetracement(50)
+
+// Visualizar niveles de Fibonacci si está activado
+if barstate.islast
+    for i = 0 to 6
+        level = array.get(fibValues, i)
+        levelPercent = array.get(fibLevels, i) * 100
+        levelColor = i == 0 or i == 6 ? color.blue : color.purple
+        levelStyle = i == 0 or i == 6 ? line.style_solid : line.style_dashed
+        levelWidth = i == 0 or i == 6 ? 2 : 1
+        
+        // Eliminar línea anterior si existe
+        if not na(array.get(fibLines, i))
+            line.delete(array.get(fibLines, i))
+        
+        // Eliminar etiqueta anterior si existe
+        if not na(array.get(fibLabels, i))
+            label.delete(array.get(fibLabels, i))
+        
+        if showFibLevels and not na(level)
+            // Crear nueva línea
+            newLine = line.new(bar_index - 50, level, bar_index, level, color=levelColor, style=levelStyle, width=levelWidth)
+            array.set(fibLines, i, newLine)
+            
+            // Crear nueva etiqueta
+            newLabel = label.new(bar_index, level, text=str.tostring(levelPercent, "#.#") + "%", color=color.new(color.white, 100), textcolor=levelColor, style=label.style_none)
+            array.set(fibLabels, i, newLabel)
+        else
+            // Si no se muestran, establecer valores nulos en el array
+            array.set(fibLines, i, na)
+            array.set(fibLabels, i, na)
+
+// ==========================================
+// Alertas
+// ==========================================
+
+// Alerta para señal de compra
+alertcondition(currentSignal == "BUY" and currentSignal != currentSignal[1], title="Alerta de Compra", message="Señal de COMPRA generada con confianza: {{confidenceScore}}")
+
+// Alerta para señal de venta
+alertcondition(currentSignal == "SELL" and currentSignal != currentSignal[1], title="Alerta de Venta", message="Señal de VENTA generada con confianza: {{confidenceScore}}")
+
+// Alerta para cuando el precio alcanza el stop loss
+alertcondition(currentSignal == "BUY" and low <= stopLossPrice, title="Stop Loss Alcanzado (Compra)", message="Precio ha alcanzado el Stop Loss en posición de compra")
+alertcondition(currentSignal == "SELL" and high >= stopLossPrice, title="Stop Loss Alcanzado (Venta)", message="Precio ha alcanzado el Stop Loss en posición de venta")
+
+// Alerta para cuando el precio alcanza el take profit
+alertcondition(currentSignal == "BUY" and high >= takeProfitPrice, title="Take Profit Alcanzado (Compra)", message="Precio ha alcanzado el Take Profit en posición de compra")
+alertcondition(currentSignal == "SELL" and low <= takeProfitPrice, title="Take Profit Alcanzado (Venta)", message="Precio ha alcanzado el Take Profit en posición de venta")
+
+// Mostrar información en tabla
+var table infoTable = table.new(position.top_right, 5, 9, border_width=1)
+
+if barstate.islast
+    table.cell(infoTable, 0, 0, "Sistema Avanzado de Trading", bgcolor=color.new(color.blue, 90), text_color=color.white)
+    
+    // Mostrar el timeframe y perfil seleccionado
+    color profileColor = currentProfile == "AGRESIVO" ? color.red : 
+                         currentProfile == "CONSERVADOR" ? color.green : 
+                         color.blue
+    table.cell(infoTable, 0, 1, "Timeframe: " + currentTimeframe + " (" + currentProfile + ")", 
+              bgcolor=color.new(profileColor, 80), 
+              text_color=color.white)
+    
+    // Señal con formato destacado para facilitar la copia
+    string signalText = currentSignal == "BUY" ? "▶ COMPRAR ◀" : 
+                       currentSignal == "SELL" ? "▶ VENDER ◀" : 
+                       "MANTENER"
+    table.cell(infoTable, 0, 2, signalText, 
+              bgcolor=currentSignal == "BUY" ? colorBuy : 
+                     currentSignal == "SELL" ? colorSell : 
+                     colorNeutral, 
+              text_color=color.white,
+              text_size=size.large)
+    
+    table.cell(infoTable, 0, 3, "Confianza: " + str.tostring(confidenceScore, "#.##") + "%", bgcolor=color.new(color.blue, 90), text_color=color.white)
+    table.cell(infoTable, 0, 4, "Régimen: " + currentMarketRegime, bgcolor=color.new(color.blue, 90), text_color=color.white)
+    
+    if currentSignal != "HOLD"
+        // Calcular porcentajes de SL y TP
+        float slPercentage = math.abs((stopLossPrice - close) / close * 100)
+        float tpPercentage = math.abs((takeProfitPrice - close) / close * 100)
+        
+        // Formato destacado para TP y SL para facilitar la copia
+        string tpText = "TAKE PROFIT → " + str.tostring(takeProfitPrice, "#.####") + " (" + str.tostring(tpPercentage, "#.##") + "%)"
+        string slText = "STOP LOSS → " + str.tostring(stopLossPrice, "#.####") + " (" + str.tostring(slPercentage, "#.##") + "%)"
+        
+        table.cell(infoTable, 0, 5, tpText, bgcolor=color.new(color.green, 90), text_color=color.white, text_size=size.normal)
+        table.cell(infoTable, 0, 6, slText, bgcolor=color.new(color.red, 90), text_color=color.white, text_size=size.normal)
+        
+        // Tamaño de posición con formato destacado (como % del portafolio)
+        float positionSizePercent = (currentProfile == "AGRESIVO" ? 30.0 : currentProfile == "CONSERVADOR" ? 10.0 : 20.0)
+        string sizeText = "PORTAFOLIO → " + str.tostring(positionSizePercent, "#.##") + "%"
+        table.cell(infoTable, 0, 7, sizeText, bgcolor=color.new(color.blue, 90), text_color=color.white)
+    
+    table.cell(infoTable, 0, 8, "RSI: " + str.tostring(rsi, "#.##") + " | Estocastico: " + str.tostring(k, "#.##"), bgcolor=color.new(color.blue, 90), text_color=color.white)

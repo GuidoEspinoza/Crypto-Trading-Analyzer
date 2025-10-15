@@ -1,0 +1,353 @@
+//@version=6
+indicator("Adaptive Trading System", shorttitle="Adapt Sys", overlay=true)
+
+// ============================================================================
+// TIMEFRAME DETECTION AND PROFILE SELECTION
+// ============================================================================
+
+// Get current timeframe in minutes
+tf_minutes = timeframe.in_seconds(timeframe.period) / 60
+
+// Determine active profile based on timeframe
+is_rapido = tf_minutes <= 15  // 1m, 5m, 15m
+is_elite = tf_minutes > 15 and tf_minutes <= 240  // 30m, 1h, 2h, 4h
+is_conservador = tf_minutes > 240  // 1d and above
+
+// Profile display
+profile_name = is_rapido ? "RAPIDO" : is_elite ? "ELITE" : "CONSERVADOR"
+
+// ============================================================================
+// ADAPTIVE INPUT CONFIGURATIONS
+// ============================================================================
+
+// RSI Settings (adaptive based on profile)
+rsi_period = is_rapido ? 14 : is_elite ? 14 : 21
+rsi_oversold = is_rapido ? 30 : is_elite ? 28 : 25
+rsi_overbought = is_rapido ? 70 : is_elite ? 72 : 75
+
+// EMA Settings
+ema_fast = is_rapido ? 9 : is_elite ? 12 : 21
+ema_slow = is_rapido ? 21 : is_elite ? 26 : 50
+
+// Bollinger Bands
+bb_length = is_rapido ? 20 : is_elite ? 20 : 25
+bb_mult = is_rapido ? 2.0 : is_elite ? 2.0 : 2.2
+
+// MACD Settings
+macd_fast = is_rapido ? 12 : is_elite ? 12 : 12
+macd_slow = is_rapido ? 26 : is_elite ? 26 : 26
+macd_signal = is_rapido ? 9 : is_elite ? 9 : 9
+
+// Stochastic Settings
+stoch_k = is_rapido ? 14 : is_elite ? 14 : 21
+stoch_d = is_rapido ? 3 : is_elite ? 3 : 5
+
+// Williams %R
+williams_length = is_rapido ? 14 : is_elite ? 14 : 21
+
+// CCI Settings
+cci_length = is_rapido ? 20 : is_elite ? 20 : 25
+
+// ADX Settings
+adx_length = is_rapido ? 14 : is_elite ? 14 : 21
+
+// ATR Settings
+atr_length = is_rapido ? 14 : is_elite ? 14 : 21
+
+// SAR Settings
+sar_start = is_rapido ? 0.02 : is_elite ? 0.02 : 0.015
+sar_increment = is_rapido ? 0.02 : is_elite ? 0.02 : 0.015
+sar_maximum = is_rapido ? 0.2 : is_elite ? 0.2 : 0.15
+
+// Confluence Thresholds
+min_confluence = is_rapido ? 3 : is_elite ? 4 : 4
+confidence_threshold = is_rapido ? 37.5 : is_elite ? 50.0 : 62.5
+
+// Risk Management
+risk_reward_ratio = is_rapido ? 2.0 : is_elite ? 2.5 : 3.0
+portfolio_risk = is_rapido ? 2.0 : is_elite ? 0.6 : 0.4
+atr_sl_multiplier = is_rapido ? 1.5 : is_elite ? 2.0 : 2.5
+atr_tp_multiplier = atr_sl_multiplier * risk_reward_ratio
+
+// ============================================================================
+// TECHNICAL INDICATORS CALCULATION
+// ============================================================================
+
+// RSI
+rsi = ta.rsi(close, rsi_period)
+
+// EMA
+ema_fast_line = ta.ema(close, ema_fast)
+ema_slow_line = ta.ema(close, ema_slow)
+
+// Bollinger Bands
+[bb_middle, bb_upper, bb_lower] = ta.bb(close, bb_length, bb_mult)
+
+// MACD
+[macd_line, signal_line, macd_histogram] = ta.macd(close, macd_fast, macd_slow, macd_signal)
+
+// Stochastic
+stoch_k_line = ta.stoch(close, high, low, stoch_k)
+stoch_d_line = ta.sma(stoch_k_line, stoch_d)
+
+// Williams %R
+williams_r = ta.wpr(williams_length)
+
+// CCI
+cci = ta.cci(hlc3, cci_length)
+
+// Enhanced ADX Trend Strength
+[adx_plus, adx_minus, adx] = ta.dmi(adx_length, adx_length)
+
+// More strict ADX requirements by profile
+adx_threshold = is_rapido ? 20 : is_elite ? 25 : 30
+adx_strong_trend = adx > adx_threshold
+
+// Additional momentum confirmation
+adx_rising = adx > adx[1]
+momentum_confirmation = adx_strong_trend and adx_rising
+
+// ATR
+atr = ta.atr(atr_length)
+
+// Parabolic SAR
+sar = ta.sar(sar_start, sar_increment, sar_maximum)
+
+// Enhanced volume analysis
+volume_ma = ta.sma(volume, 20)
+volume_ma_long = ta.sma(volume, 50)
+volume_ratio = volume / volume_ma
+
+// More strict volume requirements by profile
+volume_multiplier = is_rapido ? 1.5 : is_elite ? 1.3 : 1.2
+volume_threshold = volume_ma * volume_multiplier
+
+// ============================================================================
+// SIGNAL CONDITIONS
+// ============================================================================
+
+// RSI Signals
+rsi_bullish = rsi < rsi_oversold
+rsi_bearish = rsi > rsi_overbought
+
+// EMA Signals
+ema_bullish = ema_fast_line > ema_slow_line and close > ema_fast_line
+ema_bearish = ema_fast_line < ema_slow_line and close < ema_fast_line
+
+// Bollinger Bands Signals
+bb_bullish = close < bb_lower and close[1] >= bb_lower[1]
+bb_bearish = close > bb_upper and close[1] <= bb_upper[1]
+
+// MACD Signals
+macd_bullish = macd_line > signal_line and macd_line[1] <= signal_line[1]
+macd_bearish = macd_line < signal_line and macd_line[1] >= signal_line[1]
+
+// Stochastic Signals
+stoch_bullish = stoch_k_line < 20 and stoch_k_line > stoch_d_line
+stoch_bearish = stoch_k_line > 80 and stoch_k_line < stoch_d_line
+
+// Williams %R Signals
+williams_bullish = williams_r < -80 and williams_r[1] <= williams_r
+williams_bearish = williams_r > -20 and williams_r[1] >= williams_r
+
+// CCI Signals
+cci_bullish = cci < -100 and cci > cci[1]
+cci_bearish = cci > 100 and cci < cci[1]
+
+// ADX Signals (trend strength) - defined above with momentum confirmation
+
+// SAR Signals
+sar_bullish = close > sar
+sar_bearish = close < sar
+
+// Enhanced Volume Signals
+// Additional filter: volume should be above long-term average
+volume_bullish = volume > volume_threshold and volume > volume_ma_long
+volume_bearish = volume > volume_threshold and volume > volume_ma_long
+
+// ============================================================================
+// CONFLUENCE SYSTEM
+// ============================================================================
+
+// Count bullish signals
+bullish_signals = 0
+bullish_signals := bullish_signals + (rsi_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (ema_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (bb_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (macd_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (stoch_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (williams_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (cci_bullish ? 1 : 0)
+bullish_signals := bullish_signals + (sar_bullish ? 1 : 0)
+
+// Count bearish signals
+bearish_signals = 0
+bearish_signals := bearish_signals + (rsi_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (ema_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (bb_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (macd_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (stoch_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (williams_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (cci_bearish ? 1 : 0)
+bearish_signals := bearish_signals + (sar_bearish ? 1 : 0)
+
+// Calculate confidence percentages
+total_indicators = is_conservador ? 8 : 8  // All profiles use 8 indicators
+bullish_confidence = (bullish_signals / total_indicators) * 100
+bearish_confidence = (bearish_signals / total_indicators) * 100
+
+// ============================================================================
+// ENTRY CONDITIONS
+// ============================================================================
+
+// Entry conditions with confluence and stability filter
+buy_signal_raw = bullish_signals >= min_confluence and bullish_confidence >= confidence_threshold and momentum_confirmation and volume_bullish
+sell_signal_raw = bearish_signals >= min_confluence and bearish_confidence >= confidence_threshold and momentum_confirmation and volume_bearish
+
+// Stability filter - only show signals on closed bars
+buy_condition = buy_signal_raw and barstate.isconfirmed
+sell_condition = sell_signal_raw and barstate.isconfirmed
+
+// Signal persistence system - keep signals visible for multiple bars
+signal_persistence_bars = is_rapido ? 3 : is_elite ? 5 : 7
+
+var int last_buy_bar = na
+var int last_sell_bar = na
+
+if buy_condition
+    last_buy_bar := bar_index
+
+if sell_condition
+    last_sell_bar := bar_index
+
+// Show persistent signals
+show_buy_signal = buy_condition or (not na(last_buy_bar) and bar_index - last_buy_bar <= signal_persistence_bars)
+show_sell_signal = sell_condition or (not na(last_sell_bar) and bar_index - last_sell_bar <= signal_persistence_bars)
+
+// Avoid conflicting signals
+show_buy_signal := show_buy_signal and not show_sell_signal
+show_sell_signal := show_sell_signal and not show_buy_signal
+
+// ============================================================================
+// POSITION SIZING AND TP/SL CALCULATION
+// ============================================================================
+
+// Calculate TP/SL levels and risk metrics
+var float entry_price = na
+var float stop_loss = na
+var float take_profit = na
+var float risk_percentage = na
+var float reward_percentage = na
+
+if buy_condition and na(entry_price)
+    entry_price := close
+    stop_loss := entry_price - (atr * atr_sl_multiplier)
+    take_profit := entry_price + (atr * atr_tp_multiplier)
+    
+    // Calculate risk/reward percentages
+    risk_percentage := ((entry_price - stop_loss) / entry_price) * 100
+    reward_percentage := ((take_profit - entry_price) / entry_price) * 100
+
+if sell_condition and na(entry_price)
+    entry_price := close
+    stop_loss := entry_price + (atr * atr_sl_multiplier)
+    take_profit := entry_price - (atr * atr_tp_multiplier)
+    
+    // Calculate risk/reward percentages
+    risk_percentage := ((stop_loss - entry_price) / entry_price) * 100
+    reward_percentage := ((entry_price - take_profit) / entry_price) * 100
+
+// Reset position when TP or SL is hit
+if not na(entry_price)
+    if (buy_condition[1] and (close >= take_profit or close <= stop_loss)) or 
+       (sell_condition[1] and (close <= take_profit or close >= stop_loss))
+        entry_price := na
+        stop_loss := na
+        take_profit := na
+        risk_percentage := na
+        reward_percentage := na
+
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
+
+// Plot EMAs
+plot(ema_fast_line, color=color.blue, linewidth=2, title="EMA Fast")
+plot(ema_slow_line, color=color.red, linewidth=2, title="EMA Slow")
+
+// Plot Bollinger Bands
+plot(bb_upper, color=color.gray, linewidth=1, title="BB Upper")
+plot(bb_middle, color=color.yellow, linewidth=1, title="BB Middle")
+plot(bb_lower, color=color.gray, linewidth=1, title="BB Lower")
+
+// Plot SAR
+plot(sar, style=plot.style_circles, color=sar_bullish ? color.green : color.red, linewidth=2, title="SAR")
+
+// Buy/Sell Signals with persistence
+plotshape(show_buy_signal, title="Buy Signal", location=location.belowbar, style=shape.triangleup, 
+          size=size.normal, color=color.green, text="BUY")
+plotshape(show_sell_signal, title="Sell Signal", location=location.abovebar, style=shape.triangledown, 
+          size=size.normal, color=color.red, text="SELL")
+
+// Plot TP/SL levels
+plot(take_profit, color=color.green, linewidth=2, title="Take Profit")
+plot(stop_loss, color=color.red, linewidth=2, title="Stop Loss")
+
+// ============================================================================
+// INFORMATION TABLE
+// ============================================================================
+
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 11, bgcolor=color.white, border_width=1)
+    
+    // Profile info
+    table.cell(info_table, 0, 0, "Profile", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 0, profile_name, text_color=color.white, bgcolor=is_rapido ? color.orange : is_elite ? color.blue : color.purple)
+    
+    // Timeframe
+    table.cell(info_table, 0, 1, "Timeframe", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 1, timeframe.period, text_color=color.black)
+    
+    // Entry Price
+    table.cell(info_table, 0, 2, "Entry Price", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 2, na(entry_price) ? "N/A" : str.tostring(entry_price, "#.####"), text_color=color.black)
+    
+    // Stop Loss
+    table.cell(info_table, 0, 3, "Stop Loss", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 3, na(stop_loss) ? "N/A" : str.tostring(stop_loss, "#.####"), text_color=color.red)
+    
+    // Take Profit
+    table.cell(info_table, 0, 4, "Take Profit", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 4, na(take_profit) ? "N/A" : str.tostring(take_profit, "#.####"), text_color=color.green)
+    
+    // Risk/Reward Ratio
+    table.cell(info_table, 0, 5, "R:R Ratio", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 5, na(risk_percentage) ? "N/A" : "1:" + str.tostring(risk_reward_ratio, "#.#"), text_color=color.blue)
+    
+    // Suggested Portfolio Risk
+    table.cell(info_table, 0, 6, "Suggested Risk", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 6, str.tostring(portfolio_risk, "#.#") + "% per trade", text_color=color.orange)
+    
+    // Debug info - Signals count
+    debug_bullish_signals = (rsi_bullish ? 1 : 0) + (ema_bullish ? 1 : 0) + (bb_bullish ? 1 : 0) + (macd_bullish ? 1 : 0) + (stoch_bullish ? 1 : 0) + (williams_bullish ? 1 : 0) + (cci_bullish ? 1 : 0) + (volume_bullish ? 1 : 0)
+    debug_bearish_signals = (rsi_bearish ? 1 : 0) + (ema_bearish ? 1 : 0) + (bb_bearish ? 1 : 0) + (macd_bearish ? 1 : 0) + (stoch_bearish ? 1 : 0) + (williams_bearish ? 1 : 0) + (cci_bearish ? 1 : 0) + (volume_bearish ? 1 : 0)
+    
+    // Bullish Confluence
+    table.cell(info_table, 0, 7, "Bull Signals", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 7, str.tostring(debug_bullish_signals) + "/8 (" + str.tostring(bullish_confidence, "#.#") + "%)", 
+               text_color=bullish_confidence >= confidence_threshold ? color.green : color.black)
+    
+    // Bearish Confluence
+    table.cell(info_table, 0, 8, "Bear Signals", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 8, str.tostring(debug_bearish_signals) + "/8 (" + str.tostring(bearish_confidence, "#.#") + "%)", text_color=bearish_confidence >= confidence_threshold ? color.red : color.black)
+    
+    // Required threshold
+    table.cell(info_table, 0, 9, "Required", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 9, str.tostring(confidence_threshold) + "% confidence", text_color=color.purple, text_size=size.small)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+alertcondition(buy_condition, title="Buy Signal", message="Buy signal detected - Check your chart for entry")
+alertcondition(sell_condition, title="Sell Signal", message="Sell signal detected - Check your chart for entry")
