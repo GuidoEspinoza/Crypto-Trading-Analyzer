@@ -1,4 +1,7 @@
-#!/usr/bin/env python
+"""
+🤖 Universal Trading Analyzer - Trading Bot
+Bot principal que ejecuta estrategias automáticamente 24/7
+"""
 
 import asyncio
 import logging
@@ -17,34 +20,22 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.config_manager import ConfigManager
-from src.config.config import optimized_config
-from src.config.global_constants import GLOBAL_INITIAL_BALANCE
-
-# Obtener configuración centralizada
+from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
 try:
-    config_manager = ConfigManager()
-    config = config_manager.get_consolidated_config()
-    if config is None:
-        config = {}
-except Exception as e:
-    # Configuración de fallback en caso de error
-    config = {}
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
 from .position_adjuster import PositionAdjuster
-from ..database.database import db_manager
-from ..database.models import Strategy as DBStrategy
+from database.database import db_manager
+from database.models import Strategy as DBStrategy
 
-# Configurar logging ANTES de la clase - SILENCIADO para LiveTradingBot
+# Configurar logging ANTES de la clase
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Silenciar el logger del TradingBot para evitar logs duplicados en LiveTradingBot
-logger.setLevel(logging.CRITICAL)  # Solo errores críticos
-logger.propagate = False  # No propagar logs al logger raíz
 
 @dataclass
 class BotStatus:
@@ -83,7 +74,7 @@ class TradingBot:
     # Cache TTL se obtiene de la configuración del perfil
     @classmethod
     def _get_cache_ttl(cls):
-        return config.get("trading_bot", {}).get("cache_ttl_seconds", 300)
+        return CacheConfig.get_ttl_for_operation("price_data")
     
     def __init__(self, analysis_interval_minutes: int = None):
         """
@@ -93,8 +84,9 @@ class TradingBot:
             analysis_interval_minutes: Intervalo entre análisis (usa configuración centralizada si no se especifica)
         """
         # Configuración centralizada del bot
-        self.config = config
-        self.analysis_interval = analysis_interval_minutes or config.get("trading_bot", {}).get("analysis_interval", 15)
+        self.config = TradingBotConfig()
+        
+        self.analysis_interval = analysis_interval_minutes or self.config.get_analysis_interval()
         self.is_running = False
         self.start_time = None
         
@@ -111,38 +103,57 @@ class TradingBot:
             paper_trader=self.paper_trader
         )
         
-        # Sistema de ajuste de posiciones TP/SL
-        self.position_adjuster = PositionAdjuster(
-            config=config,
-            simulation_mode=True
-        )
+        # Sistema de ajuste de posiciones TP/SL (desactivado - Opción A)
+        self.position_adjuster = None
         
         # Sistema de eventos para comunicación con LiveTradingBot
-        self.event_queue = queue.Queue(maxsize=config.get("trading_bot", {}).get("event_queue_maxsize", 100))
+        profile_config = TradingProfiles.get_current_profile()
+        self.event_queue = queue.Queue(maxsize=profile_config.get('event_queue_maxsize', 1000))
         self.adjustment_thread = None
         self.trade_event_callback = None  # Callback para eventos de trades
         
         # ThreadPool para procesamiento paralelo
-        self.executor = ThreadPoolExecutor(max_workers=config.get("trading_bot", {}).get("thread_pool_max_workers", 4), thread_name_prefix="TradingBot")
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="TradingBot")
         
         # Estrategias disponibles (Enhanced)
         self.strategies = {}
         self._initialize_strategies()
         
         # Símbolos a analizar desde configuración centralizada
-        self.symbols = config.get("trading_bot", {}).get("default_symbols", optimized_config.DEFAULT_SYMBOLS)
+        self.symbols = self.config.SYMBOLS
         
         # Configuración de trading profesional desde configuración centralizada
-        self.min_confidence_threshold = config.get("trading_bot", {}).get("min_confidence_threshold", optimized_config.DEFAULT_MIN_CONFIDENCE_THRESHOLD)
-        self.max_daily_trades = config.get("trading_bot", {}).get("max_daily_trades", optimized_config.DEFAULT_MAX_DAILY_TRADES)
-        self.max_concurrent_positions = config.get("trading_bot", {}).get("max_concurrent_positions", optimized_config.DEFAULT_MAX_CONCURRENT_POSITIONS)
+        self.min_confidence_threshold = self.config.get_min_confidence_threshold()
+        self.max_daily_trades = self.config.get_max_daily_trades()
+        self.max_concurrent_positions = self.config.get_max_concurrent_positions()
         self.enable_trading = True  # Activar/desactivar ejecución de trades
-        self.profile = config.get("trading_bot", {}).get("profile", ConfigManager.get_active_profile())  # Perfil de trading
         
         # Configuración de timeframes profesional desde configuración centralizada
-        self.primary_timeframe = config.get("timeframes", {}).get("primary", "15m")
-        self.confirmation_timeframe = config.get("timeframes", {}).get("confirmation", "5m")
-        self.trend_timeframe = config.get("timeframes", {}).get("trend", "1h")
+        self.primary_timeframe = self.config.get_primary_timeframe()
+        self.confirmation_timeframe = self.config.get_confirmation_timeframe()
+        self.trend_timeframe = self.config.get_trend_timeframe()
+        
+        # Inicializar zona horaria y referencia de último reset
+        try:
+            tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
+        except Exception:
+            tz = None
+        now_local = datetime.now(tz) if tz else datetime.now()
+        reset_dt = datetime(
+            now_local.year,
+            now_local.month,
+            now_local.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE,
+            tzinfo=tz
+        ) if tz else datetime(
+            now_local.year,
+            now_local.month,
+            now_local.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE
+        )
+        initial_last_reset_day = now_local.date() if now_local >= reset_dt else (now_local.date() - timedelta(days=1))
         
         # Estadísticas
         self.stats = {
@@ -151,27 +162,18 @@ class TradingBot:
             "successful_trades": 0,
             "total_pnl": 0.0,
             "daily_trades": 0,
-            "last_reset_date": datetime.now().date()
+            "last_reset_day": initial_last_reset_day
         }
-        
-        # Sistema de throttling/espaciado entre trades
-        self.min_time_between_trades = config.get("trading_bot", {}).get("min_time_between_trades_seconds", 300)
-        self.max_trades_per_hour = config.get("trading_bot", {}).get("max_trades_per_hour", 3)
-        self.post_reset_spacing_minutes = config.get("trading_bot", {}).get("post_reset_spacing_minutes", 60)
-        self.last_trade_time = None
-        self.hourly_trade_count = 0
-        self.hourly_trade_reset_time = datetime.now()
         
         # Circuit breaker avanzado
         self.consecutive_losses = 0
-        self.circuit_breaker_active = True
+        self.circuit_breaker_active = False
         self.circuit_breaker_activated_at = None
-        self.max_consecutive_losses = config.get("trading_bot", {}).get("max_consecutive_losses", optimized_config.DEFAULT_MAX_CONSECUTIVE_LOSSES)
-        self.circuit_breaker_cooldown_hours = config.get("trading_bot", {}).get("circuit_breaker_cooldown_hours", optimized_config.DEFAULT_CIRCUIT_BREAKER_COOLDOWN_HOURS)
+        self.max_consecutive_losses = self.config.get_max_consecutive_losses()
+        self.circuit_breaker_cooldown_hours = self.config.get_circuit_breaker_cooldown_hours()
         
         # Nuevas funcionalidades del circuit breaker
-        max_drawdown_threshold = config.get("trading_bot", {}).get("max_drawdown_threshold", 10)
-        self.max_drawdown_threshold = max_drawdown_threshold / 100.0  # Convertir porcentaje a decimal
+        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold()  # Ya en decimal
         self.current_drawdown = 0.0
         self.peak_portfolio_value = 0.0
         self.gradual_reactivation_enabled = True
@@ -185,18 +187,6 @@ class TradingBot:
         self.stop_event = threading.Event()
         
         self.logger.info("🤖 Trading Bot initialized with Position Monitor")
-    
-    @property
-    def position_manager(self):
-        """
-        🔗 Acceso al position_manager a través del position_monitor
-        
-        Returns:
-            PositionManager: Instancia del position manager
-        """
-        if hasattr(self, 'position_monitor') and self.position_monitor:
-            return getattr(self.position_monitor, 'position_manager', None)
-        return None
     
     def set_trade_event_callback(self, callback):
         """
@@ -255,6 +245,10 @@ class TradingBot:
                 "MultiTimeframe": MultiTimeframeStrategy(),
                 "Ensemble": EnsembleStrategy()
             }
+            # Inyectar referencia del bot en las estrategias para delegar operaciones comunes
+            for s in self.strategies.values():
+                if hasattr(s, 'set_trading_bot'):
+                    s.set_trading_bot(self)
             self.logger.info(f"✅ {len(self.strategies)} strategies initialized")
         except Exception as e:
             self.logger.error(f"❌ Error initializing strategies: {e}")
@@ -317,8 +311,13 @@ class TradingBot:
         schedule.clear()
         schedule.every(self.analysis_interval).minutes.do(self._run_analysis_cycle)
         
-        # Configurar schedule para cierre pre-reset
-        self._schedule_pre_reset_closure()
+        # Programar reset diario exacto a la hora configurada (usa hora local del sistema)
+        try:
+            reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+            schedule.every().day.at(reset_time_str).do(self._reset_daily_stats_if_needed).tag('daily_reset')
+            self.logger.info(f"⏰ Daily reset scheduled at {reset_time_str} ({TIMEZONE})")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not schedule daily reset: {e}")
         
         # Iniciar thread de ejecución (sin análisis inicial inmediato)
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
@@ -327,20 +326,17 @@ class TradingBot:
         # Iniciar monitoreo de posiciones
         self.position_monitor.start_monitoring()
         
-        # Iniciar sistema de ajuste de posiciones TP/SL
-        self._start_position_adjustment_monitoring()
+        # Sistema de ajuste TP/SL desactivado (Opción A): no se inicia monitoreo
+        # self._start_position_adjustment_monitoring()
         
         # Programar primer análisis para evitar bloqueo
-        first_analysis_delay = self.config.get("trading_bot", {}).get("first_analysis_delay", 30)
-        schedule.every(first_analysis_delay).seconds.do(self._run_first_analysis).tag('first_analysis')
+        schedule.every(self.config.get_first_analysis_delay()).minutes.do(self._run_first_analysis).tag('first_analysis')
         
-        # Emitir evento de inicio del bot
-        self._emit_bot_status_event('start', f"Trading Bot started - Analysis every {self.analysis_interval} minutes", {
-            'symbols': self.symbols,
-            'strategies': list(self.strategies.keys()),
-            'analysis_interval': self.analysis_interval,
-            'first_analysis_delay': first_analysis_delay
-        })
+        self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
+        self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
+        self.logger.info(f"🧠 Active strategies: {', '.join(self.strategies.keys())}")
+        self.logger.info("🔍 Position monitoring started")
+        self.logger.info("🎯 TP/SL adjustment monitoring disabled")
     
     def stop(self):
         """
@@ -357,40 +353,47 @@ class TradingBot:
         # Detener monitoreo de posiciones
         self.position_monitor.stop_monitoring()
         
-        # Detener sistema de ajuste de posiciones
-        self.position_adjuster.stop_monitoring()
+        # Sistema de ajuste TP/SL desactivado (Opción A): no hay monitoreo que detener
+        # if self.position_adjuster:
+        #     self.position_adjuster.stop_monitoring()
         
-        # Limpiar ThreadPoolExecutor con timeout reducido
+        # Limpiar ThreadPoolExecutor
         if hasattr(self, 'executor') and self.executor:
-            self.executor.shutdown(wait=False)  # No esperar, terminar inmediatamente
-            self.logger.info("🧹 ThreadPoolExecutor shutdown initiated")
-        
-        # Timeouts reducidos para threads
-        fast_timeout = 2  # Reducido de 10 a 2 segundos
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_executor_shutdown_timeout()
+            self.executor.shutdown(wait=True, timeout=timeout)
+            self.logger.info("🧹 ThreadPoolExecutor cleaned up")
         
         if self.analysis_thread and self.analysis_thread.is_alive():
-            self.analysis_thread.join(timeout=fast_timeout)
-            if self.analysis_thread.is_alive():
-                self.logger.warning("⚠️ Analysis thread did not stop within timeout")
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_thread_join_timeout()
+            self.analysis_thread.join(timeout=timeout)
             
         if self.adjustment_thread and self.adjustment_thread.is_alive():
-            self.adjustment_thread.join(timeout=fast_timeout)
-            if self.adjustment_thread.is_alive():
-                self.logger.warning("⚠️ Adjustment thread did not stop within timeout")
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_thread_join_timeout()
+            self.adjustment_thread.join(timeout=timeout)
         
         # Limpiar cache si es necesario
         self._cleanup_cache()
         
         self.logger.info("🛑 Trading Bot stopped")
         self.logger.info("🔍 Position monitoring stopped")
-        self.logger.info("🎯 TP/SL adjustment monitoring stopped")
+        self.logger.info("🎯 TP/SL adjustment monitoring disabled")
         self.logger.info("💾 Cache cleaned up")
     
     def _get_current_price(self, symbol: str) -> float:
         """💰 Obtener precio actual del símbolo con cache para el position monitor"""
         try:
-            # Generar clave de cache para precio
-            cache_key = self._get_cache_key("current_price", symbol)
+            # Normalizar símbolo: aceptar 'BTCUSDT', 'BTC/USDT' y convertir a 'BASE/USDT'
+            if '/' in symbol:
+                base, quote = symbol.split('/')
+                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
+            else:
+                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
+            
+            # Generar clave de cache para precio basada en símbolo normalizado
+            cache_key = self._get_cache_key("current_price", norm_symbol)
             
             # Verificar cache (TTL más corto para precios)
             cached_price = self._get_from_cache(cache_key)
@@ -399,8 +402,8 @@ class TradingBot:
             
             import ccxt
             exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(symbol)
-            current_price = float(ticker['last']) if ticker['last'] else 0.0
+            ticker = exchange.fetch_ticker(norm_symbol)
+            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
             
             # Almacenar en cache
             if current_price > 0:
@@ -433,37 +436,24 @@ class TradingBot:
         while not self.stop_event.is_set():
             try:
                 schedule.run_pending()
-                time.sleep(config.get("api", {}).get("scheduler_sleep_interval", 1))
+                time.sleep(APIConfig.SCHEDULER_SLEEP_INTERVAL)
             except Exception as e:
                 self.logger.error(f"❌ Error in scheduler: {e}")
-                time.sleep(config.get("api", {}).get("error_recovery_sleep", 5))
+                time.sleep(APIConfig.ERROR_RECOVERY_SLEEP)
     
     def _run_analysis_cycle(self):
         """
         🔄 Ejecutar un ciclo completo de análisis con cache y procesamiento paralelo
         """
         try:
-            # Emitir evento de inicio de ciclo
-            self._emit_cycle_start_event({
-                'cycle_number': getattr(self, '_cycle_counter', 0) + 1,
-                'daily_trades': self.stats["daily_trades"],
-                'max_daily_trades': self.max_daily_trades
-            })
+            self.logger.info("🔄 Starting optimized analysis cycle...")
             
-            # Incrementar contador de ciclos
-            if not hasattr(self, '_cycle_counter'):
-                self._cycle_counter = 0
-            self._cycle_counter += 1
-            
-            # Resetear contador diario si es necesito
+            # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
             
             # Verificar si podemos hacer más trades hoy
             if self.stats["daily_trades"] >= self.max_daily_trades:
-                self._emit_bot_status_event('limit_reached', f"Daily trade limit reached ({self.max_daily_trades})", {
-                    'daily_trades': self.stats["daily_trades"],
-                    'max_daily_trades': self.max_daily_trades
-                })
+                self.logger.info(f"⏸️ Daily trade limit reached ({self.max_daily_trades})")
                 return
             
             # Generar clave de cache para este ciclo
@@ -472,37 +462,25 @@ class TradingBot:
             # Verificar cache
             cached_signals = self._get_from_cache(cache_key)
             if cached_signals is not None:
-                self._emit_bot_status_event('cache_hit', "Using cached analysis results", {
-                    'signals_count': len(cached_signals)
-                })
+                self.logger.info("⚡ Using cached analysis results")
                 all_signals = cached_signals
             else:
-                # Analizar secuencialmente para mejor claridad en logs
-                all_signals = self._analyze_symbols_sequential()
+                # Analizar en paralelo usando ThreadPoolExecutor
+                all_signals = self._analyze_symbols_parallel()
                 
                 # Almacenar en cache
                 self._store_in_cache(cache_key, all_signals)
-            
-            # Emitir eventos de señales generadas al final del ciclo (tanto del cache como nuevas)
-            for signal in all_signals:
-                self._emit_signal_event(signal)
             
             # Procesar señales con trading
             if all_signals:
                 self._process_signals(all_signals)
             else:
-                self._emit_bot_status_event('no_signals', "No trading signals generated this cycle", {
-                    'symbols_analyzed': len(self.symbols),
-                    'strategies_used': len(self.strategies)
-                })
+                self.logger.info("⚪ No trading signals generated this cycle")
             
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
             
-            self._emit_bot_status_event('cycle_completed', "Analysis cycle completed", {
-                'cycle_number': self._cycle_counter,
-                'signals_generated': len(all_signals) if all_signals else 0
-            })
+            self.logger.info("✅ Optimized analysis cycle completed")
             
         except Exception as e:
             self.logger.error(f"❌ Error in analysis cycle: {e}")
@@ -527,14 +505,15 @@ class TradingBot:
                 futures.append(future)
             
             # Recopilar resultados
-            timeout = self.config.get("trading_bot", {}).get("analysis_future_timeout", 30)
+            profile_config = TradingProfiles.get_current_profile()
+            timeout = self.config.get_analysis_future_timeout()
             for future in futures:
                 try:
                     signal = future.result(timeout=timeout)  # Timeout configurable
                     if signal and signal.signal_type != "HOLD":
                         all_signals.append(signal)
                         self.stats["signals_generated"] += 1
-                        # NO emitir evento aquí - se emitirá al final del ciclo
+                        self.logger.info(f"📊 Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%")
                 except Exception as e:
                     self.logger.error(f"❌ Error in parallel analysis: {e}")
         
@@ -574,71 +553,7 @@ class TradingBot:
                 except Exception as e:
                     self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
         return all_signals
-
-    def _can_execute_trade(self) -> bool:
-        """
-        🚦 Verificar si se puede ejecutar un trade basado en throttling
-        
-        Returns:
-            bool: True si se puede ejecutar el trade
-        """
-        current_time = datetime.now()
-        
-        # 1. Verificar tiempo mínimo entre trades
-        if self.last_trade_time:
-            time_since_last_trade = (current_time - self.last_trade_time).total_seconds()
-            if time_since_last_trade < self.min_time_between_trades:
-                remaining_time = self.min_time_between_trades - time_since_last_trade
-                self.logger.info(f"⏱️ Throttling: {remaining_time:.0f}s remaining until next trade allowed")
-                return False
-        
-        # 2. Verificar límite de trades por hora
-        # Resetear contador si ha pasado una hora
-        if (current_time - self.hourly_trade_reset_time).total_seconds() >= 3600:
-            self.hourly_trade_count = 0
-            self.hourly_trade_reset_time = current_time
-        
-        if self.hourly_trade_count >= self.max_trades_per_hour:
-            next_reset = self.hourly_trade_reset_time + timedelta(hours=1)
-            remaining_minutes = (next_reset - current_time).total_seconds() / 60
-            self.logger.info(f"⏱️ Hourly limit reached: {remaining_minutes:.0f}m until reset")
-            return False
-        
-        # 3. Verificar espaciado especial post-reset (primeras horas del día)
-        if self._is_in_post_reset_window():
-            if self.last_trade_time:
-                time_since_last_trade_minutes = (current_time - self.last_trade_time).total_seconds() / 60
-                if time_since_last_trade_minutes < self.post_reset_spacing_minutes:
-                    remaining_minutes = self.post_reset_spacing_minutes - time_since_last_trade_minutes
-                    self.logger.info(f"🌅 Post-reset spacing: {remaining_minutes:.0f}m remaining")
-                    return False
-        
-        return True
     
-    def _is_in_post_reset_window(self) -> bool:
-        """
-        🌅 Verificar si estamos en la ventana post-reset (primeras horas del día)
-        
-        Returns:
-            bool: True si estamos en la ventana post-reset
-        """
-        current_time = datetime.now()
-        # Usar configuración optimizada para las horas post-reset
-        if current_time.hour < optimized_config.POST_RESET_WINDOW_HOURS:
-            return True
-        return False
-    
-    def _update_trade_timing(self):
-        """
-        📊 Actualizar contadores de timing después de ejecutar un trade
-        """
-        current_time = datetime.now()
-        self.last_trade_time = current_time
-        self.hourly_trade_count += 1
-        
-        # Log del estado actual
-        self.logger.info(f"📊 Trade timing updated: {self.hourly_trade_count}/{self.max_trades_per_hour} trades this hour")
-
     def _process_signals(self, signals: List[TradingSignal]):
         """
         🎯 Procesar y ejecutar señales de trading
@@ -666,41 +581,12 @@ class TradingBot:
             self.logger.info(f"📉 No signals above confidence threshold ({self.min_confidence_threshold}%)")
             return
         
-        # Obtener posiciones activas para diversificación
-        active_positions = db_manager.get_active_positions(is_paper=True)
-        current_positions = len(active_positions)
-        
-        # Configuración de diversificación desde el perfil activo
-        config = self.config_manager.get_consolidated_config() if hasattr(self, 'config_manager') else {}
-        trading_config = config.get("trading_bot", {})
-        max_positions = trading_config.get("max_positions", 5)
-        diversification_threshold = max_positions * 0.6  # 60% del máximo
-        
-        # Ordenar señales con prioridad de diversificación
-        def signal_priority(signal):
-            base_score = signal.confidence_score
-            
-            # Priorizar compras si tenemos pocas posiciones (diversificación)
-            if signal.signal_type == "BUY" and current_positions < diversification_threshold:
-                # Boost de +10 puntos para compras cuando necesitamos diversificar
-                return base_score + 10
-            # Priorizar ventas si estamos cerca del límite de posiciones
-            elif signal.signal_type == "SELL" and current_positions >= max_positions * 0.8:
-                # Boost de +5 puntos para ventas cuando estamos cerca del límite
-                return base_score + 5
-            
-            return base_score
-        
-        # Ordenar por prioridad (mayor primero)
-        high_confidence_signals.sort(key=signal_priority, reverse=True)
-        
-        self.logger.info(f"📊 Portfolio diversification: {current_positions}/{max_positions} positions")
-        if current_positions < diversification_threshold:
-            self.logger.info("🎯 Prioritizing BUY signals for portfolio diversification")
+        # Ordenar por confianza (mayor primero)
+        high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
         
         # Obtener valor actual del portfolio
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-        portfolio_value = portfolio_summary.get("total_value", GLOBAL_INITIAL_BALANCE)
+        portfolio_value = portfolio_summary.get("total_value", self.config.DEFAULT_PORTFOLIO_VALUE)
         
         self.logger.info(f"💼 Current portfolio value: ${portfolio_value:,.2f}")
         
@@ -711,11 +597,6 @@ class TradingBot:
                 if self.stats["daily_trades"] >= self.max_daily_trades:
                     self.logger.info("⏸️ Daily trade limit reached")
                     break
-                
-                # Verificar throttling/espaciado entre trades
-                if not self._can_execute_trade():
-                    self.logger.info(f"⏸️ Trade throttled for {signal.symbol} - spacing requirements not met")
-                    continue
                 
                 # Análisis de riesgo
                 risk_assessment = self.risk_manager.assess_trade_risk(signal, portfolio_value)
@@ -733,9 +614,6 @@ class TradingBot:
                     if trade_result.success:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
-                        
-                        # Actualizar timing de trades para throttling
-                        self._update_trade_timing()
                         
                         # Determinar si fue exitoso basándose en el tipo de trade y PnL real
                         trade_was_profitable = False
@@ -787,68 +665,41 @@ class TradingBot:
     
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias según horario optimizado para trading en Chile
+        📅 Resetear estadísticas diarias a las 11:00 AM hora Chile (America/Santiago)
         """
-        import pytz
-        # Usar configuración centralizada
-        timezone = config.get("trading_bot", {}).get("timezone", "America/Santiago")
-        reset_config = config.get("trading_bot", {}).get("daily_reset", {"hour": 0, "minute": 0})
-        
-        # Obtener zona horaria de Chile
-        chile_tz = pytz.timezone(timezone)
-        current_time_chile = datetime.now(chile_tz)
-        
-        # Obtener configuración de reset activa
-        reset_hour = reset_config.get("hour", 0)
-        reset_minute = reset_config.get("minute", 0)
-        
-        # Crear tiempo de reset para hoy
-        reset_time_today = current_time_chile.replace(
-            hour=reset_hour, minute=reset_minute, second=0, microsecond=0
+        try:
+            tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
+        except Exception:
+            tz = None
+        now_local = datetime.now(tz) if tz else datetime.now()
+        current_day = now_local.date()
+        reset_dt = datetime(
+            current_day.year,
+            current_day.month,
+            current_day.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE,
+            tzinfo=tz
+        ) if tz else datetime(
+            current_day.year,
+            current_day.month,
+            current_day.day,
+            DAILY_RESET_HOUR,
+            DAILY_RESET_MINUTE
         )
-        
-        # Verificar si necesitamos resetear
-        should_reset = False
-        
-        if self.stats["last_reset_date"] is None:
-            # Primera ejecución
-            should_reset = True
-            self.logger.info(f"🚀 Primera ejecución del bot")
-        else:
-            # Convertir last_reset_date a datetime con zona horaria
-            if isinstance(self.stats["last_reset_date"], datetime):
-                last_reset_chile = self.stats["last_reset_date"]
-                if last_reset_chile.tzinfo is None:
-                    last_reset_chile = chile_tz.localize(last_reset_chile)
-            else:
-                # Si es solo fecha, convertir a datetime
-                last_reset_chile = chile_tz.localize(
-                    datetime.combine(self.stats["last_reset_date"], datetime.min.time())
-                )
-            
-            # Verificar si ya pasó el horario de reset de hoy
-            if current_time_chile >= reset_time_today and last_reset_chile < reset_time_today:
-                should_reset = True
-        
-        if should_reset:
-            self.logger.info(
-                f"🔄 Horario de reset alcanzado ({reset_hour:02d}:{reset_minute:02d} CLT). "
-                f"Reseteando estadísticas diarias..."
-            )
-            
-            # Reset estadísticas diarias
+
+        # Realizar reset solo una vez por día cuando la hora local haya alcanzado o superado el reset
+        if now_local >= reset_dt and self.stats.get("last_reset_day") != current_day:
             self.stats["daily_trades"] = 0
-            self.stats["last_reset_date"] = current_time_chile
-            
-            # Resetear circuit breaker al inicio de un nuevo período de trading
+            self.stats["last_reset_day"] = current_day
+            # Resetear circuit breaker al inicio del nuevo periodo diario
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
             self.circuit_breaker_activated_at = None
-            
-            self.logger.info(
-                f"✅ Estadísticas diarias reseteadas para período de trading óptimo "
-                f"({current_time_chile.strftime('%Y-%m-%d %H:%M:%S %Z')}) - Circuit breaker reset"
-            )
+            self.logger.info(f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset")
+        else:
+            # Sin acción antes del horario de reset o si ya se realizó en el día
+            pass
     
     def _check_circuit_breaker(self) -> bool:
         """
@@ -982,20 +833,20 @@ class TradingBot:
                 self.logger.info(f"🟡 Iniciando reactivación gradual - Fase 1: {self.reactivation_trades_allowed} trade permitido")
                 
             elif self.reactivation_phase == 1 and self.reactivation_success_count >= 1:
-                # Fase 2: Hasta trades configurados
+                # Fase 2: Hasta 3 trades
                 self.reactivation_phase = 2
-                self.reactivation_trades_allowed = optimized_config.REACTIVATION_PHASE_2_TRADES
+                self.reactivation_trades_allowed = 3
                 self.reactivation_success_count = 0
                 self.logger.info(f"🟡 Reactivación gradual - Fase 2: {self.reactivation_trades_allowed} trades permitidos")
                 
             elif self.reactivation_phase == 2 and self.reactivation_success_count >= 2:
                 # Fase 3: Trading normal pero con límites reducidos
                 self.reactivation_phase = 3
-                self.reactivation_trades_allowed = optimized_config.REACTIVATION_PHASE_3_TRADES
+                self.reactivation_trades_allowed = 5
                 self.reactivation_success_count = 0
                 self.logger.info(f"🟡 Reactivación gradual - Fase 3: {self.reactivation_trades_allowed} trades permitidos")
                 
-            elif self.reactivation_phase == 3 and self.reactivation_success_count >= optimized_config.REACTIVATION_SUCCESS_THRESHOLD:
+            elif self.reactivation_phase == 3 and self.reactivation_success_count >= 3:
                 # Reactivación completa
                 self._complete_reactivation()
                 
@@ -1044,7 +895,7 @@ class TradingBot:
             # Verificar si se puede avanzar a la siguiente fase
             if ((self.reactivation_phase == 1 and self.reactivation_success_count >= 1) or
                 (self.reactivation_phase == 2 and self.reactivation_success_count >= 2) or
-                (self.reactivation_phase == 3 and self.reactivation_success_count >= optimized_config.REACTIVATION_SUCCESS_THRESHOLD)):
+                (self.reactivation_phase == 3 and self.reactivation_success_count >= 3)):
                 
                 self._initiate_gradual_reactivation()
     
@@ -1158,7 +1009,7 @@ class TradingBot:
             "portfolio": {
                 "current_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - GLOBAL_INITIAL_BALANCE) / GLOBAL_INITIAL_BALANCE) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - self.config.DEFAULT_PORTFOLIO_VALUE) / self.config.DEFAULT_PORTFOLIO_VALUE) * 100,
                 "assets": portfolio_summary.get("assets", [])
             },
             "strategies": {
@@ -1242,11 +1093,6 @@ class TradingBot:
                 self.symbols = config["symbols"]
                 self.logger.info(f"⚙️ Symbols updated: {', '.join(self.symbols)}")
             
-            if "profile" in config:
-                # Actualizar perfil de configuración
-                self.profile = config["profile"]
-                self.logger.info(f"⚙️ Trading profile updated to: {self.profile}")
-            
         except Exception as e:
             self.logger.error(f"❌ Error updating configuration: {e}")
     
@@ -1276,44 +1122,29 @@ class TradingBot:
     
     def emergency_stop(self):
         """
-        🚨 Parada de emergencia inmediata (cierra todas las posiciones)
+        🚨 Parada de emergencia (cierra todas las posiciones)
         """
         self.logger.warning("🚨 EMERGENCY STOP INITIATED")
         
         try:
-            # Parada inmediata sin esperar threads
-            self.is_running = False
-            self.stop_event.set()
-            schedule.clear()
+            # Detener el bot
+            self.stop()
             
-            # Detener monitoreo inmediatamente
-            self.position_monitor.stop_monitoring()
-            self.position_adjuster.stop_monitoring()
+            # Obtener posiciones abiertas
+            open_positions = self.paper_trader.get_open_positions()
             
-            # Terminar executor sin esperar
-            if hasattr(self, 'executor') and self.executor:
-                self.executor.shutdown(wait=False)
-            
-            # Obtener posiciones abiertas rápidamente
-            try:
-                open_positions = self.paper_trader.get_open_positions()
+            if open_positions:
+                self.logger.warning(f"🚨 Closing {len(open_positions)} open positions...")
                 
-                if open_positions:
-                    self.logger.warning(f"🚨 {len(open_positions)} open positions detected")
-                    # Log solo el resumen para ser más rápido
-                    total_value = sum(pos.get('entry_value', 0) for pos in open_positions)
-                    self.logger.warning(f"   📊 Total open value: ${total_value:.2f}")
-                else:
-                    self.logger.info("✅ No open positions to close")
-            except Exception as pos_error:
-                self.logger.error(f"⚠️ Could not check positions: {pos_error}")
+                # Aquí podrías implementar lógica para cerrar posiciones automáticamente
+                # Por ahora solo loggeamos
+                for position in open_positions:
+                    self.logger.warning(f"   📊 Open position: {position['symbol']} - ${position['entry_value']:.2f}")
             
-            self.logger.warning("🚨 Emergency stop completed immediately")
+            self.logger.warning("🚨 Emergency stop completed")
             
         except Exception as e:
             self.logger.error(f"❌ Error during emergency stop: {e}")
-            # Asegurar que el bot se detenga incluso si hay errores
-            self.is_running = False
     
     def test_connection(self) -> bool:
         """🔌 Probar conexión con la API de Binance
@@ -1467,90 +1298,6 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error emitting analysis event: {e}")
     
-    def _emit_cycle_start_event(self, cycle_info: Dict):
-        """📢 Emitir evento de inicio de ciclo de análisis"""
-        try:
-            event = {
-                'type': 'cycle_start',
-                'timestamp': datetime.now(),
-                'symbols': self.symbols,
-                'strategies': list(self.strategies.keys()),
-                **cycle_info
-            }
-            
-            if self.trade_event_callback:
-                self.trade_event_callback(event)
-                
-            if not self.event_queue.full():
-                self.event_queue.put(event, block=False)
-                
-        except Exception as e:
-            pass  # Silenciar errores de eventos
-    
-    def _emit_signal_event(self, signal: TradingSignal):
-        """📢 Emitir evento de señal generada"""
-        try:
-            event = {
-                'type': 'signal_generated',
-                'timestamp': datetime.now(),
-                'symbol': signal.symbol,
-                'signal_type': signal.signal_type,
-                'strategy': signal.strategy_name,
-                'confidence': signal.confidence_score,
-                'price': signal.price,
-                'indicators': getattr(signal, 'indicators', {}),
-                'reasoning': getattr(signal, 'reasoning', '')
-            }
-            
-            if self.trade_event_callback:
-                self.trade_event_callback(event)
-                
-            if not self.event_queue.full():
-                self.event_queue.put(event, block=False)
-                
-        except Exception as e:
-            pass  # Silenciar errores de eventos
-    
-    def _emit_price_event(self, symbol: str, price: float, indicators: Dict = None):
-        """📢 Emitir evento de precio e indicadores"""
-        try:
-            event = {
-                'type': 'price_update',
-                'timestamp': datetime.now(),
-                'symbol': symbol,
-                'price': price,
-                'indicators': indicators or {}
-            }
-            
-            if self.trade_event_callback:
-                self.trade_event_callback(event)
-                
-            if not self.event_queue.full():
-                self.event_queue.put(event, block=False)
-                
-        except Exception as e:
-            pass  # Silenciar errores de eventos
-    
-    def _emit_bot_status_event(self, status_type: str, message: str, data: Dict = None):
-        """📢 Emitir evento de estado del bot"""
-        try:
-            event = {
-                'type': 'bot_status',
-                'timestamp': datetime.now(),
-                'status_type': status_type,  # 'start', 'stop', 'config', 'error', etc.
-                'message': message,
-                'data': data or {}
-            }
-            
-            if self.trade_event_callback:
-                self.trade_event_callback(event)
-                
-            if not self.event_queue.full():
-                self.event_queue.put(event, block=False)
-                
-        except Exception as e:
-            pass  # Silenciar errores de eventos
-
     def get_events(self) -> List[Dict]:
         """📥 Obtener eventos pendientes para LiveTradingBot"""
         events = []
@@ -1560,166 +1307,7 @@ class TradingBot:
         except queue.Empty:
             pass
         except Exception as e:
-            pass  # Silenciar errores de eventos
+            self.logger.error(f"❌ Error getting events: {e}")
         
         return events
-
-    def _schedule_pre_reset_closure(self):
-        """
-        Programa el cierre automático de posiciones rentables antes del reset diario
-        """
-        from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG, DAILY_RESET_HOUR, DAILY_RESET_MINUTE, CHILE_TZ
-        
-        if not PRE_RESET_CLOSURE_CONFIG.get('enabled', False):
-            self.logger.info("Cierre pre-reset deshabilitado en configuración")
-            return
-        
-        # Calcular el horario de cierre (15 minutos antes del reset)
-        minutes_before = PRE_RESET_CLOSURE_CONFIG.get('minutes_before_reset', 15)
-        closure_hour = DAILY_RESET_HOUR
-        closure_minute = DAILY_RESET_MINUTE - minutes_before
-        
-        # Ajustar si los minutos son negativos
-        if closure_minute < 0:
-            closure_hour -= 1
-            closure_minute += 60
-        
-        # Formatear el tiempo para el scheduler
-        closure_time = f"{closure_hour:02d}:{closure_minute:02d}"
-        
-        # Programar el cierre diario
-        schedule.every().day.at(closure_time).do(self._execute_pre_reset_closure)
-        
-        self.logger.info(f"Cierre pre-reset programado para las {closure_time} CLT (Chile)")
-
-    def _execute_pre_reset_closure(self):
-        """
-        Ejecuta el cierre automático de posiciones rentables antes del reset
-        """
-        start_time = datetime.now()
-        self.logger.info("🔄 INICIANDO CIERRE AUTOMÁTICO PRE-RESET")
-        self.logger.info(f"⏰ Hora de ejecución: {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        
-        try:
-            from src.config.global_constants import PRE_RESET_CLOSURE_CONFIG
-            
-            # Verificar configuración
-            if not PRE_RESET_CLOSURE_CONFIG.get('enabled', False):
-                self.logger.warning("❌ Cierre pre-reset DESHABILITADO en configuración")
-                self.logger.info("💡 Para habilitar, configurar PRE_RESET_CLOSURE_CONFIG['enabled'] = True")
-                return
-            
-            self.logger.info("✅ Cierre pre-reset HABILITADO en configuración")
-            
-            # Log de configuración actual
-            profit_threshold = PRE_RESET_CLOSURE_CONFIG.get('profit_threshold_percent', 0.5)
-            self.logger.info(f"📊 Umbral de ganancia configurado: {profit_threshold}%")
-            
-            # Verificar si el position_manager está disponible
-            if not hasattr(self, 'position_manager') or self.position_manager is None:
-                self.logger.error("❌ POSITION MANAGER NO DISPONIBLE")
-                self.logger.error("🔧 Esto indica un problema en la inicialización del TradingBot")
-                return
-            
-            self.logger.info("✅ Position Manager disponible")
-            self.logger.info(f"📋 Tipo: {type(self.position_manager).__name__}")
-            
-            # Verificar posiciones antes del cierre
-            try:
-                if hasattr(self.position_manager, 'paper_trader') and self.position_manager.paper_trader:
-                    positions = self.position_manager.paper_trader.get_open_positions()
-                    self.logger.info(f"📈 Posiciones abiertas antes del cierre: {len(positions)}")
-                    
-                    if positions:
-                        for symbol, position in positions.items():
-                            pnl_percent = position.get('pnl_percent', 0)
-                            self.logger.info(f"   • {symbol}: PnL {pnl_percent:.2f}%")
-                    else:
-                        self.logger.info("📭 No hay posiciones abiertas para evaluar")
-                        
-            except Exception as e:
-                self.logger.warning(f"⚠️ No se pudieron obtener posiciones actuales: {e}")
-            
-            # Ejecutar el cierre de posiciones rentables
-            self.logger.info("🚀 Ejecutando cierre de posiciones rentables...")
-            result = self.position_manager.close_profitable_positions_before_reset()
-            
-            # Log detallado del resultado
-            if result.get('success', False):
-                closed_count = result.get('closed_positions', 0)
-                skipped_count = result.get('skipped_positions', 0)
-                total_profit = result.get('total_profit_realized', 0)
-                
-                self.logger.info("✅ CIERRE PRE-RESET EXITOSO")
-                self.logger.info(f"📊 Posiciones cerradas: {closed_count}")
-                self.logger.info(f"📊 Posiciones omitidas: {skipped_count}")
-                self.logger.info(f"💰 Ganancia total realizada: ${total_profit:.2f}")
-                
-                if 'closed_details' in result:
-                    self.logger.info("📋 Detalles de posiciones cerradas:")
-                    for detail in result['closed_details']:
-                        symbol = detail.get('symbol', 'N/A')
-                        profit = detail.get('profit', 0)
-                        pnl_percent = detail.get('pnl_percent', 0)
-                        self.logger.info(f"   • {symbol}: ${profit:.2f} ({pnl_percent:.2f}%)")
-                        
-            else:
-                error_msg = result.get('error', 'Error desconocido')
-                self.logger.error(f"❌ FALLO EN CIERRE PRE-RESET: {error_msg}")
-            
-            # Emitir evento de cierre pre-reset
-            self._emit_pre_reset_closure_event(result)
-            
-            # Tiempo total de ejecución
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            self.logger.info(f"⏱️ Cierre pre-reset completado en {duration:.2f} segundos")
-            
-        except Exception as e:
-            self.logger.error(f"💥 ERROR CRÍTICO durante cierre pre-reset: {e}")
-            self.logger.error(f"🔍 Tipo de error: {type(e).__name__}")
-            import traceback
-            self.logger.error(f"📋 Stack trace: {traceback.format_exc()}")
-
-    def _emit_pre_reset_closure_event(self, closure_result: dict):
-        """
-        Emite un evento con los resultados del cierre pre-reset
-        """
-        try:
-            event = {
-                'type': 'pre_reset_closure',
-                'timestamp': datetime.now().isoformat(),
-                'data': closure_result
-            }
-            
-            # Agregar a la cola de eventos si existe
-            if hasattr(self, 'event_queue'):
-                self.event_queue.put(event)
-                
-        except Exception as e:
-            self.logger.error(f"Error emitiendo evento de cierre pre-reset: {e}")
-
-    def force_pre_reset_closure(self) -> dict:
-        """
-        Fuerza el cierre de posiciones rentables (método manual para testing)
-        """
-        try:
-            self.logger.info("Ejecutando cierre pre-reset manual")
-            
-            if not hasattr(self, 'position_manager') or self.position_manager is None:
-                return {
-                    'success': False,
-                    'error': 'Position manager no disponible'
-                }
-            
-            result = self.position_manager.close_profitable_positions_before_reset()
-            self._emit_pre_reset_closure_event(result)
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Error en cierre pre-reset manual: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+trading_bot = TradingBot()

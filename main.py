@@ -1,22 +1,18 @@
-"""🚀 Universal Trading Analyzer - API Principal
+"""
+🚀 Universal Trading Analyzer - API Principal
 FastAPI backend para análisis técnico de criptomonedas
 """
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta
+from datetime import datetime
 import ccxt
 import pandas as pd
 import pandas_ta as ta
 from typing import Dict, List, Optional
 import uvicorn
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-
-# Importar configuración centralizada
-from src.config.main_config import config
-from src.config.config_manager import ConfigManager
-from src.config.config import TradingBotConfig
+from pydantic import BaseModel, Field
 
 # Importar nuestros indicadores avanzados
 from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
@@ -58,42 +54,70 @@ def ensure_bot_exists():
         raise HTTPException(status_code=500, detail="Trading bot not initialized")
     return bot
 
-# Crear instancia de FastAPI con configuración centralizada
+# Crear instancia de FastAPI
 app = FastAPI(
-    title=config.api.title,
-    description=config.api.description,
-    version=config.api.version,
-    docs_url=config.api.docs_url,
-    redoc_url=config.api.redoc_url
+    title="🚀 Universal Trading Analyzer + Trading Bot",
+    description="API para análisis técnico de criptomonedas en tiempo real + Trading Bot automático",
+    version="4.0.0",  # ¡Actualizada con Trading Bot!
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
-# Configurar CORS con configuración centralizada
+# Configurar CORS para permitir requests desde el frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.cors.allow_origins,
-    allow_credentials=config.cors.allow_credentials,
-    allow_methods=config.cors.allow_methods,
-    allow_headers=config.cors.allow_headers,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Inicializar exchange con configuración centralizada
-exchange = getattr(ccxt, config.exchange.exchange_name)({
-    'sandbox': config.exchange.sandbox,
-    'enableRateLimit': config.exchange.enable_rate_limit,
+# Inicializar exchange (Binance público, sin API keys)
+exchange = ccxt.binance({
+    'sandbox': False,
+    'enableRateLimit': True,
 })
 
 # Modelos Pydantic para requests
 class BotConfigUpdate(BaseModel):
-    analysis_interval_minutes: Optional[int] = None
-    max_daily_trades: Optional[int] = None
-    min_confidence_threshold: Optional[float] = None
-    enable_trading: Optional[bool] = None
-    symbols: Optional[List[str]] = None
-    trading_mode: Optional[str] = None  # "paper" or "live"
+    analysis_interval_minutes: Optional[int] = Field(None, ge=1, description="Intervalo de análisis en minutos")
+    max_daily_trades: Optional[int] = Field(None, ge=1, description="Límite máximo de operaciones diarias")
+    min_confidence_threshold: Optional[float] = Field(None, ge=0, le=100, description="Umbral mínimo de confianza (%) entre 0 y 100")
+    enable_trading: Optional[bool] = Field(None, description="Habilitar/deshabilitar ejecución de trades")
+    symbols: Optional[List[str]] = Field(None, description="Lista de símbolos a monitorear")
+    trading_mode: Optional[str] = Field(None, description="Modo de trading ('paper' o 'live') - actualmente solo 'paper'")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "analysis_interval_minutes": 15,
+                "max_daily_trades": 10,
+                "min_confidence_threshold": 65,
+                "enable_trading": True,
+                "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+                "trading_mode": "paper"
+            }
+        }
+    }
 
 class TradingModeUpdate(BaseModel):
     trading_mode: str  # "paper" or "live"
-    confirm_live_trading: Optional[bool] = False  # Confirmación requerida para trading real
+    confirm_live_trading: Optional[bool] = Field(False, description="Confirmación requerida para trading real")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "summary": "Activar paper trading",
+                    "value": {"trading_mode": "paper"}
+                },
+                {
+                    "summary": "Solicitar trading en vivo (no implementado)",
+                    "value": {"trading_mode": "live", "confirm_live_trading": True}
+                }
+            ]
+        }
+    }
 
 # 🔧 **UTILIDADES**
 
@@ -148,7 +172,7 @@ async def health_check():
     """
     try:
         # Verificar conexión a exchange
-        ticker = exchange.fetch_ticker(config.exchange.default_symbol)
+        ticker = exchange.fetch_ticker('BTC/USDT')
         exchange_status = "connected" if ticker else "disconnected"
         
         # Verificar base de datos
@@ -167,10 +191,10 @@ async def health_check():
                 "database": db_status,
                 "trading_bot": bot_status
             },
-            "version": config.api.version
+            "version": "4.0.0"
         }
     except Exception as e:
-        raise HTTPException(status_code=config.error.service_unavailable_code, detail=f"Service unhealthy: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
 
 # 🤖 **TRADING BOT**
 
@@ -194,45 +218,15 @@ async def get_bot_status():
                 "win_rate": (status.successful_trades / max(1, status.total_trades_executed)) * 100,
                 "current_portfolio_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - config.trading_bot.initial_portfolio_value) / config.trading_bot.initial_portfolio_value) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - db_manager.get_global_initial_balance()) / max(1e-9, db_manager.get_global_initial_balance())) * 100,
                 "active_strategies": status.active_strategies,
-                "last_analysis_time": status.last_analysis_time.isoformat(),
-                "next_analysis_time": status.next_analysis_time.isoformat()
+                "last_analysis_time": status.last_analysis_time.isoformat() if status.last_analysis_time else None,
+                "next_analysis_time": status.next_analysis_time.isoformat() if status.next_analysis_time else None
             },
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting bot status: {str(e)}")
-
-@app.get("/bot/debug")
-async def get_bot_debug_info():
-    """
-    🔍 Obtener información de debug del trading bot incluyendo circuit breaker
-    """
-    try:
-        bot = ensure_bot_exists()
-        status = bot.get_status()
-        
-        # Obtener información del circuit breaker
-        circuit_breaker_info = getattr(status, 'circuit_breaker_info', {})
-        
-        return {
-            "status": "success",
-            "debug_info": {
-                "is_running": status.is_running,
-                "enable_trading": getattr(bot, 'enable_trading', True),
-                "circuit_breaker": circuit_breaker_info,
-                "current_drawdown": getattr(bot, 'current_drawdown', 0),
-                "max_drawdown_threshold": getattr(bot, 'max_drawdown_threshold', 0),
-                "peak_portfolio_value": getattr(bot, 'peak_portfolio_value', 0),
-                "signals_generated": status.total_signals_generated,
-                "trades_executed": status.total_trades_executed,
-                "can_execute_trade": bot._can_execute_trade() if hasattr(bot, '_can_execute_trade') else None
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting debug info: {str(e)}")
 
 @app.post("/bot/start")
 async def start_trading_bot():
@@ -256,10 +250,10 @@ async def start_trading_bot():
             "message": "🚀 Trading bot started successfully!",
             "bot_status": {
                 "is_running": True,
-                "analysis_interval": getattr(bot, 'analysis_interval', config.trading_bot.analysis_interval_minutes),
+                "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
                 "strategies": list(getattr(bot, 'strategies', {}).keys()),
-                "symbols": getattr(bot, 'symbols', config.trading_bot.default_symbols),
-                "min_confidence": getattr(bot, 'min_confidence_threshold', config.trading_bot.min_confidence_threshold)
+                "symbols": getattr(bot, 'symbols', []),
+                "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 50)
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -313,69 +307,194 @@ async def get_bot_detailed_report():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
+@app.get("/bot/config")
+async def get_bot_configuration():
+    """
+    ⚙️ Obtener configuración actual del bot
+    """
+    try:
+        bot = get_trading_bot()
+        current_config = bot.get_configuration() if hasattr(bot, 'get_configuration') else {
+            "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
+            "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
+            "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 50),
+            "enable_trading": getattr(bot, 'enable_trading', False),
+            "symbols": getattr(bot, 'symbols', []),
+        }
+        return {
+            "status": "success",
+            "configuration": current_config,
+            "current_stats": {
+                "daily_trades": getattr(bot, 'stats', {}).get("daily_trades", 0),
+                "signals_generated": getattr(bot, 'stats', {}).get("signals_generated", 0),
+                "trades_executed": getattr(bot, 'stats', {}).get("trades_executed", 0)
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting configuration: {str(e)}")
+
+@app.put("/bot/config")
+async def update_bot_configuration(config: BotConfigUpdate):
+    """
+    ⚙️ Actualizar configuración del bot
+    """
+    try:
+        # Convertir a diccionario eliminando valores None
+        config_dict = config.model_dump(exclude_none=True)
+        
+        if not config_dict:
+            raise HTTPException(status_code=400, detail="No configuration parameters provided")
+        
+        bot = ensure_bot_exists()
+        if hasattr(bot, 'update_configuration'):
+            bot.update_configuration(config_dict)
+        else:
+            # Actualizar atributos manualmente si no existe el método
+            for key, value in config_dict.items():
+                if hasattr(bot, key):
+                    setattr(bot, key, value)
+        
+        current_config = bot.get_configuration() if hasattr(bot, 'get_configuration') else {
+            "analysis_interval_minutes": getattr(bot, 'analysis_interval', 60),
+            "max_daily_trades": getattr(bot, 'max_daily_trades', 10),
+            "min_confidence_threshold": getattr(bot, 'min_confidence_threshold', 50),
+            "enable_trading": getattr(bot, 'enable_trading', False),
+            "symbols": getattr(bot, 'symbols', [])
+        }
+        return {
+            "status": "success",
+            "message": "⚙️ Bot configuration updated successfully",
+            "updated_config": config_dict,
+            "current_config": current_config,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating configuration: {str(e)}")
+
 @app.get("/bot/trading-mode")
 async def get_trading_mode():
     """
-    📊 Obtener modo de trading actual
+    🎭 Obtener el modo de trading actual (paper/live)
     """
     try:
-        bot = ensure_bot_exists()
-        
-        # Determinar el modo de trading actual
-        trading_mode = "paper"  # Por defecto paper trading
-        live_trading_available = False
-        
-        # Verificar si hay configuración para live trading
-        try:
-            config = ConfigManager.get_consolidated_config()
-            live_trading_available = config.get("live_trading", {}).get("enabled", False)
-        except:
-            pass
-        
+        # Por ahora, el sistema está configurado para paper trading únicamente
+        # En el futuro, esto se leerá de la configuración del bot
         return {
             "status": "success",
-            "trading_mode": trading_mode,
-            "live_trading_available": live_trading_available,
-            "bot_status": bot.is_running if hasattr(bot, 'is_running') else False,
+            "trading_mode": "paper",
+            "description": "Paper trading mode - Virtual trading with simulated funds",
+            "live_trading_available": False,
+            "warning": "Live trading is not yet implemented. All trades are simulated.",
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting trading mode: {str(e)}")
 
-@app.post("/bot/trading-mode")
-async def set_trading_mode(request: dict):
+@app.put("/bot/trading-mode")
+async def update_trading_mode(mode_config: TradingModeUpdate):
     """
-    📊 Configurar modo de trading
+    🔄 Cambiar modo de trading (paper/live)
     """
     try:
-        mode = request.get("mode", "paper")
-        confirmation = request.get("confirmation", False)
+        if mode_config.trading_mode not in ["paper", "live"]:
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid trading mode. Must be 'paper' or 'live'"
+            )
         
-        if mode not in ["paper", "live"]:
-            raise HTTPException(status_code=400, detail="Invalid trading mode. Use 'paper' or 'live'")
+        if mode_config.trading_mode == "live":
+            if not mode_config.confirm_live_trading:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Live trading requires explicit confirmation. Set 'confirm_live_trading' to true."
+                )
+            
+            # Por ahora, rechazamos el trading en vivo ya que no está implementado
+            raise HTTPException(
+                status_code=501,
+                detail="Live trading is not yet implemented. Currently only paper trading is supported."
+            )
         
-        if mode == "live" and not confirmation:
-            raise HTTPException(status_code=400, detail="Live trading requires explicit confirmation")
-        
-        # Por ahora solo soportamos paper trading
-        if mode == "live":
-            return {
-                "status": "warning",
-                "message": "Live trading not yet implemented. Using paper trading mode.",
-                "trading_mode": "paper",
-                "timestamp": datetime.now().isoformat()
-            }
-        
+        # Para paper trading, simplemente confirmamos
         return {
             "status": "success",
-            "message": f"Trading mode set to {mode}",
-            "trading_mode": mode,
+            "message": "Trading mode confirmed",
+            "trading_mode": "paper",
+            "description": "Paper trading mode active - All trades are simulated",
             "timestamp": datetime.now().isoformat()
         }
+        
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error setting trading mode: {str(e)}")
+         raise HTTPException(status_code=500, detail=f"Error updating trading mode: {str(e)}")
+
+@app.get("/bot/trading-capabilities")
+async def get_trading_capabilities():
+    """
+    🔍 Obtener información sobre las capacidades de trading disponibles
+    """
+    try:
+        return {
+            "status": "success",
+            "capabilities": {
+                "paper_trading": {
+                    "available": True,
+                    "description": "Virtual trading with simulated funds",
+                    "features": [
+                        "Risk-free testing",
+                        "Real market data",
+                        "Portfolio tracking",
+                        "Performance analytics",
+                        "Strategy backtesting"
+                    ]
+                },
+                "live_trading": {
+                    "available": False,
+                    "description": "Real trading with actual funds (Not yet implemented)",
+                    "requirements": [
+                        "Binance API integration",
+                        "Enhanced security measures",
+                        "Real-time order management",
+                        "Advanced risk controls",
+                        "Regulatory compliance"
+                    ],
+                    "status": "In development - See ROADMAP_INTEGRACION_BINANCE.md"
+                }
+            },
+            "current_mode": "paper",
+            "recommended_mode": "paper",
+            "safety_note": "Always test strategies thoroughly in paper trading before considering live trading",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting trading capabilities: {str(e)}")
+
+@app.post("/bot/force-analysis")
+async def force_immediate_analysis():
+    """
+    🔄 Forzar análisis inmediato del mercado
+    """
+    try:
+        bot = ensure_bot_exists()
+        if not getattr(bot, 'is_running', False):
+            raise HTTPException(status_code=400, detail="Bot must be running to force analysis")
+        
+        # Ejecutar análisis en background
+        if hasattr(bot, 'force_analysis'):
+            bot.force_analysis()
+        else:
+            raise HTTPException(status_code=501, detail="Force analysis not implemented")
+        
+        return {
+            "status": "success",
+            "message": "🔄 Immediate market analysis initiated",
+            "timestamp": datetime.now().isoformat(),
+            "note": "Check bot logs or status for analysis results"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error forcing analysis: {str(e)}")
 
 @app.post("/bot/emergency-stop")
 async def emergency_stop_bot():
@@ -410,36 +529,31 @@ async def emergency_stop_bot():
 async def get_enhanced_strategies():
     """📊 Obtener lista de estrategias mejoradas disponibles"""
     try:
-        strategies_list = []
-        for key, strategy_info in config.strategy.available_strategies.items():
-            strategy_data = {
-                "name": strategy_info["name"],
-                "description": strategy_info["description"],
-                "features": strategy_info["features"]
-            }
-            
-            # Para MultiTimeframe, mostrar los timeframes del perfil actual
-            if strategy_info["name"] == "MultiTimeframe":
-                trading_config = TradingBotConfig()
-                current_timeframes = trading_config.get_professional_timeframes()
-                timeframes_str = ", ".join(current_timeframes)
-                strategy_data["description"] = f"Análisis multi-timeframe con votación ponderada (Perfil actual: {timeframes_str})"
-                strategy_data["features"] = [f"{timeframes_str} analysis", "Weighted voting", "Confluence scoring"]
-            
-            strategies_list.append(strategy_data)
-        
         return {
-            "enhanced_strategies": strategies_list,
+            "enhanced_strategies": [
+                {
+                    "name": "ProfessionalRSI",
+                    "description": "RSI profesional con análisis de volumen y tendencia",
+                    "features": ["Volume confirmation", "Trend analysis", "Risk management"]
+                },
+                {
+                    "name": "MultiTimeframe", 
+                    "description": "Análisis multi-timeframe con votación ponderada",
+                    "features": ["1h, 4h, 1d analysis", "Weighted voting", "Confluence scoring"]
+                },
+                {
+                    "name": "Ensemble",
+                    "description": "Estrategia ensemble que combina múltiples señales",
+                    "features": ["Multiple strategies", "Intelligent voting", "Advanced risk management"]
+                }
+            ],
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/enhanced/analyze/{strategy_name}/{symbol}")
-async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timeframe: str = None):
-    """🔍 Analizar símbolo con estrategia mejorada"""
-    if timeframe is None:
-        timeframe = config.analysis.default_timeframe
+async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timeframe: str = "1h"):
     """🔍 Analizar símbolo con estrategia mejorada"""
     try:
         # Crear instancia de la estrategia
@@ -482,11 +596,8 @@ async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timefr
 
 @app.get("/test/strategy/{strategy_name}/{symbol}")
 async def test_strategy_comprehensive(strategy_name: str, symbol: str, 
-                                    timeframe: str = None,
+                                    timeframe: str = "1h",
                                     test_mode: str = "signal_only"):
-    """🧪 Prueba comprehensiva de estrategias con diferentes modos"""
-    if timeframe is None:
-        timeframe = config.analysis.default_timeframe
     """🧪 Prueba comprehensiva de estrategias con diferentes modos"""
     try:
         # Crear estrategia
@@ -507,7 +618,7 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
         if test_mode in ["full", "risk_analysis"]:
             try:
                 risk_manager = EnhancedRiskManager()
-                risk_assessment = risk_manager.assess_trade_risk(signal, 10000)
+                risk_assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
                 risk_analysis = {
                     "overall_risk_score": risk_assessment.overall_risk_score,
                     "risk_level": risk_assessment.risk_level.value,
@@ -525,6 +636,7 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
         quick_backtest = None
         if test_mode == "full":
             try:
+                from datetime import timedelta
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=30)  # Último mes
                 
@@ -532,7 +644,7 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
                     symbols=[symbol],
                     start_date=start_date,
                     end_date=end_date,
-                    initial_capital=10000,
+                    initial_capital=db_manager.get_global_initial_balance(),
                     timeframe=timeframe
                 )
                 
@@ -575,18 +687,16 @@ async def test_strategy_comprehensive(strategy_name: str, symbol: str,
         raise HTTPException(status_code=500, detail=f"Error en prueba de estrategia: {str(e)}")
 
 @app.get("/enhanced/risk-analysis/{symbol}")
-async def get_enhanced_risk_analysis(symbol: str, timeframe: str = None):
+async def get_enhanced_risk_analysis(symbol: str):
     """🛡️ Análisis de riesgo mejorado"""
-    if timeframe is None:
-        timeframe = config.analysis.default_timeframe
     try:
         # Crear señal de prueba para análisis
         strategy = ProfessionalRSIStrategy()
-        signal = strategy.analyze(symbol, timeframe)
+        signal = strategy.analyze(symbol, "1h")
         
         # Analizar riesgo
         risk_manager = EnhancedRiskManager()
-        risk_assessment = risk_manager.assess_trade_risk(signal, 10000)
+        risk_assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
         
         return {
             "symbol": symbol,
@@ -613,34 +723,16 @@ async def get_enhanced_risk_analysis(symbol: str, timeframe: str = None):
 
 # 🎭 Paper Trading Endpoints
 @app.get("/paper-trading/summary")
-async def get_paper_trading_summary(force_refresh: bool = False):
+async def get_paper_trading_summary():
     """
     📊 Obtener resumen del portfolio de paper trading
-    
-    Args:
-        force_refresh: Si es True, fuerza la actualización del caché
     """
     try:
-        # Verificar si los datos están en caché ANTES de llamar al método
-        cache_key = "portfolio_summary_True"
-        was_cached = (not force_refresh and 
-                     hasattr(db_manager, '_query_cache') and 
-                     cache_key in db_manager._query_cache and
-                     db_manager._is_cache_valid(cache_key))
-        
-        # Si se solicita forzar actualización, invalidar caché específico
-        if force_refresh:
-            if hasattr(db_manager, '_query_cache') and cache_key in db_manager._query_cache:
-                del db_manager._query_cache[cache_key]
-            if hasattr(db_manager, '_cache_timestamps') and cache_key in db_manager._cache_timestamps:
-                del db_manager._cache_timestamps[cache_key]
-        
         summary = db_manager.get_portfolio_summary(is_paper=True)
         return {
             "status": "success",
             "portfolio": summary,
-            "timestamp": datetime.now().isoformat(),
-            "from_cache": was_cached
+            "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -684,27 +776,15 @@ async def reset_paper_trading():
     🔄 Resetear el portfolio de paper trading a los valores por defecto
     """
     try:
-        # Usar la instancia del trading bot para acceder al paper_trader correcto
-        bot = get_trading_bot()
-        result = bot.paper_trader.reset_portfolio()
+        paper_trader = PaperTrader()
+        result = paper_trader.reset_portfolio()
         
         if result["success"]:
-            # Forzar invalidación inmediata del caché específico del portfolio summary
-            cache_key = "portfolio_summary_True"
-            if hasattr(db_manager, '_query_cache') and cache_key in db_manager._query_cache:
-                del db_manager._query_cache[cache_key]
-            if hasattr(db_manager, '_cache_timestamps') and cache_key in db_manager._cache_timestamps:
-                del db_manager._cache_timestamps[cache_key]
-            
-            # Limpiar todo el caché para asegurar consistencia
-            db_manager.clear_cache()
-            
             return {
                 "status": "success",
                 "message": result["message"],
-                "initial_balance": config.paper_trading.initial_balance,
-                "timestamp": result["timestamp"],
-                "cache_cleared": True
+                "initial_balance": result["initial_balance"],
+                "timestamp": result["timestamp"]
             }
         else:
             raise HTTPException(status_code=500, detail=result["message"])
@@ -718,5 +798,5 @@ if __name__ == "__main__":
         "main:app", 
         host="0.0.0.0", 
         port=8000, 
-        reload=False
+        reload=True
     )

@@ -35,14 +35,29 @@ sys.path.insert(0, project_root)
 
 from src.database.database import db_manager
 from src.database.models import Trade, Portfolio, TradingSignal
-from src.config.config_manager import ConfigManager
-from src.config.global_constants import GLOBAL_INITIAL_BALANCE
 from src.core.paper_trader import PaperTrader
+from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
 
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
-# Configuración del modo de trading
-config = ConfigManager.get_consolidated_config()
-USE_PAPER_TRADING = config.get("trading_bot", {}).get("use_paper_trading", True)
+# Configuración del modo de trading (centralizada)
+INITIAL_BALANCE = PaperTraderConfig.INITIAL_BALANCE
+USE_PAPER_TRADING = True
+
+# Utilidad para calcular próxima hora de reset según configuración y zona horaria
+def get_next_reset_time_str() -> str:
+    tzname = TIMEZONE
+    now = datetime.now(ZoneInfo(tzname)) if ZoneInfo else datetime.now()
+    reset_dt = now.replace(hour=DAILY_RESET_HOUR, minute=DAILY_RESET_MINUTE, second=0, microsecond=0)
+    if now >= reset_dt:
+        reset_dt = reset_dt + timedelta(days=1)
+    try:
+        return reset_dt.strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        return reset_dt.strftime('%Y-%m-%d %H:%M')
 
 warnings.filterwarnings('ignore')
 
@@ -128,7 +143,10 @@ class MetricsCalculator:
                     return
                 
                 # Construir historial de equity acumulativo
-                running_equity = GLOBAL_INITIAL_BALANCE
+                # Usar balance inicial desde resumen de portfolio si está disponible
+                portfolio_summary = db_manager.get_portfolio_summary(is_paper=USE_PAPER_TRADING)
+                starting_equity = portfolio_summary.get('initial_balance', 0.0)
+                running_equity = starting_equity
                 self.equity_history.clear()
                 
                 # Punto inicial
@@ -160,7 +178,8 @@ class MetricsCalculator:
                             trade.trade_type, 
                             trade.entry_price, 
                             current_price, 
-                            trade.quantity
+                            trade.quantity,
+                            getattr(trade, 'entry_value', None)
                         )
                         current_unrealized += unrealized_pnl
                 
@@ -206,18 +225,32 @@ class MetricsCalculator:
                 win_rate = (successful_trades / max(1, len(closed_trades))) * 100
                 
                 # Trades de hoy
-                today = datetime.now().date()
-                trades_today = len([t for t in all_trades if t.entry_time and t.entry_time.date() == today])
+                # Calcular trades en la ventana operativa (11:00→11:00) según configuración
+                try:
+                    now_local = datetime.now()
+                    last_reset_dt = now_local.replace(hour=DAILY_RESET_HOUR, minute=DAILY_RESET_MINUTE, second=0, microsecond=0)
+                    if now_local < last_reset_dt:
+                        # Si aún no se llega al reset de hoy, usar el de ayer
+                        last_reset_dt = last_reset_dt - timedelta(days=1)
+                    next_reset_dt = last_reset_dt + timedelta(days=1)
+                except Exception:
+                    # Fallback simple
+                    now_local = datetime.now()
+                    last_reset_dt = now_local.replace(hour=11, minute=0, second=0, microsecond=0)
+                    if now_local < last_reset_dt:
+                        last_reset_dt = last_reset_dt - timedelta(days=1)
+                    next_reset_dt = last_reset_dt + timedelta(days=1)
+                trades_today = len([t for t in all_trades if t.entry_time and (t.entry_time >= last_reset_dt and t.entry_time < next_reset_dt)])
                 
                 # PnL total
                 total_pnl = sum([t.pnl for t in closed_trades if t.pnl]) or 0.0
                 
                 # Equity actual
-                current_equity = portfolio_summary.get('total_value', GLOBAL_INITIAL_BALANCE)
+                current_equity = portfolio_summary.get('total_value', 0.0)
                 
                 # Determinar balance inicial correcto (solo paper trading)
-                # En paper trading, usar el balance inicial configurado
-                initial_equity = GLOBAL_INITIAL_BALANCE
+                # Usar el balance inicial desde DB (portfolio_summary)
+                initial_equity = portfolio_summary.get('initial_balance', 0.0)
                 
                 # Retorno total
                 if initial_equity > 0:
@@ -349,7 +382,8 @@ class MetricsCalculator:
                             trade.trade_type, 
                             trade.entry_price, 
                             current_price, 
-                            trade.quantity
+                            trade.quantity,
+                            getattr(trade, 'entry_value', None)
                         )
                         unrealized_pnl_total += unrealized_pnl
                 
@@ -378,7 +412,7 @@ class MetricsCalculator:
                     real_usdt_balance = paper_trader.get_balance('USDT')
                 except Exception as e:
                     # Fallback al valor del portfolio summary si hay error
-                    real_usdt_balance = portfolio_summary.get('available_balance', GLOBAL_INITIAL_BALANCE)
+                    real_usdt_balance = portfolio_summary.get('available_balance', 0.0)
                 
                 return {
                     'total_return_pct': total_return,
@@ -392,9 +426,12 @@ class MetricsCalculator:
                     'total_fees_paid': total_fees_paid,
                     'unrealized_pnl_total': unrealized_pnl_total,
                     'realized_pnl': realized_pnl_total,
+                    'realized_return_pct': (realized_pnl_total / initial_equity) * 100 if initial_equity > 0 else 0.0,
+                    'real_balance': initial_equity + realized_pnl_total,
                     'total_trades': total_trades,
                     'trades_today': trades_today,
                     'win_rate_pct': win_rate,
+                    'initial_balance': initial_equity,
                     'recent_signals': recent_signals
                 }
                 
@@ -408,7 +445,7 @@ class MetricsCalculator:
             if len(self.equity_history) == 0:
                 return {
                     'total_return_pct': 0.0,
-                    'current_equity': GLOBAL_INITIAL_BALANCE,
+                    'current_equity': 0.0,
                     'current_drawdown_pct': 0.0,
                     'max_drawdown_pct': 0.0,
                     'volatility_pct': 0.0,
@@ -418,7 +455,8 @@ class MetricsCalculator:
                     'total_trades': 0,
                     'trades_today': 0,
                     'win_rate_pct': 0.0,
-                    'recent_signals': []
+                    'recent_signals': [],
+                    'initial_balance': 0.0
                 }
             
             # Usar datos del historial de equity
@@ -498,14 +536,15 @@ class MetricsCalculator:
                 'total_trades': 0,
                 'trades_today': 0,
                 'win_rate_pct': 0.0,
-                'recent_signals': []
+                'recent_signals': [],
+                'initial_balance': initial_equity
             }
             
         except Exception as e:
             print(f"Error calculando métricas de prueba: {e}")
             return {
                 'total_return_pct': 0.0,
-                'current_equity': GLOBAL_INITIAL_BALANCE,
+                'current_equity': 0.0,
                 'current_drawdown_pct': 0.0,
                 'max_drawdown_pct': 0.0,
                 'volatility_pct': 0.0,
@@ -515,13 +554,14 @@ class MetricsCalculator:
                 'total_trades': 0,
                 'trades_today': 0,
                 'win_rate_pct': 0.0,
-                'recent_signals': []
+                'recent_signals': [],
+                'initial_balance': 0.0
             }
     
     def _empty_metrics(self) -> Dict:
         """Métricas vacías por defecto"""
         return {
-            'current_equity': GLOBAL_INITIAL_BALANCE,
+            'current_equity': 0.0,
             'total_return_pct': 0.0,
             'current_drawdown_pct': 0.0,
             'max_drawdown_pct': 0.0,
@@ -532,18 +572,31 @@ class MetricsCalculator:
             'total_trades': 0,
             'win_rate_pct': 0.0,
             'recent_signals': [],
-            'last_update': datetime.now()
+            'last_update': datetime.now(),
+            'initial_balance': 0.0,
+            'available_balance': 0.0
         }
     
-    def _calculate_unrealized_pnl(self, trade_type: str, entry_price: float, current_price: float, quantity: float) -> float:
-        """Calcular PnL no realizado para un trade"""
-        if entry_price <= 0 or current_price <= 0 or quantity <= 0:
+    def _calculate_unrealized_pnl(self, trade_type: str, entry_price: float, current_price: float, quantity: float, entry_value: float = None) -> float:
+        """Calcular PnL no realizado para un trade, considerando fees si entry_value está disponible"""
+        if current_price <= 0 or quantity <= 0:
             return 0.0
         
-        if trade_type.upper() == 'BUY':
-            return (current_price - entry_price) * quantity
-        else:  # SELL
-            return (entry_price - current_price) * quantity
+        t = trade_type.upper() if trade_type else 'BUY'
+        # Si tenemos entry_value (USDT), ya incluye fees en BUY y salida neta en SELL
+        if entry_value is not None and entry_value > 0:
+            if t == 'BUY':
+                return (current_price * quantity) - entry_value
+            else:  # SELL
+                return entry_value - (current_price * quantity)
+        
+        # Fallback a cálculo por precios si no hay entry_value
+        if entry_price and entry_price > 0:
+            if t == 'BUY':
+                return (current_price - entry_price) * quantity
+            else:  # SELL
+                return (entry_price - current_price) * quantity
+        return 0.0
     
     def _calculate_total_fees(self, trades: List) -> float:
         """
@@ -573,40 +626,64 @@ class MetricsCalculator:
         return round(total_fees, 4)
     
     def _get_current_price_simple(self, symbol: str, entry_price: float = None) -> float:
-        """Obtener precio actual con cache para mejor rendimiento"""
+        """Obtener precio actual con cache para mejor rendimiento usando fuente centralizada cuando sea posible"""
         try:
-            # Cache simple para evitar llamadas repetidas a la API
-            cache_key = f"price_{symbol.replace('/', '')}"
-            current_time = time.time()
+            # Normalización robusta de símbolo
+            norm_symbol = symbol if '/' in symbol else (symbol[:-4] + '/USDT' if symbol.endswith(('USDT')) else symbol)
+            if symbol == 'USDT' or symbol.replace('/', '') == 'USDT':
+            # Stablecoins: precio base 1.0 (USDT-only)
+                return 1.0
             
-            # Verificar si tenemos el precio en cache (válido por 30 segundos)
+            cache_key = f"price_{norm_symbol.replace('/', '')}"
+            current_time = time.time()
+            ttl = CacheConfig.get_ttl_for_operation("price_data")
+            
+            # Verificar cache local
             if hasattr(self, '_price_cache'):
                 if cache_key in self._price_cache:
                     cached_price, cached_time = self._price_cache[cache_key]
-                    if current_time - cached_time < 30:  # Cache válido por 30 segundos
+                    if current_time - cached_time < ttl:
                         return cached_price
             else:
                 self._price_cache = {}
             
-            # Importar la función del trading monitor
+            # Intentar usar TradingBot global para precios con cache centralizado
+            try:
+                from src.core.trading_bot import trading_bot
+                if trading_bot:
+                    price = float(trading_bot._get_current_price(norm_symbol))
+                    if price > 0:
+                        self._price_cache[cache_key] = (price, current_time)
+                        return price
+            except Exception:
+                pass
+            
+            # Fallback: usar feed unificado del gestor de base de datos (TTL cache)
+            try:
+                from src.database.database import db_manager
+                price = float(db_manager._get_current_price(norm_symbol))
+                if price > 0:
+                    self._price_cache[cache_key] = (price, current_time)
+                    return price
+            except Exception:
+                pass
+            
+            # Fallback: usar trading_monitor
             from src.tools.trading_monitor import get_current_price
+            current_price = float(get_current_price(norm_symbol))
             
-            # Usar la función real de precios del trading monitor
-            current_price = get_current_price(symbol.replace('/', ''))
-            
-            # Guardar en cache
             if current_price > 0:
                 self._price_cache[cache_key] = (current_price, current_time)
                 return current_price
             
-            # Si no se pudo obtener el precio, usar el precio de entrada como fallback
+            # Fallback adicional: precio de entrada
             if entry_price and entry_price > 0:
-                return entry_price
+                return float(entry_price)
             
             return current_price
         except Exception as e:
             print(f"Error obteniendo precio para {symbol}: {e}")
-            return entry_price or 0.0
+            return float(entry_price) if entry_price else 0.0
 
     def get_active_trades(self) -> List[Dict]:
         """Obtener trades activos desde la base de datos"""
@@ -628,7 +705,8 @@ class MetricsCalculator:
                         trade.trade_type, 
                         trade.entry_price or 0, 
                         current_price, 
-                        trade.quantity or 0
+                        trade.quantity or 0,
+                        (trade.entry_value or 0)
                     )
                     
                     trades_data.append({
@@ -636,6 +714,7 @@ class MetricsCalculator:
                         'symbol': trade.symbol,
                         'type': trade.trade_type,
                         'entry_price': trade.entry_price or 0,
+                        'entry_value': trade.entry_value or 0,
                         'quantity': trade.quantity or 0,
                         'entry_time': trade.entry_time or datetime.now(),
                         'strategy': trade.strategy_name or 'Unknown',
@@ -697,7 +776,8 @@ class MetricsCalculator:
                     trade['type'], 
                     trade['entry_price'], 
                     current_price, 
-                    trade['quantity']
+                    trade['quantity'],
+                    trade.get('entry_value', None)
                 )
                 total_unrealized_pnl += trade_unrealized_pnl
             
@@ -717,13 +797,14 @@ class MetricsCalculator:
                     })
             
             result = {
-                'total_value': portfolio_summary.get('total_value', GLOBAL_INITIAL_BALANCE),
-                'available_balance': portfolio_summary.get('available_balance', GLOBAL_INITIAL_BALANCE),
+                'total_value': portfolio_summary.get('total_value', 0.0),
+                'available_balance': portfolio_summary.get('available_balance', 0.0),
                 'positions_value': portfolio_summary.get('positions_value', 0.0),
                 'unrealized_pnl': total_unrealized_pnl,  # Usar el cálculo correcto
                 'realized_pnl': portfolio_summary.get('total_pnl', 0.0),
                 'total_pnl': portfolio_summary.get('total_pnl', 0.0),
                 'total_pnl_percentage': portfolio_summary.get('total_pnl_percentage', 0.0),
+                'initial_balance': portfolio_summary.get('initial_balance', 0.0),
                 'trading_mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
                 'positions': positions  # Agregar las posiciones para el gráfico
             }
@@ -732,13 +813,14 @@ class MetricsCalculator:
         except Exception as e:
             print(f"Error obteniendo portfolio summary: {e}")
             return {
-                'total_value': GLOBAL_INITIAL_BALANCE,
-                'available_balance': GLOBAL_INITIAL_BALANCE,
+                'total_value': 0.0,
+                'available_balance': 0.0,
                 'positions_value': 0.0,
                 'unrealized_pnl': 0.0,
                 'realized_pnl': 0.0,
                 'total_pnl': 0.0,
                 'total_pnl_percentage': 0.0,
+                'initial_balance': 0.0,
                 'trading_mode': 'ERROR_FALLBACK',
                 'positions': []  # Lista vacía en caso de error
             }
@@ -1605,7 +1687,7 @@ class RealTimeDashboard:
     
     def _render_header(self):
         """Renderizar header del dashboard"""
-        col1, col2, col3 = st.columns([2, 1, 1])
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
         
         with col1:
             st.title("📊 Crypto Trading Dashboard")
@@ -1627,6 +1709,13 @@ class RealTimeDashboard:
                     <small>Última actualización:<br>{self.last_update.strftime('%H:%M:%S')}</small>
                 </div>
                 """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 1rem;">
+                <small>Próximo reset:<br>{get_next_reset_time_str()}</small>
+            </div>
+            """, unsafe_allow_html=True)
     
     def _render_sidebar(self):
         """Renderizar sidebar con controles"""
@@ -1673,6 +1762,13 @@ class RealTimeDashboard:
             "Tasa de Ganancia",
             f"{metrics['win_rate_pct']:.1f}%"
         )
+        
+        # Indicadores de reset diario y disponibilidad de trades
+        max_trades = TradingBotConfig.get_max_daily_trades()
+        trades_available = max(0, max_trades - metrics['trades_today'])
+        st.sidebar.metric("Trades disponibles hoy", trades_available)
+        st.sidebar.caption(f"Máx diarios: {max_trades}")
+        st.sidebar.info(f"Próximo reset: {get_next_reset_time_str()}")
         
         # Alertas mejoradas
         st.sidebar.subheader("🚨 Alertas Inteligentes")
@@ -1759,7 +1855,7 @@ class RealTimeDashboard:
             if closed_trades:
                 # Crear datos de equity basados en trades cerrados
                 equity_data = []
-                running_equity = GLOBAL_INITIAL_BALANCE  # Equity inicial
+                running_equity = metrics.get('initial_balance', 0.0)  # Equity inicial desde DB
                 for trade in sorted(closed_trades, key=lambda x: x.get('exit_time', datetime.now())):
                     running_equity += trade.get('pnl', 0)
                     equity_data.append({
@@ -1863,7 +1959,7 @@ class RealTimeDashboard:
         
         with col1:
             # Balance Actual (USDT disponible sin invertir)
-            available_balance = metrics.get('available_balance', GLOBAL_INITIAL_BALANCE)
+            available_balance = metrics.get('available_balance', 0.0)
             emoji = "💵"
             st.metric(
                 f"{emoji} USDT Disponibles",
@@ -1871,16 +1967,14 @@ class RealTimeDashboard:
             )
         
         with col2:
-            # Valor Portfolio (Valor total incluyendo posiciones y PnL)
-            total_value = metrics['current_equity']
-            initial_balance = GLOBAL_INITIAL_BALANCE
-            growth = total_value - initial_balance
-            growth_pct = (growth / initial_balance) * 100 if initial_balance > 0 else 0
-            
-            emoji = "📊" if growth >= 0 else "📉"
+            # Valor Portfolio Real (solo PnL realizado)
+            initial_balance = metrics.get('initial_balance', 0.0)
+            real_balance = metrics.get('real_balance', initial_balance)
+            growth_real = real_balance - initial_balance
+            emoji = "📊" if growth_real >= 0 else "📉"
             st.metric(
-                f"{emoji} Valor Portfolio (USDT)",
-                f"${total_value:,.2f}"
+                f"{emoji} Valor Portfolio Real (USDT)",
+                f"${real_balance:,.2f}"
             )
         
         with col3:
@@ -1904,15 +1998,16 @@ class RealTimeDashboard:
             )
         
         # Segunda fila: Métricas de performance
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # Retorno Total
+            # Retorno Realizado (solo PnL de trades cerrados)
             delta_color = "normal"
-            emoji = "🚀" if metrics['total_return_pct'] > 10 else "📈" if metrics['total_return_pct'] > 0 else "📉"
+            realized_return = metrics.get('realized_return_pct', metrics.get('total_return_pct', 0.0))
+            emoji = "🚀" if realized_return > 10 else "📈" if realized_return > 0 else "📉"
             st.metric(
-                f"{emoji} Retorno Total",
-                f"{metrics['total_return_pct']:.2f}%"
+                f"{emoji} Retorno Realizado",
+                f"{realized_return:.2f}%"
             )
         
         with col2:
@@ -1929,6 +2024,15 @@ class RealTimeDashboard:
             st.metric(
                 "📊 Volatilidad",
                 f"{metrics['volatility_pct']:.1f}%"
+            )
+
+        with col4:
+            # PnL Teórico    
+            theoretical_pnl = metrics.get('realized_pnl', 0.0) + metrics.get('unrealized_pnl_total', 0.0)
+            emoji = "💰" if theoretical_pnl >= 0 else "🔻"
+            st.metric(
+                f"{emoji} PnL Teórico",
+                f"${theoretical_pnl:,.2f}"
             )
         
 
@@ -2073,42 +2177,56 @@ class RealTimeDashboard:
     def _get_trading_mode_info(self) -> Dict:
         """Obtener información del modo de trading actual"""
         try:
-            # Usar configuración actual del proyecto
-            trading_config = config.get("trading_bot", {})
-            # Obtener el perfil activo desde ConfigManager
-            from src.config.config_manager import ConfigManager
-            profile = ConfigManager.get_active_profile()
-            
+            # Usar configuración centralizada
+            current_profile_cfg = TradingProfiles.get_current_profile()
+            profile_name = current_profile_cfg.get('name', 'DESCONOCIDO')
+            max_positions = TradingBotConfig.get_max_concurrent_positions()
+            min_confidence = RiskManagerConfig.get_min_confidence_threshold()
             return {
                 'mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
-                'profile': profile,
-                'description': f'Trading con perfil {profile}',
-                'risk_level': self._get_profile_risk_level(profile),
-                'max_positions': trading_config.get('max_concurrent_positions', 5),
-                'min_confidence': trading_config.get('min_confidence_threshold', 75.0)
+                'profile': profile_name,
+                'description': f'Trading con perfil {profile_name}',
+                'risk_level': self._get_profile_risk_level(profile_name),
+                'max_positions': max_positions,
+                'min_confidence': min_confidence
             }
         except Exception as e:
             print(f"Error obteniendo trading mode info: {e}")
-            # Importar ACTIVE_TRADING_PROFILE como fallback
-            from src.config.global_constants import ACTIVE_TRADING_PROFILE
+            # Usar nombre del perfil actual como fallback
+            current_profile_cfg = TradingProfiles.get_current_profile()
             return {
-                'mode': 'PAPER_TRADING',
-                'profile': ACTIVE_TRADING_PROFILE,
+                'mode': 'PAPER_TRADING' if USE_PAPER_TRADING else 'REAL_TRADING',
+                'profile': current_profile_cfg.get('name', 'DESCONOCIDO'),
                 'description': 'Modo de trading virtual para pruebas',
-                'risk_level': 'MEDIUM',
-                'max_positions': 5,
-                'min_confidence': 0.75
+                'risk_level': self._get_profile_risk_level(current_profile_cfg.get('name', 'DESCONOCIDO')),
+                'max_positions': TradingBotConfig.get_max_concurrent_positions(),
+                'min_confidence': RiskManagerConfig.get_min_confidence_threshold()
             }
     
     def _get_profile_risk_level(self, profile: str) -> str:
-        """Obtener nivel de riesgo del perfil"""
-        risk_levels = {
-            "CONSERVADOR": "LOW",
-            "ÓPTIMO": "MEDIUM",
-            "AGRESIVO": "HIGH",
-            "RÁPIDO": "VERY_HIGH"
-        }
-        return risk_levels.get(profile, "MEDIUM")
+        """Obtener nivel de riesgo del perfil.
+        Acepta tanto la clave del perfil (e.g. 'RAPIDO', 'ELITE', 'CONSERVADOR') como el nombre descriptivo (e.g. 'Rápido', 'Elite', 'Conservador').
+        """
+        if not profile:
+            return "MEDIUM"
+        # Normalizar entrada para facilitar coincidencias
+        p_upper = profile.upper()
+        p_lower = profile.lower()
+        # Coincidencias por clave directa
+        if p_upper in {"CONSERVADOR"}:
+            return "LOW"
+        if p_upper in {"ELITE"}:
+            return "MEDIUM"
+        if p_upper in {"RAPIDO", "RÁPIDO"}:
+            return "VERY_HIGH"
+        # Coincidencias por nombre descriptivo (con acentos)
+        if ("conservador" in p_lower):
+            return "LOW"
+        if ("elite" in p_lower):
+            return "MEDIUM"
+        if ("rápido" in p_lower) or ("rapido" in p_lower):
+            return "VERY_HIGH"
+        return "MEDIUM"
     
     def stop_dashboard(self):
         """Detener dashboard"""
@@ -2163,71 +2281,84 @@ class RealTimeDashboard:
             st.write("**Límites:**")
             st.write(f"• Posiciones Máximas: {trading_info['max_positions']}")
             st.write(f"• Confianza Mínima: {trading_info['min_confidence']:.1f}%")
-            st.write(f"• Balance Inicial: ${GLOBAL_INITIAL_BALANCE:,.2f}")
+            # Balance inicial desde DB
+            portfolio_summary = self.metrics_calc.get_portfolio_summary()
+            initial_balance_db = portfolio_summary.get('initial_balance', 0.0)
+            st.write(f"• Balance Inicial: ${initial_balance_db:,.2f}")
         
         # Métricas de configuración
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Obtener número de símbolos configurados
-            symbols_config = config.get("symbols", {})
-            total_symbols = len(symbols_config)
+            # Número de símbolos configurados desde configuración centralizada
+            total_symbols = len(TradingBotConfig.SYMBOLS)
             st.metric("Símbolos Configurados", total_symbols)
         
         with col2:
-            # Mostrar balance inicial
-            st.metric("Balance Inicial", f"${GLOBAL_INITIAL_BALANCE:,.0f}")
+            # Mostrar balance inicial desde DB
+            st.metric("Balance Inicial", f"${initial_balance_db:,.0f}")
         
         with col3:
             # Obtener posiciones activas desde la base de datos
             active_trades = self.metrics_calc.get_active_trades()
             st.metric("Posiciones Activas", len(active_trades))
         
-        # Gráfico de distribución de estrategias
-        strategies_config = config.get("strategies", {})
-        if strategies_config:
-            strategy_names = list(strategies_config.keys())
-            strategy_weights = [1] * len(strategy_names)  # Peso igual para todas
-            
-            fig_strategies = go.Figure(data=[
-                go.Pie(
-                    labels=strategy_names,
-                    values=strategy_weights,
-                    hole=0.4,
-                    marker_colors=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+        # Gráfico de distribución de estrategias (config centralizada)
+        try:
+            strategy_weights = getattr(StrategyConfig.Ensemble, 'STRATEGY_WEIGHTS', None)
+            if strategy_weights:
+                strategy_names = list(strategy_weights.keys())
+                strategy_values = list(strategy_weights.values())
+                fig_strategies = go.Figure(data=[
+                    go.Pie(
+                        labels=strategy_names,
+                        values=strategy_values,
+                        hole=0.4,
+                        marker_colors=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+                    )
+                ])
+                fig_strategies.update_layout(
+                    title="Distribución de Estrategias Configuradas",
+                    template='plotly_dark',
+                    height=300,
+                    showlegend=True
                 )
-            ])
-            
-            fig_strategies.update_layout(
-                title="Distribución de Estrategias Configuradas",
-                template='plotly_dark',
-                height=300,
-                showlegend=True
-            )
-            
-            st.plotly_chart(fig_strategies, width='stretch')
-        else:
+                st.plotly_chart(fig_strategies, width='stretch')
+            else:
+                st.info("No hay estrategias configuradas")
+        except Exception:
             st.info("No hay estrategias configuradas")
     
     def _render_trailing_sl_section(self):
         """Renderizar sección de gestión de riesgo"""
         st.subheader("🎯 Gestión de Riesgo")
         
-        # Obtener configuración de riesgo
-        risk_config = config.get("risk_management", {})
+        # Obtener parámetros de riesgo desde configuración centralizada
+        try:
+            sl_pct = RiskManagerConfig.get_sl_min_percentage()
+            tp_pct = RiskManagerConfig.get_tp_min_percentage()
+            max_drawdown_pct = RiskManagerConfig.get_max_drawdown_threshold() * 100.0
+            position_size_pct = PaperTraderConfig.get_max_position_size() * 100.0
+            sl_pct_pct = sl_pct * 100.0
+            tp_pct_pct = tp_pct * 100.0
+        except Exception:
+            sl_pct_pct = 2.0
+            tp_pct_pct = 4.0
+            max_drawdown_pct = 10.0
+            position_size_pct = 20.0
         
         # Mostrar configuración de riesgo
         col1, col2 = st.columns(2)
         
         with col1:
             st.write("**Stop Loss:**")
-            st.write(f"• Stop Loss: {risk_config.get('stop_loss_pct', 2.0):.1f}%")
-            st.write(f"• Take Profit: {risk_config.get('take_profit_pct', 4.0):.1f}%")
+            st.write(f"• Stop Loss: {sl_pct_pct:.1f}%")
+            st.write(f"• Take Profit: {tp_pct_pct:.1f}%")
         
         with col2:
             st.write("**Gestión de Posición:**")
-            st.write(f"• Tamaño Posición: {risk_config.get('position_size_pct', 20.0):.1f}%")
-            st.write(f"• Max Drawdown: {risk_config.get('max_drawdown_pct', 10.0):.1f}%")
+            st.write(f"• Tamaño Posición: {position_size_pct:.1f}%")
+            st.write(f"• Max Drawdown: {max_drawdown_pct:.1f}%")
         
         # Obtener posiciones activas
         active_trades = self.metrics_calc.get_active_trades()
@@ -2307,14 +2438,14 @@ class RealTimeDashboard:
             
             with col1:
                 st.write("**Parámetros de Riesgo:**")
-                st.write(f"• Stop Loss: {risk_config.get('stop_loss_pct', 2.0):.1f}%")
-                st.write(f"• Take Profit: {risk_config.get('take_profit_pct', 4.0):.1f}%")
-                st.write(f"• Max Drawdown: {risk_config.get('max_drawdown_pct', 10.0):.1f}%")
+                st.write(f"• Stop Loss: {RiskManagerConfig.get_sl_min_percentage() * 100.0:.1f}%")
+                st.write(f"• Take Profit: {RiskManagerConfig.get_tp_min_percentage() * 100.0:.1f}%")
+                st.write(f"• Max Drawdown: {RiskManagerConfig.get_max_drawdown_threshold() * 100.0:.1f}%")
             
             with col2:
                 st.write("**Configuración de Posición:**")
-                st.write(f"• Tamaño: {risk_config.get('position_size_pct', 20.0):.1f}% del balance")
-                st.write(f"• Posiciones máximas: {config.get('trading_bot', {}).get('max_concurrent_positions', 5)}")
+                st.write(f"• Tamaño: {PaperTraderConfig.get_max_position_size() * 100.0:.1f}% del balance")
+                st.write(f"• Posiciones máximas: {TradingBotConfig.get_max_concurrent_positions()}")
                 st.write(f"• Estado: {'Activo' if USE_PAPER_TRADING else 'Inactivo'}")
 
 

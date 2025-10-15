@@ -13,31 +13,8 @@ from datetime import datetime
 from functools import lru_cache
 import hashlib
 
-from src.config import (
-    ConfigManager,
-    get_config_factory,
-    TechnicalConfig,
-    TradingProfile,
-    get_adaptive_manager
-)
-
-# Inicializar configuración centralizada
-try:
-    config_factory = get_config_factory()
-    technical_config = config_factory.get_config()
-    
-    # Mantener compatibilidad con configuración legacy
-    config = ConfigManager().get_consolidated_config()
-    if config is None:
-        config = {}
-except Exception as e:
-    # Configuración de fallback en caso de error
-    config = {
-        'advanced_indicators': {'fibonacci_lookback': 50}
-    }
-    technical_config = TechnicalConfig()
-from src.utils.advanced_cache import indicator_cache, cached_function
-from src.utils.error_handler import handle_errors
+# Importar configuración centralizada
+from src.config.main_config import AdvancedIndicatorsConfig, FibonacciConfig, OscillatorConfig, CalculationConfig
 
 # Suprimir warnings específicos de pandas_ta
 warnings.filterwarnings('ignore', message='.*dtype incompatible.*')
@@ -66,40 +43,37 @@ class IchimokuCloud:
     price_position: str      # Arriba/Dentro/Debajo de la nube
 
 class AdvancedIndicators:
-    """Clase para calcular indicadores técnicos avanzados con cache optimizado"""
+    """Clase para calcular indicadores técnicos avanzados con optimizaciones"""
     
-    @staticmethod
-    def _get_config_value(path: str, default=None):
-        """Helper para acceso seguro a la configuración"""
-        global config
-        try:
-            keys = path.split('.')
-            value = config
-            for key in keys:
-                value = value[key]
-            return value
-        except (KeyError, TypeError, AttributeError):
-            return default
+    # Cache para resultados de indicadores
+    _indicator_cache = {}
+    _cache_max_size = 1000
     
     @classmethod
-    def _get_cache_key(cls, symbol: str, timeframe: str, indicator_name: str, **kwargs) -> str:
-        """🔑 Generar clave de cache optimizada"""
+    def _get_cache_key(cls, df: pd.DataFrame, indicator_name: str, **kwargs) -> str:
+        """🔑 Generar clave de cache basada en datos y parámetros"""
         try:
+            # Usar hash de los últimos valores para identificar el dataset
+            last_values = f"{df['close'].iloc[-1]}_{df['volume'].iloc[-1]}_{len(df)}"
             params_str = "_".join([f"{k}_{v}" for k, v in sorted(kwargs.items())])
-            cache_key = f"{symbol}_{timeframe}_{indicator_name}_{params_str}"
+            cache_key = f"{indicator_name}_{last_values}_{params_str}"
             return hashlib.md5(cache_key.encode()).hexdigest()[:16]
         except:
-            return f"{indicator_name}_{symbol}_{timeframe}"
+            return f"{indicator_name}_{id(df)}"
     
     @classmethod
-    def _get_cached_indicator(cls, symbol: str, timeframe: str, indicator_name: str, params: Dict):
-        """📦 Obtener indicador del cache avanzado"""
-        return indicator_cache.get_indicator(symbol, timeframe, indicator_name, params)
+    def _get_from_cache(cls, cache_key: str):
+        """📦 Obtener resultado del cache"""
+        return cls._indicator_cache.get(cache_key)
     
     @classmethod
-    def _cache_indicator(cls, symbol: str, timeframe: str, indicator_name: str, params: Dict, result):
-        """💾 Almacenar indicador en cache avanzado"""
-        return indicator_cache.cache_indicator(symbol, timeframe, indicator_name, params, result)
+    def _store_in_cache(cls, cache_key: str, result):
+        """💾 Almacenar resultado en cache"""
+        if len(cls._indicator_cache) >= cls._cache_max_size:
+            # Limpiar cache más antiguo (FIFO simple)
+            oldest_key = next(iter(cls._indicator_cache))
+            del cls._indicator_cache[oldest_key]
+        cls._indicator_cache[cache_key] = result
     
     @staticmethod
     def safe_float(value, default: float = 0.0) -> float:
@@ -120,8 +94,8 @@ class AdvancedIndicators:
         except (ValueError, TypeError):
             return default
     
-    @classmethod
-    def fibonacci_retracement(cls, df: pd.DataFrame, lookback: int = None) -> FibonacciLevels:
+    @staticmethod
+    def fibonacci_retracement(df: pd.DataFrame, lookback: int = None) -> FibonacciLevels:
         """
         🔢 Calcular niveles de Fibonacci para retracements
         
@@ -133,8 +107,7 @@ class AdvancedIndicators:
             FibonacciLevels con todos los niveles calculados
         """
         if lookback is None:
-            # Usar configuración centralizada
-            lookback = technical_config.fibonacci.lookback_period
+            lookback = AdvancedIndicatorsConfig.FIBONACCI_LOOKBACK
         
         # Encontrar máximo y mínimo en el período
         recent_data = df.tail(lookback)
@@ -156,20 +129,19 @@ class AdvancedIndicators:
         diff = swing_high - swing_low
         
         # Calcular niveles de Fibonacci (retracement desde el máximo)
-        # Usar configuración centralizada
-        retracement_levels = technical_config.fibonacci.retracement_levels
+        # RETRACEMENT_LEVELS = [0.236, 0.382, 0.500, 0.618, 0.786]
         return FibonacciLevels(
             level_0=AdvancedIndicators.safe_float(swing_high),
-            level_236=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[0])),  # 0.236
-            level_382=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[1])),  # 0.382
-            level_500=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[2])),  # 0.500
-            level_618=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[3])),  # 0.618
-            level_786=AdvancedIndicators.safe_float(swing_high - (diff * retracement_levels[4])),  # 0.786
+            level_236=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[0])),  # 0.236
+            level_382=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[1])),  # 0.382
+            level_500=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[2])),  # 0.500
+            level_618=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[3])),  # 0.618
+            level_786=AdvancedIndicators.safe_float(swing_high - (diff * FibonacciConfig.RETRACEMENT_LEVELS[4])),  # 0.786
             level_100=AdvancedIndicators.safe_float(swing_low)
         )
     
-    @classmethod
-    def ichimoku_cloud(cls, df: pd.DataFrame) -> IchimokuCloud:
+    @staticmethod
+    def ichimoku_cloud(df: pd.DataFrame) -> IchimokuCloud:
         """
         ☁️ Calcular Ichimoku Cloud completo
         
@@ -215,29 +187,25 @@ class AdvancedIndicators:
         except Exception:
             # Método 2: Calcular manualmente si falla el método automático
             # Tenkan-sen (9 períodos)
-            tenkan_period = cls._get_config_value("advanced_indicators.ichimoku_tenkan_period", 9)
-            high_9 = df['high'].rolling(window=tenkan_period).max()
-            low_9 = df['low'].rolling(window=tenkan_period).min()
+            high_9 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_TENKAN_PERIOD).max()
+            low_9 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_TENKAN_PERIOD).min()
             tenkan_sen = (high_9 + low_9) / 2
             
             # Kijun-sen (26 períodos)
-            kijun_period = cls._get_config_value("advanced_indicators.ichimoku_kijun_period", 26)
-            high_26 = df['high'].rolling(window=kijun_period).max()
-            low_26 = df['low'].rolling(window=kijun_period).min()
+            high_26 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_KIJUN_PERIOD).max()
+            low_26 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_KIJUN_PERIOD).min()
             kijun_sen = (high_26 + low_26) / 2
             
             # Senkou Span A
-            ichimoku_shift = cls._get_config_value("advanced_indicators.ichimoku_shift", 26)
-            senkou_a = ((tenkan_sen + kijun_sen) / 2).shift(ichimoku_shift)
+            senkou_a = ((tenkan_sen + kijun_sen) / 2).shift(AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
             
             # Senkou Span B (52 períodos)
-            senkou_b_period = cls._get_config_value("advanced_indicators.ichimoku_senkou_b_period", 52)
-            high_52 = df['high'].rolling(window=senkou_b_period).max()
-            low_52 = df['low'].rolling(window=senkou_b_period).min()
-            senkou_b = ((high_52 + low_52) / 2).shift(ichimoku_shift)
+            high_52 = df['high'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_SENKOU_B_PERIOD).max()
+            low_52 = df['low'].rolling(window=AdvancedIndicatorsConfig.ICHIMOKU_SENKOU_B_PERIOD).min()
+            senkou_b = ((high_52 + low_52) / 2).shift(AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
             
             # Chikou Span
-            chikou_span = df['close'].shift(-ichimoku_shift)
+            chikou_span = df['close'].shift(-AdvancedIndicatorsConfig.ICHIMOKU_SHIFT)
             
             # Obtener valores actuales
             tenkan_sen = tenkan_sen.iloc[-1]
@@ -279,10 +247,10 @@ class AdvancedIndicators:
             price_position=price_position
         )
     
-    @classmethod
-    def stochastic_oscillator(cls, df: pd.DataFrame, k_period: int = None, d_period: int = None) -> Dict:
+    @staticmethod
+    def stochastic_oscillator(df: pd.DataFrame, k_period: int = None, d_period: int = None) -> Dict:
         """
-        📊 Calcular Oscilador Estocástico (%K y %D)
+        📊 Calcular Oscilador Estocástico
         
         Args:
             df: DataFrame con datos OHLCV
@@ -293,9 +261,9 @@ class AdvancedIndicators:
             Diccionario con valores y señales del estocástico
         """
         if k_period is None:
-            k_period = cls._get_config_value("advanced_indicators.stochastic_k_period", 14)
+            k_period = AdvancedIndicatorsConfig.STOCHASTIC_K_PERIOD
         if d_period is None:
-            d_period = cls._get_config_value("advanced_indicators.stochastic_d_period", 3)
+            d_period = AdvancedIndicatorsConfig.STOCHASTIC_D_PERIOD
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -327,16 +295,13 @@ class AdvancedIndicators:
             k_current = AdvancedIndicators.safe_float(k_current, 50.0)
             d_current = AdvancedIndicators.safe_float(d_current, 50.0)
             
-            # Generar señales usando umbrales configurables
-            oversold = cls._get_config_value("oscillator.stochastic_thresholds.oversold", 20)
-            overbought = cls._get_config_value("oscillator.stochastic_thresholds.overbought", 80)
-            
-            if k_current <= oversold and d_current <= oversold:
+            # Generar señales
+            if k_current <= 20 and d_current <= 20:
                 signal = "BUY"
-                interpretation = f"🟢 Zona de sobreventa ({k_current:.1f} <= {oversold}) - Posible rebote"
-            elif k_current >= overbought and d_current >= overbought:
+                interpretation = "🟢 Zona de sobrecompra - Posible rebote"
+            elif k_current >= 80 and d_current >= 80:
                 signal = "SELL"
-                interpretation = f"🔴 Zona de sobrecompra ({k_current:.1f} >= {overbought}) - Posible corrección"
+                interpretation = "🔴 Zona de sobreventa - Posible corrección"
             elif k_current > d_current:
                 signal = "BUY"
                 interpretation = "📈 %K cruza por encima de %D - Momentum alcista"
@@ -362,8 +327,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando estocástico: {str(e)}"
             }
     
-    @classmethod
-    def williams_percent_r(cls, df: pd.DataFrame, period: int = None) -> Dict:
+    @staticmethod
+    def williams_percent_r(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Williams %R
         
@@ -375,7 +340,7 @@ class AdvancedIndicators:
             Diccionario con valores y señales de Williams %R
         """
         if period is None:
-            period = cls._get_config_value("advanced_indicators.williams_r_period", 14)
+            period = AdvancedIndicatorsConfig.WILLIAMS_R_PERIOD
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -396,16 +361,13 @@ class AdvancedIndicators:
             
             current_willr = AdvancedIndicators.safe_float(willr.iloc[-1], -50.0)
             
-            # Generar señales usando umbrales configurables (Williams %R se mueve entre -100 y 0)
-            oversold = cls._get_config_value("oscillator.williams_r_thresholds.oversold", -80)
-            overbought = cls._get_config_value("oscillator.williams_r_thresholds.overbought", -20)
-            
-            if current_willr <= oversold:
+            # Generar señales (Williams %R se mueve entre -100 y 0)
+            if current_willr <= OscillatorConfig.WILLIAMS_R_THRESHOLDS["oversold"]:
                 signal = "BUY"
-                interpretation = f"🟢 Zona de sobreventa ({current_willr:.1f} <= {oversold}) - Posible rebote"
-            elif current_willr >= overbought:
+                interpretation = f"🟢 Zona de sobrecompra ({OscillatorConfig.WILLIAMS_R_THRESHOLDS['oversold']} a -100) - Posible rebote"
+            elif current_willr >= -20:
                 signal = "SELL"
-                interpretation = f"🔴 Zona de sobrecompra ({current_willr:.1f} >= {overbought}) - Posible corrección"
+                interpretation = "🔴 Zona de sobreventa (-20 a 0) - Posible corrección"
             else:
                 signal = "HOLD"
                 interpretation = "⚪ Rango medio - Sin señal clara"
@@ -423,30 +385,26 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando Williams %R: {str(e)}"
             }
     
-    @classmethod
-    def awesome_oscillator(cls, df: pd.DataFrame, fast_period: int = None, slow_period: int = None) -> Dict:
+    @staticmethod
+    def awesome_oscillator(df: pd.DataFrame) -> Dict:
         """
         🌊 Calcular Awesome Oscillator (AO)
         
         Args:
             df: DataFrame con datos OHLCV
-            fast_period: Período para SMA rápida (default: 5)
-            slow_period: Período para SMA lenta (default: 34)
             
         Returns:
             Diccionario con valor y señales del AO
         """
-        if fast_period is None:
-            fast_period = cls._get_config_value("advanced_indicators.ao_fast_period", 5)
-        if slow_period is None:
-            slow_period = cls._get_config_value("advanced_indicators.ao_slow_period", 34)
-            
         try:
-            # Siempre calcular manualmente para usar parámetros configurables
-            median_price = (df['high'] + df['low']) / 2
-            sma_fast = median_price.rolling(window=fast_period).mean()
-            sma_slow = median_price.rolling(window=slow_period).mean()
-            ao = sma_fast - sma_slow
+            ao = ta.ao(df['high'], df['low'])
+            
+            if ao is None or ao.empty:
+                # Calcular manualmente
+                median_price = (df['high'] + df['low']) / 2
+                sma_5 = median_price.rolling(window=5).mean()
+                sma_34 = median_price.rolling(window=34).mean()
+                ao = sma_5 - sma_34
             
             current_ao = AdvancedIndicators.safe_float(ao.iloc[-1], 0.0)
             previous_ao = AdvancedIndicators.safe_float(ao.iloc[-2], 0.0)
@@ -483,8 +441,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando AO: {str(e)}"
             }
     
-    @classmethod
-    def commodity_channel_index(cls, df: pd.DataFrame, period: int = None) -> Dict:
+    @staticmethod
+    def commodity_channel_index(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Commodity Channel Index (CCI)
         
@@ -496,7 +454,7 @@ class AdvancedIndicators:
             Diccionario con valores y señales del CCI
         """
         if period is None:
-            period = cls._get_config_value("advanced_indicators.cci_period", 20)
+            period = AdvancedIndicatorsConfig.CCI_PERIOD
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -514,21 +472,17 @@ class AdvancedIndicators:
                 typical_price = (df['high'] + df['low'] + df['close']) / 3
                 sma_tp = typical_price.rolling(window=period).mean()
                 mad = typical_price.rolling(window=period).apply(lambda x: np.mean(np.abs(x - x.mean())))
-                cci_constant = cls._get_config_value("calculation.cci_constant", 0.015)
-                cci = (typical_price - sma_tp) / (cci_constant * mad)
+                cci = (typical_price - sma_tp) / (CalculationConfig.CCI_CONSTANT * mad)
             
             current_cci = AdvancedIndicators.safe_float(cci.iloc[-1], 0.0)
             
             # Generar señales basadas en niveles del CCI
-            overbought = cls._get_config_value("oscillator.cci_thresholds.overbought", 100)
-            oversold = cls._get_config_value("oscillator.cci_thresholds.oversold", -100)
-            
-            if current_cci > overbought:
+            if current_cci > OscillatorConfig.CCI_THRESHOLDS["overbought"]:
                 signal = "SELL"
-                interpretation = f"🔴 CCI > +{overbought} - Sobrecomprado, posible corrección"
-            elif current_cci < oversold:
+                interpretation = f"🔴 CCI > +{OscillatorConfig.CCI_THRESHOLDS['overbought']} - Sobrecomprado, posible corrección"
+            elif current_cci < OscillatorConfig.CCI_THRESHOLDS["oversold"]:
                 signal = "BUY"
-                interpretation = f"🟢 CCI < {oversold} - Sobrevendido, posible rebote"
+                interpretation = f"🟢 CCI < {OscillatorConfig.CCI_THRESHOLDS['oversold']} - Sobrevendido, posible rebote"
             elif current_cci > 0:
                 signal = "BUY"
                 interpretation = "📈 CCI positivo - Tendencia alcista"
@@ -549,46 +503,49 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando CCI: {str(e)}"
             }
     
-    @classmethod
-    def parabolic_sar(cls, df: pd.DataFrame, lookback_period: int = None) -> Dict:
+    @staticmethod
+    def parabolic_sar(df: pd.DataFrame) -> Dict:
         """
         🎯 Calcular Parabolic SAR
         
         Args:
             df: DataFrame con datos OHLCV
-            lookback_period: Período de lookback para aproximación manual (default: 20)
             
         Returns:
             Diccionario con valor y señales del Parabolic SAR
         """
-        if lookback_period is None:
-            lookback_period = cls._get_config_value("advanced_indicators.psar_lookback_period", 20)
-            
         try:
-            # Usar cálculo manual para aprovechar parámetros configurables
-            current_price = df['close'].iloc[-1]
-            high_lookback = df['high'].rolling(window=lookback_period).max().iloc[-1]
-            low_lookback = df['low'].rolling(window=lookback_period).min().iloc[-1]
+            # Convertir a float64 para evitar warnings de dtype
+            high_float = df['high'].astype('float64')
+            low_float = df['low'].astype('float64')
+            close_float = df['close'].astype('float64')
             
-            # Calcular promedio ponderado basado en el período de lookback
-            # Períodos más cortos dan más peso a precios recientes
-            weight_factor = 1.0 - (lookback_period / 100.0)  # Factor que varía con el período
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter('ignore', UserWarning)
+                psar = ta.psar(high_float, low_float, close_float)
             
-            # SAR aproximado basado en tendencia reciente y período
-            close_factor = cls._get_config_value("calculation.approximation_factors.close", 0.98)
-            far_factor = cls._get_config_value("calculation.approximation_factors.far", 1.02)
-            
-            # Ajustar factores según el período de lookback
-            adjusted_close_factor = close_factor + (weight_factor * 0.01)
-            adjusted_far_factor = far_factor - (weight_factor * 0.01)
-            
-            if current_price > (high_lookback + low_lookback) / 2:
-                current_psar = low_lookback * adjusted_close_factor  # Tendencia alcista
+            if psar is None or psar.empty:
+                # Implementación básica manual
+                # Para simplicidad, usamos una aproximación
+                current_price = df['close'].iloc[-1]
+                high_20 = df['high'].rolling(window=20).max().iloc[-1]
+                low_20 = df['low'].rolling(window=20).min().iloc[-1]
+                
+                # SAR aproximado basado en tendencia reciente
+                if current_price > (high_20 + low_20) / 2:
+                    current_psar = low_20 * CalculationConfig.APPROXIMATION_FACTORS["close"]  # Tendencia alcista
+                else:
+                    current_psar = high_20 * CalculationConfig.APPROXIMATION_FACTORS["far"]  # Tendencia bajista
             else:
-                current_psar = high_lookback * adjusted_far_factor  # Tendencia bajista
+                # Usar pandas-ta
+                if isinstance(psar, pd.DataFrame):
+                    current_psar = psar.iloc[-1, 0]
+                else:
+                    current_psar = psar.iloc[-1]
             
             current_price = AdvancedIndicators.safe_float(df['close'].iloc[-1])
-            current_psar = AdvancedIndicators.safe_float(current_psar)
+            current_psar = AdvancedIndicators.safe_float(current_psar, current_price * CalculationConfig.APPROXIMATION_FACTORS["very_close"])
             
             # El Parabolic SAR da señales de cambio de tendencia
             if current_price > current_psar:
@@ -615,128 +572,125 @@ class AdvancedIndicators:
             }
     
     @classmethod
-    @handle_errors()
-    def bollinger_bands(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None, 
-                       period: int = None, std_dev: float = None) -> Dict:
+    def bollinger_bands(cls, df: pd.DataFrame, period: int = None, std_dev: float = None) -> Dict:
         """
-        📊 Calcular Bandas de Bollinger con análisis avanzado y cache optimizado
+        📊 Calcular Bandas de Bollinger (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
-            symbol: Símbolo del activo
-            timeframe: Marco temporal
-            period: Período para la media móvil (default desde config)
-            std_dev: Desviaciones estándar (default desde config)
+            period: Período para la media móvil
+            std_dev: Desviaciones estándar para las bandas
             
         Returns:
             Diccionario con bandas y señales
         """
         if period is None:
-            period = cls._get_config_value("advanced_indicators.bollinger_period", 20)
+            period = AdvancedIndicatorsConfig.BOLLINGER_PERIOD
         if std_dev is None:
-            std_dev = cls._get_config_value("advanced_indicators.bollinger_std_dev", 2.0)
+            std_dev = AdvancedIndicatorsConfig.BOLLINGER_STD_DEV
             
-        # Obtener umbrales desde configuración
-        bb_lower_threshold = cls._get_config_value("advanced_indicators.bb_lower_threshold", 20)
-        bb_upper_threshold = cls._get_config_value("advanced_indicators.bb_upper_threshold", 80)
-            
-        # Verificar cache avanzado (incluye umbrales configurables)
-        params = {
-            'period': period, 
-            'std_dev': std_dev,
-            'bb_lower_threshold': bb_lower_threshold,
-            'bb_upper_threshold': bb_upper_threshold
-        }
-        cached_result = cls._get_cached_indicator(symbol, timeframe, 'bollinger_bands', params)
+        # Verificar cache
+        cache_key = cls._get_cache_key(df, 'bollinger_bands', period=period, std_dev=std_dev)
+        cached_result = cls._get_from_cache(cache_key)
         if cached_result is not None:
             return cached_result
-        
-        # Optimización: usar cálculo manual para datasets pequeños
-        if len(df) < 100:
-            sma = df['close'].rolling(window=period).mean()
-            std = df['close'].rolling(window=period).std()
-            upper_band = sma + (std * std_dev)
-            lower_band = sma - (std * std_dev)
-            middle_band = sma
-        else:
-            bb = ta.bbands(df['close'], length=period, std=std_dev)
             
-            if bb is None or bb.empty:
-                # Fallback a cálculo manual
+        try:
+            # Optimización: usar cálculo manual para datasets pequeños
+            if len(df) < 100:
                 sma = df['close'].rolling(window=period).mean()
                 std = df['close'].rolling(window=period).std()
                 upper_band = sma + (std * std_dev)
                 lower_band = sma - (std * std_dev)
                 middle_band = sma
             else:
-                # Usar pandas-ta
-                columns = bb.columns.tolist()
-                upper_band = bb[columns[0]]  # BBU
-                middle_band = bb[columns[1]]  # BBM
-                lower_band = bb[columns[2]]  # BBL
-        
-        current_price = df['close'].iloc[-1]
-        current_upper = cls.safe_float(upper_band.iloc[-1])
-        current_middle = cls.safe_float(middle_band.iloc[-1])
-        current_lower = cls.safe_float(lower_band.iloc[-1])
-        
-        # Calcular posición del precio en las bandas (0-100%)
-        if current_upper != current_lower:
-            bb_position = ((current_price - current_lower) / (current_upper - current_lower)) * 100
-        else:
-            bb_position = 50.0
-        
-        # Generar señales (usando umbrales ya obtenidos)
-        if current_price <= current_lower:
-            signal = "BUY"
-            interpretation = "🟢 Precio toca banda inferior - Posible rebote"
-        elif current_price >= current_upper:
-            signal = "SELL"
-            interpretation = "🔴 Precio toca banda superior - Posible corrección"
-        elif bb_position < bb_lower_threshold:
-            signal = "BUY"
-            interpretation = "📈 Precio cerca de banda inferior - Zona de compra"
-        elif bb_position > bb_upper_threshold:
-            signal = "SELL"
-            interpretation = "📉 Precio cerca de banda superior - Zona de venta"
-        else:
-            signal = "HOLD"
-            interpretation = "⚪ Precio en rango medio de las bandas"
-        
-        # Calcular ancho de las bandas (volatilidad)
-        band_width = ((current_upper - current_lower) / current_middle) * 100
-        
-        result = {
-            "upper_band": round(current_upper, 2),
-            "middle_band": round(current_middle, 2),
-            "lower_band": round(current_lower, 2),
-            "bb_position": round(bb_position, 1),
-            "band_width": round(band_width, 2),
-            "signal": signal,
-            "interpretation": interpretation
-        }
-        
-        # Cachear resultado
-        cls._cache_indicator(symbol, timeframe, 'bollinger_bands', params, result)
-        
-        return result
+                bb = ta.bbands(df['close'], length=period, std=std_dev)
+                
+                if bb is None or bb.empty:
+                    # Fallback a cálculo manual
+                    sma = df['close'].rolling(window=period).mean()
+                    std = df['close'].rolling(window=period).std()
+                    upper_band = sma + (std * std_dev)
+                    lower_band = sma - (std * std_dev)
+                    middle_band = sma
+                else:
+                    # Usar pandas-ta
+                    columns = bb.columns.tolist()
+                    upper_band = bb[columns[0]]  # BBU
+                    middle_band = bb[columns[1]]  # BBM
+                    lower_band = bb[columns[2]]  # BBL
+            
+            current_price = df['close'].iloc[-1]
+            current_upper = cls.safe_float(upper_band.iloc[-1])
+            current_middle = cls.safe_float(middle_band.iloc[-1])
+            current_lower = cls.safe_float(lower_band.iloc[-1])
+            
+            # Calcular posición del precio en las bandas (0-100%)
+            if current_upper != current_lower:
+                bb_position = ((current_price - current_lower) / (current_upper - current_lower)) * 100
+            else:
+                bb_position = 50.0
+            
+            # Generar señales
+            if current_price <= current_lower:
+                signal = "BUY"
+                interpretation = "🟢 Precio toca banda inferior - Posible rebote"
+            elif current_price >= current_upper:
+                signal = "SELL"
+                interpretation = "🔴 Precio toca banda superior - Posible corrección"
+            elif bb_position < 20:
+                signal = "BUY"
+                interpretation = "📈 Precio cerca de banda inferior - Zona de compra"
+            elif bb_position > 80:
+                signal = "SELL"
+                interpretation = "📉 Precio cerca de banda superior - Zona de venta"
+            else:
+                signal = "HOLD"
+                interpretation = "⚪ Precio en rango medio de las bandas"
+            
+            # Calcular ancho de las bandas (volatilidad)
+            band_width = ((current_upper - current_lower) / current_middle) * 100
+            
+            result = {
+                "upper_band": round(current_upper, 2),
+                "middle_band": round(current_middle, 2),
+                "lower_band": round(current_lower, 2),
+                "bb_position": round(bb_position, 1),
+                "band_width": round(band_width, 2),
+                "signal": signal,
+                "interpretation": interpretation
+            }
+            
+            # Almacenar en cache
+            cls._store_in_cache(cache_key, result)
+            return result
+            
+        except Exception as e:
+            current_price = cls.safe_float(df['close'].iloc[-1])
+            return {
+                "upper_band": current_price * 1.02,
+                "middle_band": current_price,
+                "lower_band": current_price * 0.98,
+                "bb_position": 50.0,
+                "band_width": 4.0,
+                "signal": "HOLD",
+                "interpretation": f"Error calculando Bollinger Bands: {str(e)}"
+            }
     
     @classmethod
-    def vwap(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None) -> Dict:
+    def vwap(cls, df: pd.DataFrame) -> Dict:
         """
         📊 Calcular Volume Weighted Average Price (VWAP) (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
-            symbol: Símbolo del activo
-            timeframe: Timeframe de los datos
             
         Returns:
             Diccionario con VWAP y señales
         """
         # Verificar cache
-        params = {}
-        cached_result = cls._get_cached_indicator(symbol, timeframe, 'vwap', params)
+        cache_key = cls._get_cache_key(df, 'vwap')
+        cached_result = cls._get_from_cache(cache_key)
         if cached_result is not None:
             return cached_result
             
@@ -788,7 +742,7 @@ class AdvancedIndicators:
             }
             
             # Almacenar en cache
-            cls._cache_indicator(symbol, timeframe, 'vwap', params, result)
+            cls._store_in_cache(cache_key, result)
             return result
             
         except Exception as e:
@@ -870,8 +824,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando OBV: {str(e)}"
             }
     
-    @classmethod
-    def money_flow_index(cls, df: pd.DataFrame, period: int = None) -> Dict:
+    @staticmethod
+    def money_flow_index(df: pd.DataFrame, period: int = None) -> Dict:
         """
         💰 Calcular Money Flow Index (MFI)
         
@@ -883,7 +837,7 @@ class AdvancedIndicators:
             Diccionario con valores y señales del MFI
         """
         if period is None:
-            period = cls._get_config_value("advanced_indicators.mfi_period", 14)
+            period = AdvancedIndicatorsConfig.MFI_PERIOD
             
         try:
             # Crear una copia del DataFrame con tipos explícitos para evitar warnings de dtype
@@ -925,24 +879,19 @@ class AdvancedIndicators:
             
             current_mfi = AdvancedIndicators.safe_float(mfi.iloc[-1], 50.0)
             
-            # Generar señales usando umbrales configurables de OscillatorConfig
-            oversold_extreme = cls._get_config_value("oscillator.rsi_thresholds.oversold_extreme", 20)
-            oversold = cls._get_config_value("oscillator.rsi_thresholds.oversold", 30)
-            overbought = cls._get_config_value("oscillator.rsi_thresholds.overbought", 70)
-            overbought_extreme = cls._get_config_value("oscillator.rsi_thresholds.overbought_extreme", 80)
-            
-            if current_mfi <= oversold_extreme:
+            # Generar señales
+            if current_mfi <= 20:
                 signal = "BUY"
-                interpretation = f"🟢 MFI oversold extremo ({current_mfi:.1f} <= {oversold_extreme}) - Fuerte señal de compra"
-            elif current_mfi <= oversold:
+                interpretation = "🟢 MFI oversold (<20) - Posible rebote"
+            elif current_mfi >= 80:
+                signal = "SELL"
+                interpretation = "🔴 MFI overbought (>80) - Posible corrección"
+            elif current_mfi < 40:
                 signal = "BUY"
-                interpretation = f"📈 MFI oversold ({current_mfi:.1f} <= {oversold}) - Presión de compra"
-            elif current_mfi >= overbought_extreme:
+                interpretation = "📈 MFI bajo - Presión de compra"
+            elif current_mfi > 60:
                 signal = "SELL"
-                interpretation = f"🔴 MFI overbought extremo ({current_mfi:.1f} >= {overbought_extreme}) - Fuerte señal de venta"
-            elif current_mfi >= overbought:
-                signal = "SELL"
-                interpretation = f"📉 MFI overbought ({current_mfi:.1f} >= {overbought}) - Presión de venta"
+                interpretation = "📉 MFI alto - Presión de venta"
             else:
                 signal = "HOLD"
                 interpretation = "⚪ MFI neutral"
@@ -960,8 +909,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando MFI: {str(e)}"
             }
     
-    @classmethod
-    def average_true_range(cls, df: pd.DataFrame, period: int = None) -> Dict:
+    @staticmethod
+    def average_true_range(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Average True Range (ATR) - Medida de volatilidad
         
@@ -973,7 +922,7 @@ class AdvancedIndicators:
             Diccionario con ATR y análisis de volatilidad
         """
         if period is None:
-            period = cls._get_config_value("advanced_indicators.atr_period", 14)
+            period = AdvancedIndicatorsConfig.ATR_PERIOD
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -1036,40 +985,18 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando ATR: {str(e)}"
             }
     
-    @classmethod
-    def calculate_rsi(cls, df: pd.DataFrame, period: int = None, symbol: str = 'UNKNOWN', timeframe: str = None) -> Dict:
+    @staticmethod
+    def calculate_rsi(df: pd.DataFrame, period: int = 14) -> Dict:
         """
-        📊 Calcular RSI básico con cache optimizado
+        📊 Calcular RSI básico (método de compatibilidad)
         
         Args:
             df: DataFrame con datos OHLCV o Series de precios
-            period: Período para el cálculo (default: desde configuración)
-            symbol: Símbolo para cache
-            timeframe: Timeframe para cache
+            period: Período para el cálculo (default: 14)
             
         Returns:
             Diccionario con RSI calculado
         """
-        if period is None:
-            period = cls._get_config_value("advanced_indicators.rsi_period", 14)
-            
-        # Obtener umbrales desde configuración
-        rsi_oversold = cls._get_config_value("advanced_indicators.rsi_oversold", 30)
-        rsi_overbought = cls._get_config_value("advanced_indicators.rsi_overbought", 70)
-        
-        # Parámetros para cache (incluye umbrales configurables)
-        cache_params = {
-            'period': period,
-            'rsi_oversold': rsi_oversold,
-            'rsi_overbought': rsi_overbought
-        }
-        
-        # Verificar cache si tenemos símbolo y timeframe
-        if symbol != 'UNKNOWN' and timeframe:
-            cached_result = cls._get_cached_indicator(symbol, timeframe, 'rsi', cache_params)
-            if cached_result is not None:
-                return cached_result
-        
         # Si se pasa una Series en lugar de DataFrame
         if isinstance(df, pd.Series):
             close_prices = df
@@ -1095,17 +1022,11 @@ class AdvancedIndicators:
             
             current_rsi = AdvancedIndicators.safe_float(rsi.iloc[-1], 50.0)
             
-            result = {
+            return {
                 "rsi": current_rsi,
-                "signal": "BUY" if current_rsi < rsi_oversold else "SELL" if current_rsi > rsi_overbought else "HOLD",
+                "signal": "BUY" if current_rsi < 30 else "SELL" if current_rsi > 70 else "HOLD",
                 "interpretation": f"RSI: {current_rsi:.2f}"
             }
-            
-            # Cachear resultado si tenemos símbolo y timeframe
-            if symbol != 'UNKNOWN' and timeframe:
-                cls._cache_indicator(symbol, timeframe, 'rsi', cache_params, result)
-            
-            return result
             
         except Exception as e:
             return {
@@ -1115,30 +1036,23 @@ class AdvancedIndicators:
             }
     
     @classmethod
-    def enhanced_rsi(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None, period: int = None) -> Dict:
-        """🔍 RSI mejorado con análisis de divergencias y niveles dinámicos
+    def enhanced_rsi(cls, df: pd.DataFrame, period: int = None) -> Dict:
+        """
+        📊 RSI Mejorado con análisis de divergencias (optimizado con cache)
         
         Args:
             df: DataFrame con datos OHLCV
-            symbol: Símbolo del activo
-            timeframe: Timeframe de los datos
             period: Período para el cálculo
             
         Returns:
             Diccionario con RSI mejorado y análisis
         """
-        global config
         if period is None:
-            try:
-                # Usar configuración centralizada
-                period = technical_config.rsi.period
-            except (AttributeError, NameError):
-                # Fallback a configuración legacy
-                period = config.get("advanced_indicators", {}).get("rsi_period", 14)
+            period = AdvancedIndicatorsConfig.RSI_PERIOD
             
         # Verificar cache
-        params = {'period': period}
-        cached_result = cls._get_cached_indicator(symbol, timeframe, 'enhanced_rsi', params)
+        cache_key = cls._get_cache_key(df, 'enhanced_rsi', period=period)
+        cached_result = cls._get_from_cache(cache_key)
         if cached_result is not None:
             return cached_result
             
@@ -1189,9 +1103,11 @@ class AdvancedIndicators:
             divergence = "BULLISH" if price_trend == "DOWN" and rsi_trend == "UP" else \
                         "BEARISH" if price_trend == "UP" and rsi_trend == "DOWN" else "NONE"
             
-            # Obtener umbrales configurables
-            rsi_oversold = cls._get_config_value("advanced_indicators.rsi_oversold", 30)
-            rsi_overbought = cls._get_config_value("advanced_indicators.rsi_overbought", 70)
+            # Obtener umbrales configurables desde el perfil activo
+            from src.config.main_config import TradingProfiles
+            current_profile_cfg = TradingProfiles.get_current_profile()
+            rsi_oversold = current_profile_cfg.get('rsi_oversold', 30)
+            rsi_overbought = current_profile_cfg.get('rsi_overbought', 70)
             
             # Generar señales mejoradas con umbrales configurables
             if current_rsi <= (rsi_oversold - 10):  # Extremadamente oversold
@@ -1234,7 +1150,7 @@ class AdvancedIndicators:
             }
             
             # Almacenar en cache
-            cls._cache_indicator(symbol, timeframe, 'enhanced_rsi', params, result)
+            cls._store_in_cache(cache_key, result)
             return result
             
         except Exception as e:
@@ -1247,173 +1163,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando RSI mejorado: {str(e)}"
             }
     
-    @classmethod
-    @handle_errors()
-    def macd(cls, df: pd.DataFrame, symbol: str = 'UNKNOWN', timeframe: str = None, 
-             fast_period: int = None, slow_period: int = None, signal_period: int = None) -> Dict:
-        """
-        Calcula MACD (Moving Average Convergence Divergence) con parámetros configurables
-        
-        Args:
-            df: DataFrame con datos OHLCV
-            symbol: Símbolo del activo
-            timeframe: Marco temporal
-            fast_period: Período de EMA rápida (por defecto desde configuración)
-            slow_period: Período de EMA lenta (por defecto desde configuración)
-            signal_period: Período de línea de señal (por defecto desde configuración)
-            
-        Returns:
-            Diccionario con MACD, señal, histograma y análisis
-        """
-        global config
-        
-        # Obtener parámetros desde configuración centralizada
-        if fast_period is None:
-            try:
-                fast_period = technical_config.macd.fast_period
-            except (AttributeError, NameError):
-                # Fallback a configuración legacy
-                macd_periods = config.get("advanced_indicators", {}).get("macd_periods", [12, 26, 9])
-                fast_period = macd_periods[0] if len(macd_periods) >= 1 else 12
-                
-        if slow_period is None:
-            try:
-                slow_period = technical_config.macd.slow_period
-            except (AttributeError, NameError):
-                # Fallback a configuración legacy
-                macd_periods = config.get("advanced_indicators", {}).get("macd_periods", [12, 26, 9])
-                slow_period = macd_periods[1] if len(macd_periods) >= 2 else 26
-                
-        if signal_period is None:
-            try:
-                signal_period = technical_config.macd.signal_period
-            except (AttributeError, NameError):
-                # Fallback a configuración legacy
-                macd_periods = config.get("advanced_indicators", {}).get("macd_periods", [12, 26, 9])
-                signal_period = macd_periods[2] if len(macd_periods) >= 3 else 9
-        
-        # Verificar cache
-        params = {'fast_period': fast_period, 'slow_period': slow_period, 'signal_period': signal_period}
-        cached_result = cls._get_cached_indicator(symbol, timeframe, 'macd', params)
-        if cached_result is not None:
-            return cached_result
-            
-        try:
-            # Validar datos
-            if df is None or df.empty or len(df) < max(slow_period, signal_period) + 10:
-                return {
-                    "macd": 0.0,
-                    "signal": 0.0,
-                    "histogram": 0.0,
-                    "signal_type": "HOLD",
-                    "interpretation": "Datos insuficientes para MACD"
-                }
-            
-            # Convertir a float64 para evitar warnings
-            close_prices = df['close'].astype('float64')
-            
-            # Calcular EMAs
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', FutureWarning)
-                warnings.simplefilter('ignore', UserWarning)
-                
-                # Intentar usar pandas_ta primero
-                try:
-                    macd_result = ta.macd(close_prices, fast=fast_period, slow=slow_period, signal=signal_period)
-                    if macd_result is not None and not macd_result.empty:
-                        macd_line = macd_result.iloc[:, 0]  # MACD line
-                        signal_line = macd_result.iloc[:, 2]  # Signal line
-                        histogram = macd_result.iloc[:, 1]  # Histogram
-                    else:
-                        raise ValueError("pandas_ta MACD failed")
-                        
-                except Exception:
-                    # Cálculo manual como fallback
-                    ema_fast = close_prices.ewm(span=fast_period).mean()
-                    ema_slow = close_prices.ewm(span=slow_period).mean()
-                    macd_line = ema_fast - ema_slow
-                    signal_line = macd_line.ewm(span=signal_period).mean()
-                    histogram = macd_line - signal_line
-            
-            # Obtener valores actuales
-            current_macd = cls.safe_float(macd_line.iloc[-1], 0.0)
-            current_signal = cls.safe_float(signal_line.iloc[-1], 0.0)
-            current_histogram = cls.safe_float(histogram.iloc[-1], 0.0)
-            
-            # Valores anteriores para detectar cruces
-            prev_macd = cls.safe_float(macd_line.iloc[-2] if len(macd_line) > 1 else current_macd, current_macd)
-            prev_signal = cls.safe_float(signal_line.iloc[-2] if len(signal_line) > 1 else current_signal, current_signal)
-            prev_histogram = cls.safe_float(histogram.iloc[-2] if len(histogram) > 1 else current_histogram, current_histogram)
-            
-            # Detectar cruces y generar señales
-            signal_type = "HOLD"
-            interpretation = "⚪ MACD neutral"
-            
-            # Cruce alcista (MACD cruza por encima de la línea de señal)
-            if prev_macd <= prev_signal and current_macd > current_signal:
-                if current_macd < 0:  # Cruce en territorio negativo (más fuerte)
-                    signal_type = "STRONG_BUY"
-                    interpretation = "🟢 Cruce alcista fuerte (territorio negativo)"
-                else:
-                    signal_type = "BUY"
-                    interpretation = "🟢 Cruce alcista"
-                    
-            # Cruce bajista (MACD cruza por debajo de la línea de señal)
-            elif prev_macd >= prev_signal and current_macd < current_signal:
-                if current_macd > 0:  # Cruce en territorio positivo (más fuerte)
-                    signal_type = "STRONG_SELL"
-                    interpretation = "🔴 Cruce bajista fuerte (territorio positivo)"
-                else:
-                    signal_type = "SELL"
-                    interpretation = "🔴 Cruce bajista"
-                    
-            # Análisis de momentum basado en histograma
-            elif current_histogram > prev_histogram and current_histogram > 0:
-                signal_type = "BUY"
-                interpretation = "🟢 Momentum alcista creciente"
-            elif current_histogram < prev_histogram and current_histogram < 0:
-                signal_type = "SELL"
-                interpretation = "🔴 Momentum bajista creciente"
-            elif abs(current_histogram) < abs(prev_histogram):
-                interpretation = "⚪ Momentum debilitándose"
-            
-            # Análisis de divergencia con línea cero
-            if current_macd > 0 and current_signal > 0:
-                interpretation += " (Territorio alcista)"
-            elif current_macd < 0 and current_signal < 0:
-                interpretation += " (Territorio bajista)"
-            else:
-                interpretation += " (Zona de transición)"
-            
-            result = {
-                "macd": round(current_macd, 4),
-                "signal": round(current_signal, 4),
-                "histogram": round(current_histogram, 4),
-                "signal_type": signal_type,
-                "interpretation": interpretation,
-                "fast_period": fast_period,
-                "slow_period": slow_period,
-                "signal_period": signal_period
-            }
-            
-            # Almacenar en cache
-            cls._cache_indicator(symbol, timeframe, 'macd', params, result)
-            return result
-            
-        except Exception as e:
-            return {
-                "macd": 0.0,
-                "signal": 0.0,
-                "histogram": 0.0,
-                "signal_type": "HOLD",
-                "interpretation": f"Error calculando MACD: {str(e)}",
-                "fast_period": fast_period,
-                "slow_period": slow_period,
-                "signal_period": signal_period
-            }
-    
-    @classmethod
-    def rate_of_change(cls, df: pd.DataFrame, period: int = None) -> Dict:
+    @staticmethod
+    def rate_of_change(df: pd.DataFrame, period: int = None) -> Dict:
         """
         📊 Calcular Rate of Change (ROC) - Indicador de momentum
         
@@ -1425,7 +1176,7 @@ class AdvancedIndicators:
             Diccionario con ROC y análisis de momentum
         """
         if period is None:
-            period = cls._get_config_value("advanced_indicators.roc_period", 14)
+            period = AdvancedIndicatorsConfig.ROC_PERIOD
             
         try:
             # Convertir a float64 para evitar warnings de dtype
@@ -1449,31 +1200,26 @@ class AdvancedIndicators:
             # Calcular z-score del ROC actual
             roc_zscore = (current_roc - roc_avg) / roc_std if roc_std > 0 else 0
             
-            # Generar señales usando umbrales configurables de OscillatorConfig
-            strong_positive = cls._get_config_value("oscillator.roc_thresholds.strong_positive", 5.0)
-            moderate_positive = cls._get_config_value("oscillator.roc_thresholds.moderate_positive", 2.0)
-            moderate_negative = cls._get_config_value("oscillator.roc_thresholds.moderate_negative", -2.0)
-            strong_negative = cls._get_config_value("oscillator.roc_thresholds.strong_negative", -5.0)
-            
-            if current_roc >= strong_positive:
+            # Generar señales basadas en ROC
+            if current_roc > 5.0:
                 signal = "STRONG_BUY"
-                interpretation = f"🟢 ROC muy positivo ({current_roc:.2f} >= {strong_positive}) - Fuerte momentum alcista"
-            elif current_roc >= moderate_positive:
+                interpretation = "🟢 ROC muy positivo - Fuerte momentum alcista"
+            elif current_roc > 2.0:
                 signal = "BUY"
-                interpretation = f"📈 ROC positivo ({current_roc:.2f} >= {moderate_positive}) - Momentum alcista"
-            elif current_roc <= strong_negative:
+                interpretation = "📈 ROC positivo - Momentum alcista"
+            elif current_roc < -5.0:
                 signal = "STRONG_SELL"
-                interpretation = f"🔴 ROC muy negativo ({current_roc:.2f} <= {strong_negative}) - Fuerte momentum bajista"
-            elif current_roc <= moderate_negative:
+                interpretation = "🔴 ROC muy negativo - Fuerte momentum bajista"
+            elif current_roc < -2.0:
                 signal = "SELL"
-                interpretation = f"📉 ROC negativo ({current_roc:.2f} <= {moderate_negative}) - Momentum bajista"
+                interpretation = "📉 ROC negativo - Momentum bajista"
             elif abs(roc_zscore) > 2.0:
                 if current_roc > 0:
                     signal = "BUY"
-                    interpretation = f"🟢 ROC anormalmente alto (z-score: {roc_zscore:.2f}) - Momentum excepcional"
+                    interpretation = "🟢 ROC anormalmente alto - Momentum excepcional"
                 else:
                     signal = "SELL"
-                    interpretation = f"🔴 ROC anormalmente bajo (z-score: {roc_zscore:.2f}) - Momentum negativo excepcional"
+                    interpretation = "🔴 ROC anormalmente bajo - Momentum negativo excepcional"
             else:
                 signal = "HOLD"
                 interpretation = "⚪ ROC neutral - Sin momentum claro"
@@ -1495,8 +1241,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando ROC: {str(e)}"
             }
     
-    @classmethod
-    def volume_profile(cls, df: pd.DataFrame, bins: int = None) -> Dict:
+    @staticmethod
+    def volume_profile(df: pd.DataFrame, bins: int = None) -> Dict:
         """
         📊 Calcular Volume Profile - Análisis de distribución de volumen por precio
         
@@ -1508,7 +1254,7 @@ class AdvancedIndicators:
             Diccionario con análisis de volume profile
         """
         if bins is None:
-            bins = cls._get_config_value("advanced_indicators.volume_profile_bins", 20)
+            bins = AdvancedIndicatorsConfig.VOLUME_PROFILE_BINS
             
         try:
             # Calcular precio típico
@@ -1556,7 +1302,7 @@ class AdvancedIndicators:
             elif current_price < val:
                 signal = "BUY"
                 interpretation = "🟢 Precio por debajo del Value Area Low - Zona de compra"
-            elif abs(current_price - poc_price) / poc_price < cls._get_config_value("threshold.proximity_threshold", 0.01):  # Cerca del POC
+            elif abs(current_price - poc_price) / poc_price < 0.01:  # Cerca del POC (1%)
                 signal = "HOLD"
                 interpretation = "⚪ Precio cerca del Point of Control - Zona de equilibrio"
             elif current_price > poc_price:
@@ -1588,8 +1334,8 @@ class AdvancedIndicators:
                 "interpretation": f"Error calculando Volume Profile: {str(e)}"
             }
     
-    @classmethod
-    def support_resistance_levels(cls, df: pd.DataFrame, window: int = None, min_touches: int = None) -> Dict:
+    @staticmethod
+    def support_resistance_levels(df: pd.DataFrame, window: int = None, min_touches: int = 2) -> Dict:
         """
         📊 Detectar niveles de soporte y resistencia
         
@@ -1602,9 +1348,7 @@ class AdvancedIndicators:
             Diccionario con niveles de soporte y resistencia
         """
         if window is None:
-            window = cls._get_config_value("advanced_indicators.support_resistance_window", 20)
-        if min_touches is None:
-            min_touches = cls._get_config_value("advanced_indicators.min_touches", 2)
+            window = AdvancedIndicatorsConfig.SUPPORT_RESISTANCE_WINDOW
             
         try:
             # Detectar máximos y mínimos locales
@@ -1661,10 +1405,10 @@ class AdvancedIndicators:
             signal = "HOLD"
             interpretation = "⚪ Precio en rango normal"
             
-            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < cls._get_config_value("threshold.breakout_threshold", 0.02):
+            if nearest_resistance and abs(current_price - nearest_resistance) / current_price < 0.02:
                 signal = "SELL"
                 interpretation = "🔴 Precio cerca de resistencia - Posible rechazo"
-            elif nearest_support and abs(current_price - nearest_support) / current_price < cls._get_config_value("threshold.breakout_threshold", 0.02):
+            elif nearest_support and abs(current_price - nearest_support) / current_price < 0.02:
                 signal = "BUY"
                 interpretation = "🟢 Precio cerca de soporte - Posible rebote"
             
@@ -1788,8 +1532,8 @@ class AdvancedIndicators:
                 "patterns": [{"name": "Error", "signal": "NEUTRAL", "description": f"Error detectando patrones: {str(e)}"}]
             }
 
-    @classmethod
-    def trend_lines_analysis(cls, df: pd.DataFrame, lookback: int = None) -> Dict:
+    @staticmethod
+    def trend_lines_analysis(df: pd.DataFrame, lookback: int = None) -> Dict:
         """
         🔍 Detecta líneas de tendencia y breakouts
         
@@ -1801,7 +1545,7 @@ class AdvancedIndicators:
             Diccionario con análisis de líneas de tendencia
         """
         if lookback is None:
-            lookback = cls._get_config_value("advanced_indicators.trend_analysis_lookback", 50)
+            lookback = AdvancedIndicatorsConfig.TREND_ANALYSIS_LOOKBACK
             
         try:
             if len(df) < lookback:
@@ -1885,8 +1629,8 @@ class AdvancedIndicators:
         except Exception as e:
             return {"trend_lines": [], "signal": "HOLD", "interpretation": f"Error: {str(e)}"}
 
-    @classmethod
-    def chart_patterns_detection(cls, df: pd.DataFrame, window: int = None) -> Dict:
+    @staticmethod
+    def chart_patterns_detection(df: pd.DataFrame, window: int = None) -> Dict:
         """
         📈 Detecta patrones de gráficos comunes
         
@@ -1898,7 +1642,7 @@ class AdvancedIndicators:
             Diccionario con patrones detectados
         """
         if window is None:
-            window = cls._get_config_value("advanced_indicators.chart_patterns_window", 20)
+            window = AdvancedIndicatorsConfig.CHART_PATTERNS_WINDOW
             
         try:
             if len(df) < window * 2:
