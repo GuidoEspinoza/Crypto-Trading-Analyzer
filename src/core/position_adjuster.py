@@ -175,7 +175,7 @@ class PositionAdjuster:
             return []
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual del símbolo (simulado o CCXT con cache)"""
+        """💰 Obtener precio actual del símbolo (simulado o Capital.com API con cache)"""
         try:
             if self.simulation_mode:
                 # En modo simulación, usar precio de la base de datos + variación aleatoria
@@ -186,30 +186,22 @@ class PositionAdjuster:
                     return last_trade_price * (1 + variation)
                 return 0.0
             
-            # Modo real: usar CCXT con cache TTL centralizado
-            if '/' in symbol:
-                base, quote = symbol.split('/')
-                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
-            else:
-                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
-            ttl = CacheConfig.get_ttl_for_operation("price_data")
-            now = time.time()
-            cache = getattr(self, '_price_cache', {})
-            cache_ts = getattr(self, '_price_cache_ts', {})
-            last_ts = cache_ts.get(norm_symbol, 0)
-            if norm_symbol in cache and (now - last_ts) < ttl:
-                return float(cache[norm_symbol])
+            # Modo real: usar Capital.com a través del trading bot si está disponible
+            if hasattr(self, 'trading_bot') and self.trading_bot and hasattr(self.trading_bot, 'capital_client'):
+                try:
+                    price = self.trading_bot.capital_client.get_current_price(symbol)
+                    if price > 0:
+                        return price
+                except Exception as e:
+                    logger.warning(f"Error obteniendo precio de Capital.com para {symbol}: {e}")
             
-            import ccxt
-            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(norm_symbol)
-            current_price = float(ticker['last']) if ticker.get('last') else 0.0
+            # Fallback: usar precio de la base de datos
+            last_trade_price = db_manager.get_last_trade_for_symbol(symbol, is_paper=False)
+            if last_trade_price:
+                return last_trade_price
             
-            cache[norm_symbol] = current_price
-            cache_ts[norm_symbol] = now
-            setattr(self, '_price_cache', cache)
-            setattr(self, '_price_cache_ts', cache_ts)
-            return current_price
+            logger.warning(f"No se pudo obtener precio para {symbol}")
+            return 0.0
         except Exception as e:
             logger.error(f"❌ Error obteniendo precio para {symbol}: {e}")
             return 0.0
@@ -365,7 +357,7 @@ class PositionAdjuster:
                 return result
             
             else:
-                # TODO: Implementar conexión real con Binance API
+                # TODO: Implementar conexión real con Capital.com API
                 logger.warning("⚠️ Modo real no implementado aún")
                 return AdjustmentResult(
                     success=False,

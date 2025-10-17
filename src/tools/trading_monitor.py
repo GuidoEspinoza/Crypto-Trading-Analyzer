@@ -32,7 +32,7 @@ from src.core.position_manager import PositionManager
 from src.config.main_config import TradingBotConfig, APIConfig
 from src.core.paper_trader import PaperTrader
 from src.config.main_config import TradingProfiles
-from src.config.main_config import TradingBotConfig, APIConfig, MonitoringConfig, CacheConfig
+from src.config.main_config import TradingBotConfig, APIConfig, MonitoringConfig, CacheConfig, GLOBAL_SYMBOLS
 from src.database.database import db_manager
 from src.database.models import Trade
 
@@ -246,11 +246,12 @@ def show_active_positions_summary():
                 print("   No hay posiciones activas")
                 return
             
-            total_pnl_usdt = 0.0
+            total_pnl_USD = 0.0
             
             for trade in active_trades:
-                # Obtener precio actual
-                current_price = get_current_price(trade.symbol.replace('/', ''))
+                # Obtener precio actual usando mapeo correcto
+                mapped_symbol = map_trade_symbol_to_global_symbol(trade.symbol)
+                current_price = get_current_price(mapped_symbol)
                 
                 # Calcular porcentajes de TP y SL configurados
                 tp_pct_str = "N/A"
@@ -283,18 +284,18 @@ def show_active_positions_summary():
                     # Calcular ganancia potencial en TP
                     if trade.take_profit:
                         if trade.trade_type == "BUY":
-                            tp_gain_usdt = (trade.take_profit - trade.entry_price) * trade.quantity
+                            tp_gain_USD = (trade.take_profit - trade.entry_price) * trade.quantity
                         else:
-                            tp_gain_usdt = (trade.entry_price - trade.take_profit) * trade.quantity
-                        print(f"      Ganancia potencial: ${tp_gain_usdt:.2f} USDT")
+                            tp_gain_USD = (trade.entry_price - trade.take_profit) * trade.quantity
+                        print(f"      Ganancia potencial: ${tp_gain_USD:.2f} USD")
                     
                     # Calcular pérdida potencial en SL
                     if trade.stop_loss:
                         if trade.trade_type == "BUY":
-                            sl_loss_usdt = (trade.stop_loss - trade.entry_price) * trade.quantity
+                            sl_loss_USD = (trade.stop_loss - trade.entry_price) * trade.quantity
                         else:
-                            sl_loss_usdt = (trade.entry_price - trade.stop_loss) * trade.quantity
-                        print(f"      Pérdida potencial: ${sl_loss_usdt:.2f} USDT")
+                            sl_loss_USD = (trade.entry_price - trade.stop_loss) * trade.quantity
+                        print(f"      Pérdida potencial: ${sl_loss_USD:.2f} USD")
                     
                     # Calcular distancias a TP/SL
                     if trade.take_profit:
@@ -318,24 +319,24 @@ def show_active_positions_summary():
                     # Calcular PnL actual
                     if trade.trade_type == "BUY":
                         pnl_pct = ((current_price - trade.entry_price) / trade.entry_price) * 100
-                        pnl_usdt = (current_price - trade.entry_price) * trade.quantity
+                        pnl_USD = (current_price - trade.entry_price) * trade.quantity
                     else:
                         pnl_pct = ((trade.entry_price - current_price) / trade.entry_price) * 100
-                        pnl_usdt = (trade.entry_price - current_price) * trade.quantity
+                        pnl_USD = (trade.entry_price - current_price) * trade.quantity
                     
                     pnl_status = "💚" if pnl_pct > 0 else "❤️" if pnl_pct < 0 else "💛"
-                    print(f"      {pnl_status} PnL: {pnl_pct:+.2f}% ({pnl_usdt:+.2f} USDT)")
+                    print(f"      {pnl_status} PnL: {pnl_pct:+.2f}% ({pnl_USD:+.2f} USD)")
                     
                     # Sumar al total
-                    total_pnl_usdt += pnl_usdt
+                    total_pnl_USD += pnl_USD
                 
                 print(f"      Opened: {trade.entry_time.strftime('%Y-%m-%d %H:%M')}")
                 print()  # Línea en blanco entre trades
             
             # Mostrar total del portafolio
             print("-" * 30)
-            total_status = "💚" if total_pnl_usdt > 0 else "❤️" if total_pnl_usdt < 0 else "💛"
-            print(f"💼 TOTAL PORTAFOLIO: {total_status} {total_pnl_usdt:+.2f} USDT")
+            total_status = "💚" if total_pnl_USD > 0 else "❤️" if total_pnl_USD < 0 else "💛"
+            print(f"💼 TOTAL PORTAFOLIO: {total_status} {total_pnl_USD:+.2f} USD")
             print()
             
     except Exception as e:
@@ -382,8 +383,9 @@ def check_active_positions_detailed():
                 if has_tp or has_sl:
                     positions_with_tp_sl += 1
                 
-                # Obtener precio actual
-                current_price = get_current_price(trade.symbol.replace('/', ''))
+                # Obtener precio actual usando mapeo correcto
+                mapped_symbol = map_trade_symbol_to_global_symbol(trade.symbol)
+                current_price = get_current_price(mapped_symbol)
                 
                 # Calcular PnL actual
                 if current_price > 0:
@@ -498,6 +500,47 @@ def check_tp_sl_configuration():
     except Exception as e:
         print(f"   ❌ Error verificando configuración: {e}")
 
+def map_trade_symbol_to_global_symbol(trade_symbol: str) -> str:
+    """🔄 Mapear símbolo de trade a formato GLOBAL_SYMBOLS"""
+    # Si el símbolo ya está en GLOBAL_SYMBOLS, usarlo directamente
+    if trade_symbol in GLOBAL_SYMBOLS:
+        return trade_symbol
+    
+    # Mapeo específico para símbolos comunes
+    symbol_mapping = {
+        "GOLD/USD": "GOLD",
+        "GOLDUSD": "GOLD",
+        "SILVER/USD": "SILVER", 
+        "SILVERUSD": "SILVER",
+        "PALLADIUM/USD": "PALLADIUM",
+        "PALLADIUMUSD": "PALLADIUM",
+        "PLATINUM/USD": "PLATINUM",
+        "PLATINUMUSD": "PLATINUM",
+        "CRUDE_OIL/USD": "Crude Oil",
+        "CRUDEOILUSD": "Crude Oil",
+        "NATURAL_GAS/USD": "Natural Gas",
+        "NATURALGASUSD": "Natural Gas"
+    }
+    
+    # Buscar mapeo directo
+    if trade_symbol in symbol_mapping:
+        return symbol_mapping[trade_symbol]
+    
+    # Intentar sin la barra
+    symbol_no_slash = trade_symbol.replace('/', '')
+    if symbol_no_slash in symbol_mapping:
+        return symbol_mapping[symbol_no_slash]
+    
+    # Buscar coincidencias parciales en GLOBAL_SYMBOLS
+    trade_upper = trade_symbol.upper().replace('/', '').replace('USD', '')
+    for global_symbol in GLOBAL_SYMBOLS:
+        global_upper = global_symbol.upper().replace('/', '').replace(' ', '_')
+        if trade_upper in global_upper or global_upper in trade_upper:
+            return global_symbol
+    
+    # Como último recurso, devolver el símbolo original
+    return trade_symbol
+
 def check_current_prices():
     """💰 Verificar precios actuales"""
     print(f"\n💰 VERIFICACIÓN DE PRECIOS ACTUALES")
@@ -514,11 +557,13 @@ def check_current_prices():
                 print("   No hay posiciones activas para verificar precios")
                 return
             
-            symbols = list(set(trade.symbol.replace('/', '') for trade in active_trades))
+            # Mapear símbolos de trades a formato GLOBAL_SYMBOLS
+            trade_symbols = [trade.symbol for trade in active_trades]
+            mapped_symbols = list(set(map_trade_symbol_to_global_symbol(symbol) for symbol in trade_symbols))
             
-            print(f"   Verificando precios para {len(symbols)} símbolos...")
+            print(f"   Verificando precios para {len(mapped_symbols)} símbolos...")
             
-            for symbol in symbols:
+            for symbol in mapped_symbols:
                 price = get_current_price(symbol)
                 if price > 0:
                     print(f"   ✅ {symbol}: ${price:.4f}")
@@ -627,16 +672,23 @@ def get_current_price(symbol: str) -> float:
     """💰 Obtener precio actual usando feed unificado de db_manager con cache TTL."""
     try:
         # Manejo especial de monedas base estables
-        if symbol and symbol.upper() == "USDT":
+        if symbol and symbol.upper() == "USD":
             return 1.0
-        # Normalizar símbolo para formato CCXT (BTCUSDT/BTC/USDT -> BASE/USDT)
-        if '/' in symbol:
-            base, quote = symbol.split('/')
-            norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
-        else:
-            norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
-        # Delegar al gestor de base de datos que maneja cache TTL centralizada
-        return float(db_manager._get_current_price(norm_symbol))
+        
+        # Verificar si el símbolo está en GLOBAL_SYMBOLS (formato Capital.com)
+        if symbol in GLOBAL_SYMBOLS:
+            # Usar directamente el símbolo de Capital.com
+            return float(db_manager._get_current_price(symbol))
+        
+        # Si no está en GLOBAL_SYMBOLS, intentar encontrar una coincidencia
+        # Esto es para compatibilidad con código legacy
+        symbol_upper = symbol.upper()
+        for global_symbol in GLOBAL_SYMBOLS:
+            if symbol_upper in global_symbol or global_symbol in symbol_upper:
+                return float(db_manager._get_current_price(global_symbol))
+        
+        # Como último recurso, usar el símbolo tal como viene
+        return float(db_manager._get_current_price(symbol))
     except Exception:
         return 0.0
 

@@ -20,7 +20,11 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # Importar todos nuestros componentes
-from src.config.main_config import TradingBotConfig, TradingProfiles, APIConfig, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
+from src.config.main_config import (
+    TradingBotConfig, TradingProfiles, APIConfig, CacheConfig, 
+    TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE,
+    GLOBAL_SYMBOLS
+)
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -124,8 +128,8 @@ class TradingBot:
         self.strategies = {}
         self._initialize_strategies()
         
-        # Símbolos a analizar - usar metales preciosos de Capital.com
-        self.symbols = self._get_capital_symbols()
+        # Símbolos a analizar - usar configuración centralizada
+        self.symbols = GLOBAL_SYMBOLS.copy()
         
         # Configuración de trading profesional desde configuración centralizada
         self.min_confidence_threshold = self.config.get_min_confidence_threshold()
@@ -448,30 +452,12 @@ class TradingBot:
             return 0.0
 
     def _normalize_symbol_for_capital(self, symbol: str) -> str:
-        """🔄 Normalizar símbolo para Capital.com"""
-        # Mapeo de símbolos comunes a Capital.com
-        symbol_mapping = {
-            'GOLD': 'GOLD',
-            'XAUUSD': 'GOLD',
-            'SILVER': 'SILVER',
-            'XAGUSD': 'SILVER',
-            'PALLADIUM': 'PALLADIUM',
-            'PLATINUM': 'PLATINUM',
-            'BTC': 'BITCOIN',
-            'BITCOIN': 'BITCOIN',
-            'ETH': 'ETHEREUM',
-            'ETHEREUM': 'ETHEREUM'
-        }
-        
-        # Limpiar símbolo
-        clean_symbol = symbol.upper().replace('/', '').replace('USDT', '').replace('USD', '')
-        
-        return symbol_mapping.get(clean_symbol, clean_symbol)
+        """🔄 Normalizar símbolo para Capital.com (ya están en formato correcto)"""
+        return symbol
 
     def _get_capital_symbols(self) -> List[str]:
-        """📋 Obtener lista de símbolos disponibles en Capital.com"""
-        # Símbolos de metales preciosos disponibles en Capital.com
-        return ['GOLD', 'SILVER', 'PALLADIUM', 'PLATINUM']
+        """📋 Obtener lista de símbolos disponibles en Capital.com desde configuración centralizada"""
+        return GLOBAL_SYMBOLS.copy()
 
     def _run_scheduler(self):
         """

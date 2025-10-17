@@ -1,8 +1,8 @@
-# 🤖 Crypto Trading Analyzer - Bot de Trading Inteligente
+# 🤖 Precious Metals Trading Analyzer - Bot de Trading Inteligente
 
 ## 🚀 El Futuro del Trading Automatizado
 
-**Crypto Trading Analyzer** es un sistema de trading automatizado de última generación que combina inteligencia artificial, análisis técnico avanzado y gestión de riesgo profesional para maximizar las oportunidades en el mercado de criptomonedas.
+**Precious Metals Trading Analyzer** es un sistema de trading automatizado de última generación que combina inteligencia artificial, análisis técnico avanzado y gestión de riesgo profesional para maximizar las oportunidades en el mercado de metales preciosos.
 
 ### ⚡ Capacidades Principales
 
@@ -53,11 +53,11 @@
 - **Take Profit Inteligente**: Optimización basada en momentum
 - **Kelly Criterion**: Sizing óptimo de posiciones
 
-### 📊 Activos Monitoreados (15 símbolos)
+### 📊 Metales Preciosos Monitoreados (4 símbolos)
 ```
-🥇 PRINCIPALES: BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, AVAXUSDT
-🚀 ALTCOINS:    ADAUSDT, XRPUSDT, LINKUSDT, DOGEUSDT, TRXUSDT
-⚡ VOLÁTILES:   DOTUSDT, MATICUSDT, ATOMUSDT, NEARUSDT, SUIUSDT
+🥇 METALES PRECIOSOS: GOLD, SILVER, PLATINUM, PALLADIUM
+💰 ALTA LIQUIDEZ:     Mercados globales 24/7
+⚡ VOLATILIDAD:       Análisis técnico optimizado para commodities
 ```
 
 ## 🚀 Inicio Rápido
@@ -133,10 +133,9 @@ TRADING_PROFILE=RAPIDO     # RAPIDO | ELITE | CONSERVADOR
 TRADING_MODE=paper         # paper | live
 ANALYSIS_INTERVAL=5        # minutos
 
-# API Binance
-BINANCE_API_KEY=your_key
-BINANCE_SECRET_KEY=your_secret
-BINANCE_TESTNET=true
+# API Capital.com (configuración pendiente)
+# CAPITAL_API_KEY=your_key
+# CAPITAL_SECRET_KEY=your_secret
 
 # Límites de Seguridad
 MAX_DAILY_TRADES=20
@@ -171,7 +170,7 @@ crypto-trading-analyzer/
 ### 🛠️ Stack Tecnológico
 - **🐍 python3 3.8+**: Lenguaje principal optimizado
 - **⚡ Threading**: Procesamiento paralelo nativo
-- **📊 CCXT**: Conectividad con exchanges
+- **📊 Capital.com API**: Conectividad con broker
 - **💾 SQLite**: Base de datos embebida
 - **🐳 Docker**: Containerización profesional
 - **📈 TA-Lib**: Análisis técnico avanzado

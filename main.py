@@ -32,8 +32,11 @@ from src.core.enhanced_risk_manager import EnhancedRiskManager
 from src.core.capital_client import CapitalClient, create_capital_client_from_env
 # BacktestingEngine removido durante la limpieza del proyecto
 
+# Importar configuración global
+from src.config.main_config import GLOBAL_SYMBOLS
+
 # Load environment variables
-load_dotenv('.env.development')
+load_dotenv('.env')
 
 # Instancias globales (se inicializan cuando se necesiten)
 trading_bot = None
@@ -76,7 +79,7 @@ def ensure_bot_exists():
 # Crear instancia de FastAPI
 app = FastAPI(
     title="🚀 Universal Trading Analyzer + Trading Bot",
-    description="API para análisis técnico de criptomonedas en tiempo real + Trading Bot automático",
+    description="API para análisis técnico de metales preciosos en tiempo real + Trading Bot automático",
     version="4.0.0",  # ¡Actualizada con Trading Bot!
     docs_url="/docs",
     redoc_url="/redoc"
@@ -109,7 +112,7 @@ class BotConfigUpdate(BaseModel):
                 "max_daily_trades": 10,
                 "min_confidence_threshold": 65,
                 "enable_trading": True,
-                "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+                "symbols": GLOBAL_SYMBOLS,
                 "trading_mode": "paper"
             }
         }
@@ -473,13 +476,13 @@ async def get_trading_capabilities():
                     "available": False,
                     "description": "Real trading with actual funds (Not yet implemented)",
                     "requirements": [
-                        "Binance API integration",
+                        "Capital.com API integration",
                         "Enhanced security measures",
                         "Real-time order management",
                         "Advanced risk controls",
                         "Regulatory compliance"
                     ],
-                    "status": "In development - See ROADMAP_INTEGRACION_BINANCE.md"
+                    "status": "In development - Capital.com integration in progress"
                 }
             },
             "current_mode": "paper",

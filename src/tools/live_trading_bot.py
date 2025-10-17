@@ -20,7 +20,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 from src.core.trading_bot import TradingBot
-from src.config.main_config import TradingBotConfig
+from src.config.main_config import TradingBotConfig, PRODUCTION_MODE, PAPER_TRADING_ONLY, ENABLE_REAL_TRADING, VERBOSE_LOGGING
 from src.database.database import db_manager
 
 # Configurar logging con colores
@@ -90,7 +90,8 @@ class ColoredFormatter(logging.Formatter):
 
 # Configurar logger con colores (sin duplicación)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+log_level = logging.DEBUG if VERBOSE_LOGGING else logging.INFO
+logger.setLevel(log_level)
 
 # Limpiar handlers existentes para evitar duplicación
 logger.handlers.clear()
@@ -111,6 +112,16 @@ class LiveTradingBot:
     def __init__(self):
         self.config = TradingBotConfig()
         self.trading_bot = TradingBot()
+        
+        # Verificaciones de modo de operación
+        if PRODUCTION_MODE:
+            if not PAPER_TRADING_ONLY:
+                logger.warning("⚠️  PRODUCTION MODE: Paper trading is disabled!")
+            if ENABLE_REAL_TRADING:
+                logger.warning("⚠️  PRODUCTION MODE: Real trading is enabled!")
+            logger.info("🏭 Live Trading Bot running in PRODUCTION MODE")
+        else:
+            logger.info("🧪 Live Trading Bot running in DEVELOPMENT MODE")
         
         # Configuración del bot
         self.symbols = TradingBotConfig.SYMBOLS_LIVE_BOT
@@ -345,108 +356,7 @@ class LiveTradingBot:
             import traceback
             traceback.print_exc()
     
-    def _show_binance_config(self, signal, trade_result):
-        """
-        📋 Mostrar configuración para replicar en Binance
-        """
-        try:
-            # Importar configuración dinámica
-            from src.config.main_config import RiskManagerConfig
-            
-            # Extraer datos del trade ejecutado
-            symbol = signal.symbol
-            signal_type = signal.signal_type
-            price = trade_result.entry_price if hasattr(trade_result, 'entry_price') else signal.current_price
-            
-            # Calcular valores para Binance
-            if signal_type == "BUY":
-                # Precio ligeramente por debajo para mejor ejecución
-                binance_price = price * 0.9997  # 0.03% por debajo
-                
-                # Monto en cripto (del trade ejecutado)
-                crypto_amount = trade_result.quantity if hasattr(trade_result, 'quantity') else 0
-                
-                # Total en USDT
-                total_usdt = trade_result.entry_value if hasattr(trade_result, 'entry_value') else (crypto_amount * price)
-                
-                # Usar valores dinámicos de TP y SL desde la señal si están disponibles
-                if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
-                    take_profit_price = signal.take_profit_price
-                    take_profit_pct = ((take_profit_price - price) / price) * 100
-                else:
-                    # Fallback: usar configuración dinámica
-                    tp_max = RiskManagerConfig.get_tp_max_percentage()
-                    take_profit_price = price * (1 + tp_max)
-                    take_profit_pct = tp_max * 100
-                
-                if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
-                    stop_loss_price = signal.stop_loss_price
-                    stop_loss_pct = ((price - stop_loss_price) / price) * 100
-                else:
-                    # Fallback: usar configuración dinámica
-                    sl_max = RiskManagerConfig.get_sl_max_percentage()
-                    stop_loss_price = price * (1 - sl_max)
-                    stop_loss_pct = sl_max * 100
-                
-                logger.info("")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("📋 CONFIGURACIÓN PARA BINANCE SPOT - ORDEN LÍMITE")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info(f"💰 PRECIO:     {binance_price:,.2f} USDT")
-                logger.info(f"🪙 MONTO:      {crypto_amount:.8f} {symbol.replace('USDT', '')}")
-                logger.info(f"💵 TOTAL:      {total_usdt:.2f} USDT")
-                logger.info("")
-                logger.info("🛡️ PROTECCIÓN (TP/SL):")
-                logger.info(f"📈 TAKE PROFIT: {take_profit_price:,.2f} USDT (+{take_profit_pct:.1f}%)")
-                logger.info(f"📉 STOP LOSS:   {stop_loss_price:,.2f} USDT (-{stop_loss_pct:.1f}%)")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("")
-                
-            elif signal_type == "SELL":
-                # Para ventas
-                binance_price = price * 1.0003  # 0.03% por arriba
-                
-                # Usar datos del trade ejecutado (no el balance actual que ya es 0)
-                asset_name = symbol.replace('USDT', '')
-                crypto_balance = trade_result.quantity if hasattr(trade_result, 'quantity') else 0
-                total_usdt = trade_result.entry_value if hasattr(trade_result, 'entry_value') else (crypto_balance * price)
-                
-                # Usar valores dinámicos de TP y SL desde la señal si están disponibles
-                if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
-                    take_profit_price = signal.take_profit_price
-                    take_profit_pct = ((price - take_profit_price) / price) * 100
-                else:
-                    # Fallback: usar configuración dinámica
-                    tp_max = RiskManagerConfig.get_tp_max_percentage()
-                    take_profit_price = price * (1 - tp_max)
-                    take_profit_pct = tp_max * 100
-                
-                if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
-                    stop_loss_price = signal.stop_loss_price
-                    stop_loss_pct = ((stop_loss_price - price) / price) * 100
-                else:
-                    # Fallback: usar configuración dinámica
-                    sl_max = RiskManagerConfig.get_sl_max_percentage()
-                    stop_loss_price = price * (1 + sl_max)
-                    stop_loss_pct = sl_max * 100
-                
-                logger.info("")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("📋 CONFIGURACIÓN PARA BINANCE SPOT - VENTA LÍMITE")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info(f"💰 PRECIO:     {binance_price:,.2f} USDT")
-                logger.info(f"🪙 MONTO:      {crypto_balance:.8f} {asset_name}")
-                logger.info(f"💵 TOTAL:      {total_usdt:.2f} USDT")
-                logger.info("")
-                logger.info("🛡️ PROTECCIÓN (TP/SL):")
-                logger.info(f"📈 TAKE PROFIT: {take_profit_price:,.2f} USDT (-{take_profit_pct:.1f}%)")
-                logger.info(f"📉 STOP LOSS:   {stop_loss_price:,.2f} USDT (+{stop_loss_pct:.1f}%)")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("")
-                
-        except Exception as e:
-            logger.error(f"❌ Error mostrando configuración de Binance: {e}")
-    
+
     def _display_adjustment_event(self, adjustment_result):
         """
         🔧 Mostrar eventos de ajustes dinámicos de TP/SL
@@ -657,9 +567,6 @@ class LiveTradingBot:
                         
                         logger.info(f"✅ Trade ejecutado: {trade_result.message}")
                         
-                        # Mostrar configuración para Binance
-                        self._show_binance_config(best_signal, trade_result)
-                        
                         # Actualizar last_signals con la señal ejecutada
                         self.last_signals[symbol] = {
                             'signal': best_signal,
@@ -774,8 +681,8 @@ class LiveTradingBot:
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
             portfolio_summary = self.trading_bot.paper_trader.get_portfolio_summary()
             
-            # Obtener balance de USDT correctamente
-            current_balance = self.trading_bot.paper_trader.get_balance('USDT')
+            # Obtener balance de USD correctamente
+            current_balance = self.trading_bot.paper_trader.get_balance('USD')
             total_value = portfolio_performance.get('total_value', 0.0)
             pnl = portfolio_performance.get('total_pnl', 0.0)
             pnl_pct = portfolio_performance.get('total_return_percentage', 0.0)
@@ -800,11 +707,11 @@ class LiveTradingBot:
                     quantity = asset.get('quantity', 0)
                     current_value = asset.get('current_value', 0)
                     
-                    if symbol == 'USDT':
-                        # Para USDT solo mostrar el valor
+                    if symbol == 'USD':
+                        # Para USD solo mostrar el valor
                         logger.info(f"   💵 {symbol}: ${current_value:,.2f}")
                     else:
-                        # Para otros activos mostrar cantidad y valor en USDT
+                        # Para otros activos mostrar cantidad y valor en USD
                         logger.info(f"   🪙 {symbol}: {quantity:.6f} (${current_value:,.2f})")
             else:
                 logger.info("   📭 No hay activos en el portfolio")
@@ -818,8 +725,8 @@ class LiveTradingBot:
         try:
             session_duration = datetime.now() - self.session_stats['start_time']
             portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
-            # Obtener balance final de USDT correctamente
-            final_balance = self.trading_bot.paper_trader.get_balance('USDT')
+            # Obtener balance final de USD correctamente
+            final_balance = self.trading_bot.paper_trader.get_balance('USD')
             total_value = portfolio_performance.get('total_value', 0.0)
             total_pnl = portfolio_performance.get('total_pnl', 0.0)
             pnl_pct = portfolio_performance.get('total_return_percentage', 0.0)

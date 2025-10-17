@@ -42,7 +42,6 @@ class MarketValidator:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.binance_base_url = APIConfig.BINANCE_BASE_URL
         
     def check_missed_executions(self, hours_back: int = None) -> List[MissedExecution]:
         if hours_back is None:
@@ -163,85 +162,55 @@ class MarketValidator:
         return None
     
     def _get_historical_prices(self, symbol: str, hours_back: int) -> List[Dict]:
-        """📈 Obtener precios históricos de Binance
+        """📈 Obtener precios históricos usando Capital.com
         
         Args:
-            symbol: Símbolo (ej: BTCUSDT)
+            symbol: Símbolo (ej: Bitcoin/USD)
             hours_back: Horas hacia atrás
             
         Returns:
             Lista de datos de precios
         """
         try:
-            # Calcular timestamps
-            end_time = int(datetime.now().timestamp() * 1000)
-            start_time = int((datetime.now() - timedelta(hours=hours_back)).timestamp() * 1000)
+            # Si tenemos referencia a TradingBot con Capital.com, usar su cliente
+            if hasattr(self, 'trading_bot') and self.trading_bot and hasattr(self.trading_bot, 'capital_client'):
+                try:
+                    return self.trading_bot.capital_client.get_historical_prices(symbol, hours_back)
+                except Exception as e:
+                    self.logger.warning(f"Error obteniendo datos históricos de Capital.com para {symbol}: {e}")
             
-            # Usar klines de 1 minuto para máxima precisión
-            url = APIConfig.get_binance_url("klines")
-            params = {
-                'symbol': symbol,
-                'interval': '1m',
-                'startTime': start_time,
-                'endTime': end_time,
-                'limit': APIConfig.DEFAULT_KLINES_LIMIT
-            }
-            
-            request_config = APIConfig.get_request_config()
-            response = requests.get(url, params=params, timeout=request_config['timeout'])
-            response.raise_for_status()
-            
-            klines = response.json()
-            
-            # Convertir a formato más manejable
-            price_data = []
-            for kline in klines:
-                price_data.append({
-                    'timestamp': int(kline[0]),
-                    'open': float(kline[1]),
-                    'high': float(kline[2]),
-                    'low': float(kline[3]),
-                    'close': float(kline[4]),
-                    'volume': float(kline[5])
-                })
-            
-            return price_data
+            # Fallback: retornar lista vacía si no hay datos disponibles
+            self.logger.warning(f"No se pudieron obtener datos históricos para {symbol}")
+            return []
             
         except Exception as e:
             self.logger.error(f"❌ Error fetching historical prices for {symbol}: {e}")
             return []
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual delegando en la fuente centralizada del TradingBot"""
+        """💰 Obtener precio actual usando Capital.com"""
         try:
-            # Si tenemos referencia a TradingBot, usar su método centralizado (con TTL y fallback)
+            # Si tenemos referencia a TradingBot, usar su método centralizado
             if hasattr(self, 'trading_bot') and self.trading_bot:
                 return float(self.trading_bot._get_current_price(symbol))
             
-            # Fallback: usar CCXT con TTL cache local (mismo comportamiento que antes)
-            if '/' in symbol:
-                base, quote = symbol.split('/')
-                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
-            else:
-                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
-            ttl = CacheConfig.get_ttl_for_operation("price_data")
-            now = time.time()
-            cache = getattr(self, '_price_cache', {})
-            cache_ts = getattr(self, '_price_cache_ts', {})
-            last_ts = cache_ts.get(norm_symbol, 0)
-            if norm_symbol in cache and (now - last_ts) < ttl:
-                return float(cache[norm_symbol])
+            # Fallback: usar Capital.com directamente si está disponible
+            if hasattr(self, 'capital_client') and self.capital_client:
+                try:
+                    price = self.capital_client.get_current_price(symbol)
+                    if price > 0:
+                        return price
+                except Exception as e:
+                    self.logger.warning(f"Error obteniendo precio de Capital.com para {symbol}: {e}")
             
-            import ccxt
-            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(norm_symbol)
-            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
+            # Último fallback: usar precio de la base de datos
+            from src.database.database import db_manager
+            last_trade_price = db_manager.get_last_trade_for_symbol(symbol, is_paper=False)
+            if last_trade_price:
+                return last_trade_price
             
-            cache[norm_symbol] = current_price
-            cache_ts[norm_symbol] = now
-            setattr(self, '_price_cache', cache)
-            setattr(self, '_price_cache_ts', cache_ts)
-            return current_price
+            self.logger.warning(f"No se pudo obtener precio para {symbol}")
+            return 0.0
         except Exception as e:
             self.logger.error(f"❌ Error fetching current price for {symbol}: {e}")
             return 0.0

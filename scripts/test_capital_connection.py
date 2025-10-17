@@ -5,10 +5,18 @@ Tests authentication and basic API endpoints
 """
 
 import os
+import sys
 import requests
 import logging
 from dotenv import load_dotenv
 import time
+
+# Add project root to path for imports
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+sys.path.append(project_root)
+
+from src.config.main_config import GLOBAL_SYMBOLS, get_all_capital_symbols
 
 # Configure logging
 logging.basicConfig(
@@ -216,26 +224,43 @@ def test_capital_connection():
             logger.error("❌ Failed to get accounts!")
             logger.error(f"   Error: {accounts_result.get('error')}")
         
-        # Test 4: Get markets for precious metals
-        logger.info("\n🥇 Test 4: Getting precious metals markets...")
-        metals = ["GOLD", "SILVER", "PALLADIUM", "PLATINUM"]
+        # Test 4: Get markets for all symbols
+        logger.info("\n🥇 Test 4: Getting markets for all symbols...")
         
-        for metal in metals:
-            markets_result = client.get_markets(search_term=metal)
+        for symbol in GLOBAL_SYMBOLS:
+            logger.info(f"\n   Testing: {symbol}")
+            
+            # Use symbol directly (already in Capital.com format)
+            markets_result = client.get_markets(search_term=symbol)
             
             if markets_result["success"]:
                 markets = markets_result["markets"]
                 if isinstance(markets, dict) and "markets" in markets:
                     market_list = markets["markets"]
-                    logger.info(f"   {metal}: Found {len(market_list)} market(s)")
-                    for market in market_list[:3]:  # Show first 3 results
+                    logger.info(f"   ✅ {symbol}: Found {len(market_list)} market(s)")
+                    for market in market_list[:2]:  # Show first 2 results
                         epic = market.get("epic", "N/A")
                         instrument_name = market.get("instrumentName", "N/A")
                         logger.info(f"     - {epic}: {instrument_name}")
                 else:
-                    logger.info(f"   {metal}: {markets}")
+                    logger.info(f"   {symbol}: {markets}")
             else:
-                logger.error(f"   ❌ Failed to get {metal} markets: {markets_result.get('error')}")
+                logger.warning(f"   ⚠️ Failed to get {symbol} markets: {markets_result.get('error')}")
+                
+                # If Capital.com format fails, try with internal symbol
+                if capital_symbol != internal_symbol:
+                    logger.info(f"   Trying with internal symbol: {internal_symbol}")
+                    markets_result = client.get_markets(search_term=internal_symbol)
+                    
+                    if markets_result["success"]:
+                        markets = markets_result["markets"]
+                        if isinstance(markets, dict) and "markets" in markets:
+                            market_list = markets["markets"]
+                            logger.info(f"   ✅ {internal_symbol}: Found {len(market_list)} market(s)")
+                        else:
+                            logger.info(f"   {internal_symbol}: {markets}")
+                    else:
+                        logger.error(f"   ❌ Both formats failed for {internal_symbol}")
         
         logger.info("\n🎉 Capital.com API connection test completed!")
         return True
@@ -262,7 +287,7 @@ def check_environment():
         logger.error("❌ Missing required environment variables:")
         for var in missing_vars:
             logger.error(f"   - {var}")
-        logger.error("\nPlease set these variables in your .env.development file")
+        logger.error("\nPlease set these variables in your .env file")
         return False
     
     logger.info("✅ All required environment variables are set")
@@ -275,7 +300,7 @@ if __name__ == "__main__":
     # Load environment variables first
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    env_path = os.path.join(project_root, '.env.development')
+    env_path = os.path.join(project_root, '.env')
     load_dotenv(env_path)
     logger.info(f"📁 Loading environment from: {env_path}")
     

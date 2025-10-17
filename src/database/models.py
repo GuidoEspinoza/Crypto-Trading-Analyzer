@@ -20,7 +20,7 @@ class Trade(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Información básica del trade
-    symbol = Column(String(20), nullable=False, index=True)  # BTC/USDT
+    symbol = Column(String(20), nullable=False, index=True)  # BTC/USD
     strategy_name = Column(String(50), nullable=False, index=True)  # RSI_Basic
     trade_type = Column(String(10), nullable=False)  # BUY, SELL
     
@@ -67,7 +67,7 @@ class Portfolio(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Asset information
-    symbol = Column(String(20), nullable=False, index=True)  # BTC, USDT, ETH
+    symbol = Column(String(20), nullable=False, index=True)  # BTC, USD, ETH
     quantity = Column(Float, nullable=False, default=0.0)
     avg_price = Column(Float, nullable=False, default=0.0)
     

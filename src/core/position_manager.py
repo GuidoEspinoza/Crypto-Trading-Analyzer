@@ -372,17 +372,17 @@ class PositionManager:
                 trade.notes = f"{trade.notes or ''} | Auto closed: {reason}"
                 
                 # Actualizar portfolio
-                asset_symbol = (trade.symbol.split('/')[0] if '/' in trade.symbol else (trade.symbol[:-4] if trade.symbol.endswith(('USDT')) else trade.symbol))
+                asset_symbol = (trade.symbol.split('/')[0] if '/' in trade.symbol else (trade.symbol[:-3] if trade.symbol.endswith(('USD')) else trade.symbol))
                 
                 if trade.trade_type == "BUY":
-                    # Vender el asset, obtener USDT
+                    # Vender el asset, obtener USD
                     sale_value = current_price * trade.quantity
-                    self.paper_trader._update_usdt_balance(sale_value, session)
+                    self.paper_trader._update_usd_balance(sale_value, session)
                     self.paper_trader._update_asset_balance(asset_symbol, -trade.quantity, current_price, session)
                 else:
-                    # Comprar el asset, gastar USDT
+                    # Comprar el asset, gastar USD
                     purchase_value = current_price * trade.quantity
-                    self.paper_trader._update_usdt_balance(-purchase_value, session)
+                    self.paper_trader._update_usd_balance(-purchase_value, session)
                     self.paper_trader._update_asset_balance(asset_symbol, trade.quantity, current_price, session)
                 
                 session.commit()
@@ -400,7 +400,7 @@ class PositionManager:
                     del self.positions_cache[trade_id]
                 
                 # Obtener balances actuales para el log detallado
-                usdt_balance = self.paper_trader._get_usdt_balance()
+                usd_balance = self.paper_trader._get_usd_balance()
                 portfolio_summary = self.paper_trader.get_portfolio_summary()
                 total_portfolio_value = portfolio_summary.get('total_value', 0.0)
                 
@@ -429,7 +429,7 @@ class PositionManager:
                 logger.info(f"{result_type}: ${pnl:.2f} ({pnl_percentage:+.2f}%)")
                 logger.info(f"")
                 logger.info(f"💼 ESTADO DEL PORTAFOLIO:")
-                logger.info(f"💰 Balance USDT: ${usdt_balance:.2f}")
+                logger.info(f"💰 Balance USD: ${usd_balance:.2f}")
                 logger.info(f"📈 Valor Total Portafolio: ${total_portfolio_value:.2f}")
                 logger.info("🎯 ═══════════════════════════════════════════════════════════")
                 logger.info("")

@@ -13,7 +13,6 @@ from typing import Generator, Optional
 from datetime import datetime
 import time
 
-import ccxt
 from src.config.main_config import CacheConfig
 
 from .models import Base, Trade, Portfolio, Strategy, BacktestResult, TradingSignal, Settings
@@ -143,21 +142,21 @@ class DatabaseManager:
     
     def initialize_base_portfolio(self):
         """
-        💼 Inicializar portfolio base con USDT virtual
+        💼 Inicializar portfolio base con USD virtual
         """
         try:
             with self.get_db_session() as session:
-                # Verificar si ya existe portfolio USDT
-                existing_usdt = session.query(Portfolio).filter(
-                    Portfolio.symbol == "USDT",
+                # Verificar si ya existe portfolio USD
+                existing_USD = session.query(Portfolio).filter(
+                    Portfolio.symbol == "USD",
                     Portfolio.is_paper == True
                 ).first()
                 
-                if not existing_usdt:
+                if not existing_USD:
                     initial_balance_db = self.get_global_initial_balance()
-                    # Crear portfolio inicial con USDT del setting global (fallback segura a 0)
+                    # Crear portfolio inicial con USD del setting global (fallback segura a 0)
                     initial_portfolio = Portfolio(
-                        symbol="USDT",
+                        symbol="USD",
                         quantity=initial_balance_db,
                         avg_price=1.0,
                         current_price=1.0,
@@ -169,49 +168,83 @@ class DatabaseManager:
                     
                     session.add(initial_portfolio)
                     session.commit()
-                    logger.info(f"💰 Initialized paper trading portfolio with ${initial_balance_db:,.2f} USDT")
+                    logger.info(f"💰 Initialized paper trading portfolio with ${initial_balance_db:,.2f} USD")
                 
         except SQLAlchemyError as e:
             logger.error(f"❌ Error initializing portfolio: {e}")
     
     def _get_current_price(self, symbol: str) -> float:
         """
-        Obtener precio actual del símbolo usando CCXT con cache TTL.
+        Obtener precio actual del símbolo usando Capital.com para símbolos mapeados.
         """
         try:
-            if symbol and symbol.upper() == "USDT":
+            if symbol and symbol.upper() == "USD":
                 return 1.0
-            # Normalizar símbolos a formato CCXT "BASE/USDT"
-            if '/' in symbol:
-                base, quote = symbol.split('/')
-                norm_symbol = f"{base.upper()}/USDT"
-            else:
-                upper = symbol.upper()
-                if upper.endswith(("USDT")):
-                    norm_symbol = f"{upper[:-4]}/USDT"
-                else:
-                    norm_symbol = f"{upper}/USDT"
+                
+            # Cache management
             now = time.time()
             ttl = CacheConfig.get_ttl_for_operation("price_data")
             cache = getattr(self, "_price_cache", {})
             cache_ts = getattr(self, "_price_cache_ts", {})
-            last_ts = cache_ts.get(norm_symbol, 0)
-            if norm_symbol in cache and (now - last_ts) < ttl:
-                return float(cache[norm_symbol])
+            last_ts = cache_ts.get(symbol, 0)
+            if symbol in cache and (now - last_ts) < ttl:
+                return float(cache[symbol])
             
-            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(norm_symbol)
-            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
+            # Verificar si el símbolo está en GLOBAL_SYMBOLS (Capital.com)
+            try:
+                from src.config.main_config import GLOBAL_SYMBOLS
+                
+                # Buscar el símbolo directamente en GLOBAL_SYMBOLS
+                if symbol in GLOBAL_SYMBOLS:
+                    # Usar Capital.com para símbolos en GLOBAL_SYMBOLS
+                    from src.core.capital_client import create_capital_client_from_env
+                    capital_client = create_capital_client_from_env()
+                    
+                    # Obtener precio de Capital.com usando el nuevo método get_market_data
+                    market_data = capital_client.get_market_data([symbol])
+                    if market_data and symbol in market_data and market_data[symbol]:
+                        symbol_data = market_data[symbol]
+                        # Usar el precio medio entre bid y offer
+                        if 'mid' in symbol_data and symbol_data['mid']:
+                            current_price = float(symbol_data['mid'])
+                        elif 'bid' in symbol_data and 'offer' in symbol_data:
+                            bid = float(symbol_data['bid']) if symbol_data['bid'] else 0
+                            offer = float(symbol_data['offer']) if symbol_data['offer'] else 0
+                            current_price = (bid + offer) / 2 if bid > 0 and offer > 0 else 0
+                        else:
+                            current_price = 0.0
+                        
+                        if current_price > 0:
+                            # Guardar en cache
+                            cache[symbol] = current_price
+                            cache_ts[symbol] = now
+                            setattr(self, "_price_cache", cache)
+                            setattr(self, "_price_cache_ts", cache_ts)
+                            
+                            logger.debug(f"✅ Precio obtenido de Capital.com para {symbol}: ${current_price:.4f}")
+                            return current_price
+                    
+                    logger.warning(f"⚠️ No se pudo obtener precio de Capital.com para {symbol}")
+                        
+            except Exception as capital_error:
+                logger.warning(f"⚠️ Error obteniendo precio de Capital.com para {symbol}: {capital_error}")
             
-            cache[norm_symbol] = current_price
-            cache_ts[norm_symbol] = now
-            setattr(self, "_price_cache", cache)
-            setattr(self, "_price_cache_ts", cache_ts)
-            return current_price
+            # Si llegamos aquí, no pudimos obtener el precio
+            logger.error(f"❌ No se pudo obtener precio para {symbol} - no disponible en Capital.com")
+            return 0.0
         except Exception as e:
             logger.error(f"❌ Error fetching current price for {symbol}: {e}")
             return 0.0
     
+    def _convert_symbol_to_usd_format(self, symbol: str) -> str:
+        """
+        Convierte un símbolo almacenado en el portfolio de vuelta al formato USD para obtener precios.
+        Ejemplo: ETH -> ETHUSD, BTC -> BTCUSD
+        """
+        if symbol == "USD" or symbol.endswith("USD"):
+            return symbol
+        return f"{symbol}USD"
+
     def get_portfolio_summary(self, is_paper: bool = True) -> dict:
         """
         📊 Obtener resumen del portfolio
@@ -231,11 +264,13 @@ class DatabaseManager:
                 # Refrescar precios y valores actuales
                 for item in portfolio_items:
                     try:
-                        if item.symbol == "USDT":
+                        if item.symbol == "USD":
                             item.current_price = 1.0
                             item.current_value = float(item.quantity or 0.0)
                         else:
-                            price = self._get_current_price(item.symbol)
+                            # Convertir el símbolo de vuelta al formato USD para obtener el precio
+                            price_symbol = self._convert_symbol_to_usd_format(item.symbol)
+                            price = self._get_current_price(price_symbol)
                             if price > 0:
                                 item.current_price = price
                                 item.current_value = float(item.quantity or 0.0) * price
@@ -252,12 +287,12 @@ class DatabaseManager:
                 total_pnl = sum(item.unrealized_pnl or 0 for item in portfolio_items)
                 base_value = self.get_global_initial_balance()
                 
-                # Disponible en USDT (cash)
-                usdt_entry = session.query(Portfolio).filter(
-                    Portfolio.symbol == "USDT",
+                # Disponible en USD (cash)
+                USD_entry = session.query(Portfolio).filter(
+                    Portfolio.symbol == "USD",
                     Portfolio.is_paper == is_paper
                 ).first()
-                available_balance = float(usdt_entry.quantity) if usdt_entry and usdt_entry.quantity is not None else 0.0
+                available_balance = float(USD_entry.quantity) if USD_entry and USD_entry.quantity is not None else 0.0
                 
                 return {
                     "total_value": round(total_value, 2),
@@ -326,7 +361,7 @@ class DatabaseManager:
         💰 Obtener el precio del último trade para un símbolo
         
         Args:
-            symbol: Símbolo del activo (ej: BTCUSDT)
+            symbol: Símbolo del activo (ej: BTCUSD)
             is_paper: Si es paper trading (True) o real (False)
             
         Returns:

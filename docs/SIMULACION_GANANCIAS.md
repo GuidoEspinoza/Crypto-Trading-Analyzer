@@ -59,7 +59,7 @@ Este análisis presenta proyecciones de ganancias **ACTUALIZADAS** para los **4 
 ## 💰 Simulaciones por Balance Inicial v3.0
 **⚠️ IMPORTANTE: Todos los cálculos incluyen CAPITALIZACIÓN COMPUESTA con TP/SL dinámicos y ajustes automáticos**
 
-### 💵 Balance: $100 USDT
+### 💵 Balance: $100 USD
 
 #### 📈 Escenario PERFECTO (100% TP, 0% SL + Ajustes Automáticos)
 
@@ -96,7 +96,7 @@ Este análisis presenta proyecciones de ganancias **ACTUALIZADAS** para los **4 
 
 ---
 
-### 💵 Balance: $500 USDT
+### 💵 Balance: $500 USD
 
 #### 📈 Escenario PERFECTO (100% TP, 0% SL + Ajustes Automáticos)
 
@@ -133,7 +133,7 @@ Este análisis presenta proyecciones de ganancias **ACTUALIZADAS** para los **4 
 
 ---
 
-### 💵 Balance: $1,000 USDT
+### 💵 Balance: $1,000 USD
 
 #### 📈 Escenario PERFECTO (100% TP, 0% SL + Ajustes Automáticos)
 
@@ -184,7 +184,7 @@ Balance_Final = Balance_Inicial × (1 + Rendimiento_Diario)^Días
 Rendimiento_Diario = Trades_por_Día × Riesgo_por_Trade × Rendimiento_Esperado
 ```
 
-**Ejemplo Práctico - Perfil AGRESIVO ($500 USDT):**
+**Ejemplo Práctico - Perfil AGRESIVO ($500 USD):**
 - **Parámetros:** 8 trades/día, 6% riesgo/trade, 65% win rate
 - **Rendimiento esperado por trade:** (0.65 × 2.2%) + (0.35 × -1.0%) = 1.08%
 - **Rendimiento diario:** 8 × 6% × 1.08% = 0.518%
@@ -324,7 +324,7 @@ Para **maximizar las probabilidades de éxito** con v2.0:
 ### 🎯 Recomendaciones por Perfil de Riesgo v3.0 (Con TP/SL Dinámicos)
 
 #### 🚀 Para Traders Experimentados (RÁPIDO)
-- **Balance mínimo**: $500+ USDT
+- **Balance mínimo**: $500+ USD
 - **Expectativa realista**: 25-40% mensual con TP/SL dinámicos
 - **Monitoreo**: Diario con alertas automáticas IA
 - **Gestión**: TP 4.5-6%, SL 2-3% con hasta 5 reajustes automáticos
@@ -334,7 +334,7 @@ Para **maximizar las probabilidades de éxito** con v2.0:
 - **Win rate objetivo**: 58% (mejorado con confluence filters)
 
 #### ⚡ Para Traders Intermedios (AGRESIVO)
-- **Balance mínimo**: $300+ USDT
+- **Balance mínimo**: $300+ USD
 - **Expectativa realista**: 15-25% mensual con ajustes automáticos
 - **Monitoreo**: 3-4 veces por semana con notificaciones
 - **Gestión**: TP 4-5%, SL 1.5-2.5% con 3-4 reajustes
@@ -344,7 +344,7 @@ Para **maximizar las probabilidades de éxito** con v2.0:
 - **Win rate objetivo**: 68% (mejorado significativamente)
 
 #### 🎯 Para Principiantes (ÓPTIMO) ⭐ RECOMENDADO
-- **Balance mínimo**: $100+ USDT
+- **Balance mínimo**: $100+ USD
 - **Expectativa realista**: 10-20% mensual con sistema adaptativo
 - **Monitoreo**: 2-3 veces por semana con alertas
 - **Gestión**: TP 3.5-4.5%, SL 1-2% con 2-3 reajustes
@@ -354,7 +354,7 @@ Para **maximizar las probabilidades de éxito** con v2.0:
 - **Win rate objetivo**: 78% (excelente precisión)
 
 #### 🛡️ Para Inversores Conservadores (CONSERVADOR)
-- **Balance mínimo**: $100+ USDT
+- **Balance mínimo**: $100+ USD
 - **Expectativa realista**: 5-10% mensual con protección avanzada
 - **Monitoreo**: Semanal con notificaciones automáticas
 - **Gestión**: TP 3-4%, SL 1-1.5% con 1-2 reajustes
@@ -368,7 +368,7 @@ Para **maximizar las probabilidades de éxito** con v2.0:
 ## 🔍 Metodología de Cálculo
 
 ### 🔄 Capitalización Compuesta (Reinversión)
-**EJEMPLO PRÁCTICO con $500 USDT - Perfil AGRESIVO - Escenario Realista:**
+**EJEMPLO PRÁCTICO con $500 USD - Perfil AGRESIVO - Escenario Realista:**
 
 - **Día 1**: $500 → +4.3% → $521.50
 - **Día 2**: $521.50 → +4.3% → $543.92

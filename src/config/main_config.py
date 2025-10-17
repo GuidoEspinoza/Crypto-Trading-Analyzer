@@ -43,22 +43,46 @@ def _get_env_float(var_name: str, default: float) -> float:
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
 TRADING_PROFILE = "ELITE"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 
-# Balance inicial global para todas las posiciones en USDT
+# ============================================================================
+# 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
+# ============================================================================
+
+# Modo de operación del sistema
+PRODUCTION_MODE = _get_env_float("PRODUCTION_MODE", 0.0) == 1.0  # False por defecto (desarrollo)
+
+# Configuraciones dependientes del modo
+USE_LOCAL_DASHBOARD = not PRODUCTION_MODE  # Dashboard local solo en desarrollo
+USE_LOCAL_DATABASE = True  # DB siempre útil para logs y análisis
+PAPER_TRADING_ONLY = not PRODUCTION_MODE  # Paper trading en desarrollo, real en producción
+ENABLE_REAL_TRADING = PRODUCTION_MODE  # Trading real solo en producción
+
+# Configuraciones de logging y debugging
+VERBOSE_LOGGING = not PRODUCTION_MODE  # Logging detallado en desarrollo
+ENABLE_DEBUG_FEATURES = not PRODUCTION_MODE  # Características de debug
+
+# Balance inicial global para todas las posiciones en USD
 PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
 
-# Precio base de USDT (stablecoin)
-USDT_BASE_PRICE = 1.0
+# Precio base de USD (moneda fiat)
+USD_BASE_PRICE = 1.0
 
 # ============================================================================
 # 🎯 LISTA DE ACTIVOS
 # ============================================================================
 
+# Lista de símbolos con nombres exactos como aparecen en Capital.com
 GLOBAL_SYMBOLS: List[str] = [
-    "GOLD",    # Oro - Precio estable, alto volatilidad
-    "SILVER",    # Plata - Precio estable, alto volatilidad
-    "PALLADIUM",    # Palladio - Precio estable, alto volatilidad
-    "PLATINUM",   # Platino - Precio estable, alto volatilidad
+    # === Metales Preciosos ===
+    #"GOLD", "SILVER", "PALLADIUM", "PLATINUM",
+    # === Criptomonedas ===
+    "BTCUSD", "XRPUSD", "ETHUSD" 
 ]
+
+# ============================================================================
+# 📝 NOTA: MAPEO ELIMINADO
+# ============================================================================
+# El mapeo de símbolos fue eliminado porque GLOBAL_SYMBOLS ahora contiene
+# los nombres exactos como aparecen en Capital.com, simplificando el sistema
 
 # ============================================================================
 # ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
@@ -102,7 +126,7 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Optimizado
-            "max_position_size": 0.06,  # 6% como decimal
+            "max_position_size": 0.15,  # 15% como decimal
             "max_total_exposure": 0.70,  # Exposición total máxima 70%
             "min_trade_value": 5.0,  # Reducido para permitir pruebas
             "paper_min_confidence": 60.0,  # Aumentado
@@ -235,7 +259,7 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.05,  # 5% como decimal
             "gradual_reactivation": True,
             # Paper Trader Config
-            "max_position_size": 0.15,  # 15% del balance
+            "max_position_size": 0.10,  # 10% del balance
             "max_total_exposure": 0.55,  # 55% exposición total
             "min_trade_value": 15.0,
             "paper_min_confidence": 82.0,
@@ -363,7 +387,7 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.05,  # Estandarizado: 5% como decimal
             "gradual_reactivation": True,  # Nueva funcionalidad
             # Paper Trader Config - Conservador
-            "max_position_size": 0.25,  # 25% como decimal
+            "max_position_size": 0.05,  # 5% como decimal
             "max_total_exposure": 0.35,  # 35% como decimal
             "min_trade_value": 30.0,  # Reducido para permitir entradas de alta calidad
             "paper_min_confidence": 80.0,  # Muy alto
@@ -622,7 +646,7 @@ class TradingBotConfig:
 class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
     
-    # Balance inicial en USDT para simulación
+    # Balance inicial en USD para simulación
     INITIAL_BALANCE: float = PAPER_GLOBAL_INITIAL_BALANCE
     
     @classmethod
@@ -826,7 +850,7 @@ class RiskManagerConfig:
     TRAILING_STOP_ACTIVATION: float = property(lambda self: TradingProfiles.get_current_profile()["trailing_stop_activation"])
     BREAKEVEN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["breakeven_threshold"])
     
-    # Valor inicial del portfolio para cálculos de riesgo en USDT - Se alimenta del PaperTrader para consistencia
+    # Valor inicial del portfolio para cálculos de riesgo en USD - Se alimenta del PaperTrader para consistencia
     INITIAL_PORTFOLIO_VALUE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
 
 
@@ -1085,7 +1109,7 @@ class LoggingConfig:
 class LiveTradingConfig:
     """Configuración específica para trading en vivo."""
     
-    # Balance inicial real en USDT - Se alimenta automáticamente del PaperTrader para consistencia
+    # Balance inicial real en USD - Se alimenta automáticamente del PaperTrader para consistencia
     INITIAL_BALANCE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
     
     # Comisiones de exchange en % por trade; configurable vía entorno TRADING_FEES
@@ -1196,7 +1220,7 @@ class TestingConfig:
     """Configuración específica para testing y desarrollo."""
     
     # Símbolos para testing - subset reducido para pruebas rápidas
-    TEST_SYMBOLS: List[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    TEST_SYMBOLS: List[str] = GLOBAL_SYMBOLS[:3]  # Primeros 3 símbolos
     
     # Configuración de trading bot para testing
     TEST_MIN_CONFIDENCE: float = 70.0
@@ -1289,14 +1313,7 @@ Todos los parámetros críticos ahora incluyen las tres opciones claramente marc
 class APIConfig:
     """🌐 Configuración centralizada de APIs y endpoints"""
     
-    # Binance API Configuration
-    BINANCE_BASE_URL = "https://api.binance.com/api/v3"
-    BINANCE_ENDPOINTS = {
-        "ticker_price": "/ticker/price",
-        "klines": "/klines",
-        "exchange_info": "/exchangeInfo",
-        "24hr_ticker": "/ticker/24hr"
-    }
+    # API Configuration (Binance removed - using Capital.com only)
     
     # Request Configuration
     REQUEST_TIMEOUT = 5  # segundos
@@ -1313,10 +1330,7 @@ class APIConfig:
     MAX_KLINES_LIMIT = 1500
     MIN_KLINES_LIMIT = 100
     
-    @classmethod
-    def get_binance_url(cls, endpoint: str) -> str:
-        """Obtener URL completa de Binance"""
-        return cls.BINANCE_BASE_URL + cls.BINANCE_ENDPOINTS.get(endpoint, "")
+
     
     @classmethod
     def get_request_config(cls) -> dict:
@@ -1717,9 +1731,42 @@ def initialize_config() -> bool:
     return True
 
 
+# ============================================================================
+# 🔄 FUNCIONES UTILITARIAS PARA SÍMBOLOS
+# ============================================================================
+# Las funciones de conversión fueron eliminadas porque GLOBAL_SYMBOLS
+# ya contiene los nombres exactos de Capital.com
+
+def get_all_capital_symbols() -> List[str]:
+    """
+    Obtiene todos los símbolos (ya están en formato Capital.com)
+    
+    Returns:
+        Lista de símbolos de Capital.com
+    """
+    return GLOBAL_SYMBOLS.copy()
+
+def validate_symbol_mapping() -> bool:
+    """
+    Valida que GLOBAL_SYMBOLS contenga símbolos válidos
+    
+    Returns:
+        True si los símbolos son válidos
+    """
+    if not GLOBAL_SYMBOLS:
+        logger.warning("⚠️ GLOBAL_SYMBOLS está vacío")
+        return False
+    
+    logger.info(f"✅ GLOBAL_SYMBOLS configurado con {len(GLOBAL_SYMBOLS)} símbolos")
+    return True
+
 # Validar configuración al importar el módulo
 try:
     if not initialize_config():
         logger.warning("⚠️ Configuración inicializada con advertencias")
+    
+    # Validar mapeo de símbolos
+    validate_symbol_mapping()
+    
 except Exception as e:
     logger.error(f"❌ Error al inicializar configuración: {e}")

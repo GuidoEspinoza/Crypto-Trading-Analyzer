@@ -36,7 +36,7 @@ sys.path.insert(0, project_root)
 from src.database.database import db_manager
 from src.database.models import Trade, Portfolio, TradingSignal
 from src.core.paper_trader import PaperTrader
-from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE
+from src.config.main_config import TradingBotConfig, PaperTraderConfig, RiskManagerConfig, StrategyConfig, TradingProfiles, CacheConfig, TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE, USE_LOCAL_DASHBOARD, PRODUCTION_MODE
 
 try:
     from zoneinfo import ZoneInfo
@@ -406,18 +406,18 @@ class MetricsCalculator:
                         'interpretation': f"{trade.strategy_name} - {trade.symbol}"
                     })
                 
-                # Obtener balance real de USDT usando PaperTrader (cached)
+                # Obtener balance real de USD usando PaperTrader (cached)
                 try:
                     paper_trader = self._get_paper_trader()
-                    real_usdt_balance = paper_trader.get_balance('USDT')
+                    real_USD_balance = paper_trader.get_balance('USD')
                 except Exception as e:
                     # Fallback al valor del portfolio summary si hay error
-                    real_usdt_balance = portfolio_summary.get('available_balance', 0.0)
+                    real_USD_balance = portfolio_summary.get('available_balance', 0.0)
                 
                 return {
                     'total_return_pct': total_return,
                     'current_equity': current_equity,
-                    'available_balance': real_usdt_balance,
+                    'available_balance': real_USD_balance,
                     'current_drawdown_pct': current_drawdown,
                     'max_drawdown_pct': max_drawdown,
                     'volatility_pct': volatility,
@@ -583,7 +583,7 @@ class MetricsCalculator:
             return 0.0
         
         t = trade_type.upper() if trade_type else 'BUY'
-        # Si tenemos entry_value (USDT), ya incluye fees en BUY y salida neta en SELL
+        # Si tenemos entry_value (USD), ya incluye fees en BUY y salida neta en SELL
         if entry_value is not None and entry_value > 0:
             if t == 'BUY':
                 return (current_price * quantity) - entry_value
@@ -629,9 +629,9 @@ class MetricsCalculator:
         """Obtener precio actual con cache para mejor rendimiento usando fuente centralizada cuando sea posible"""
         try:
             # Normalización robusta de símbolo
-            norm_symbol = symbol if '/' in symbol else (symbol[:-4] + '/USDT' if symbol.endswith(('USDT')) else symbol)
-            if symbol == 'USDT' or symbol.replace('/', '') == 'USDT':
-            # Stablecoins: precio base 1.0 (USDT-only)
+            norm_symbol = symbol if '/' in symbol else (symbol[:-4] + '/USD' if symbol.endswith(('USD')) else symbol)
+            if symbol == 'USD' or symbol.replace('/', '') == 'USD':
+            # Stablecoins: precio base 1.0 (USD-only)
                 return 1.0
             
             cache_key = f"price_{norm_symbol.replace('/', '')}"
@@ -1838,7 +1838,7 @@ class RealTimeDashboard:
         # Indicador del modo de trading
         trading_mode = portfolio_summary.get('trading_mode', 'UNKNOWN')
         if trading_mode == 'REAL_TRADING':
-            st.success("🚀 **Modo Activo:** Trading Real en Binance Testnet")
+            st.success("🚀 **Modo Activo:** Trading Real con Capital.com")
         elif trading_mode == 'PAPER_TRADING':
             st.info("🎭 **Modo Activo:** Paper Trading (Simulación)")
         else:
@@ -1958,11 +1958,11 @@ class RealTimeDashboard:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # Balance Actual (USDT disponible sin invertir)
+            # Balance Actual (USD disponible sin invertir)
             available_balance = metrics.get('available_balance', 0.0)
             emoji = "💵"
             st.metric(
-                f"{emoji} USDT Disponibles",
+                f"{emoji} USD Disponibles",
                 f"${available_balance:,.2f}"
             )
         
@@ -1973,7 +1973,7 @@ class RealTimeDashboard:
             growth_real = real_balance - initial_balance
             emoji = "📊" if growth_real >= 0 else "📉"
             st.metric(
-                f"{emoji} Valor Portfolio Real (USDT)",
+                f"{emoji} Valor Portfolio Real (USD)",
                 f"${real_balance:,.2f}"
             )
         
@@ -2453,6 +2453,12 @@ class RealTimeDashboard:
 # Función principal para ejecutar el dashboard
 def main():
     """Función principal del dashboard"""
+    if not USE_LOCAL_DASHBOARD:
+        print("🏭 Dashboard local deshabilitado en modo producción")
+        print("📊 Usa la interfaz de Capital.com para monitoreo en producción")
+        return
+    
+    print(f"📊 Iniciando dashboard local (Modo: {'Producción' if PRODUCTION_MODE else 'Desarrollo'})")
     dashboard = RealTimeDashboard()
     dashboard.run()
 
