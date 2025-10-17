@@ -54,11 +54,10 @@ USDT_BASE_PRICE = 1.0
 # ============================================================================
 
 GLOBAL_SYMBOLS: List[str] = [
-    "BTCUSDT",    # Bitcoin - Líder del mercado, alta liquidez
-    "ETHUSDT",    # Ethereum - ETFs institucionales + DeFi dominance
-    "SOLUSDT",    # Solana - Alto rendimiento + ecosistema maduro
-    "AVAXUSDT",   # Avalanche - Ecosistema en crecimiento + alto rendimiento
-    "XRPUSDT"     # XRP - Caso legal resuelto + adopción institucional
+    "GOLD",    # Oro - Precio estable, alto volatilidad
+    "SILVER",    # Plata - Precio estable, alto volatilidad
+    "PALLADIUM",    # Palladio - Precio estable, alto volatilidad
+    "PLATINUM",   # Platino - Precio estable, alto volatilidad
 ]
 
 # ============================================================================

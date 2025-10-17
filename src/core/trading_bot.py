@@ -30,6 +30,7 @@ from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
 from .position_adjuster import PositionAdjuster
+from .capital_client import CapitalClient, create_capital_client_from_env
 from database.database import db_manager
 from database.models import Strategy as DBStrategy
 
@@ -97,6 +98,10 @@ class TradingBot:
         self.paper_trader = PaperTrader()
         self.risk_manager = EnhancedRiskManager()
         
+        # Cliente de Capital.com
+        self.capital_client = None
+        self._initialize_capital_client()
+        
         # Sistema de monitoreo de posiciones
         self.position_monitor = PositionMonitor(
             price_fetcher=self._get_current_price,
@@ -119,8 +124,8 @@ class TradingBot:
         self.strategies = {}
         self._initialize_strategies()
         
-        # Símbolos a analizar desde configuración centralizada
-        self.symbols = self.config.SYMBOLS
+        # Símbolos a analizar - usar metales preciosos de Capital.com
+        self.symbols = self._get_capital_symbols()
         
         # Configuración de trading profesional desde configuración centralizada
         self.min_confidence_threshold = self.config.get_min_confidence_threshold()
@@ -187,7 +192,18 @@ class TradingBot:
         self.stop_event = threading.Event()
         
         self.logger.info("🤖 Trading Bot initialized with Position Monitor")
-    
+
+    def _initialize_capital_client(self):
+        """🔌 Inicializar cliente de Capital.com"""
+        try:
+            self.capital_client = create_capital_client_from_env()
+            # Crear sesión automáticamente
+            self.capital_client.create_session()
+            self.logger.info("✅ Capital.com client initialized successfully")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Capital.com client: {e}")
+            self.capital_client = None
+
     def set_trade_event_callback(self, callback):
         """
         🔗 Configurar callback para eventos de trades
@@ -383,35 +399,34 @@ class TradingBot:
         self.logger.info("💾 Cache cleaned up")
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual del símbolo con cache para el position monitor"""
+        """💰 Obtener precio actual del símbolo usando Capital.com con cache"""
         try:
-            # Normalizar símbolo: aceptar 'BTCUSDT', 'BTC/USDT' y convertir a 'BASE/USDT'
-            if '/' in symbol:
-                base, quote = symbol.split('/')
-                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
-            else:
-                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
+            # Normalizar símbolo para Capital.com (Gold, Silver, etc.)
+            capital_symbol = self._normalize_symbol_for_capital(symbol)
             
             # Generar clave de cache para precio basada en símbolo normalizado
-            cache_key = self._get_cache_key("current_price", norm_symbol)
+            cache_key = self._get_cache_key("current_price", capital_symbol)
             
             # Verificar cache (TTL más corto para precios)
             cached_price = self._get_from_cache(cache_key)
             if cached_price is not None:
                 return cached_price
             
-            import ccxt
-            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(norm_symbol)
-            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
+            # Usar Capital.com client si está disponible
+            if self.capital_client:
+                try:
+                    market_data = self.capital_client.get_market_data([capital_symbol])
+                    if market_data and capital_symbol in market_data:
+                        current_price = float(market_data[capital_symbol].get('bid', 0))
+                        
+                        # Almacenar en cache
+                        if current_price > 0:
+                            self._store_in_cache(cache_key, current_price)
+                        
+                        return current_price
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Capital.com price fetch failed for {capital_symbol}: {e}")
             
-            # Almacenar en cache
-            if current_price > 0:
-                self._store_in_cache(cache_key, current_price)
-            
-            return current_price
-        except Exception as e:
-            self.logger.error(f"❌ Error getting current price for {symbol}: {e}")
             # Fallback: intentar obtener desde estrategias
             try:
                 if self.strategies:
@@ -428,7 +443,36 @@ class TradingBot:
             except:
                 pass
             return 0.0
-    
+        except Exception as e:
+            self.logger.error(f"❌ Error getting current price for {symbol}: {e}")
+            return 0.0
+
+    def _normalize_symbol_for_capital(self, symbol: str) -> str:
+        """🔄 Normalizar símbolo para Capital.com"""
+        # Mapeo de símbolos comunes a Capital.com
+        symbol_mapping = {
+            'GOLD': 'GOLD',
+            'XAUUSD': 'GOLD',
+            'SILVER': 'SILVER',
+            'XAGUSD': 'SILVER',
+            'PALLADIUM': 'PALLADIUM',
+            'PLATINUM': 'PLATINUM',
+            'BTC': 'BITCOIN',
+            'BITCOIN': 'BITCOIN',
+            'ETH': 'ETHEREUM',
+            'ETHEREUM': 'ETHEREUM'
+        }
+        
+        # Limpiar símbolo
+        clean_symbol = symbol.upper().replace('/', '').replace('USDT', '').replace('USD', '')
+        
+        return symbol_mapping.get(clean_symbol, clean_symbol)
+
+    def _get_capital_symbols(self) -> List[str]:
+        """📋 Obtener lista de símbolos disponibles en Capital.com"""
+        # Símbolos de metales preciosos disponibles en Capital.com
+        return ['GOLD', 'SILVER', 'PALLADIUM', 'PLATINUM']
+
     def _run_scheduler(self):
         """
         ⏰ Ejecutar scheduler en loop
@@ -1147,38 +1191,37 @@ class TradingBot:
             self.logger.error(f"❌ Error during emergency stop: {e}")
     
     def test_connection(self) -> bool:
-        """🔌 Probar conexión con la API de Binance
+        """🔌 Probar conexión con la API de Capital.com
         
         Returns:
             bool: True si la conexión es exitosa, False en caso contrario
         """
         try:
-            import ccxt
+            if not self.capital_client:
+                self._initialize_capital_client()
             
-            # Obtener credenciales desde variables de entorno
-            api_key = os.getenv('BINANCE_API_KEY')
-            secret_key = os.getenv('BINANCE_SECRET_KEY')
-            testnet = os.getenv('BINANCE_TESTNET', 'true').lower() == 'true'
-            
-            if not api_key or not secret_key:
-                self.logger.error("❌ Credenciales de API no encontradas")
+            if not self.capital_client:
+                self.logger.error("❌ Capital.com client not available")
                 return False
             
-            # Crear instancia de exchange
-            exchange = ccxt.binance({
-                'apiKey': api_key,
-                'secret': secret_key,
-                'sandbox': testnet,
-                'enableRateLimit': True
-            })
+            # Probar conexión con ping
+            ping_result = self.capital_client.ping()
+            if not ping_result.get("success"):
+                self.logger.error("❌ Capital.com ping failed")
+                return False
             
-            # Probar conexión
-            balance = exchange.fetch_balance()
-            self.logger.info("✅ Conexión con Binance exitosa")
+            # Probar obtención de cuentas
+            accounts = self.capital_client.get_accounts()
+            if not accounts:
+                self.logger.error("❌ No accounts found in Capital.com")
+                return False
+            
+            self.logger.info("✅ Conexión con Capital.com exitosa")
+            self.logger.info(f"📊 Cuentas disponibles: {len(accounts)}")
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ Error de conexión con Binance: {e}")
+            self.logger.error(f"❌ Error de conexión con Capital.com: {e}")
             return False
     
     def _start_position_adjustment_monitoring(self):

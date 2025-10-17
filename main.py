@@ -6,13 +6,14 @@ FastAPI backend para análisis técnico de criptomonedas
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-import ccxt
+import os
 import pandas as pd
 import pandas_ta as ta
 from typing import Dict, List, Optional
 import uvicorn
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 # Importar nuestros indicadores avanzados
 from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
@@ -27,11 +28,17 @@ from src.core.trading_bot import TradingBot
 from src.core.enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from src.core.paper_trader import PaperTrader
 from src.core.enhanced_risk_manager import EnhancedRiskManager
+# Capital.com API Client
+from src.core.capital_client import CapitalClient, create_capital_client_from_env
 # BacktestingEngine removido durante la limpieza del proyecto
+
+# Load environment variables
+load_dotenv('.env.development')
 
 # Instancias globales (se inicializan cuando se necesiten)
 trading_bot = None
 paper_trader = None
+capital_client = None
 
 def get_trading_bot():
     """Obtener o crear instancia del trading bot"""
@@ -46,6 +53,18 @@ def get_paper_trader():
     if paper_trader is None:
         paper_trader = PaperTrader()
     return paper_trader
+
+def get_capital_client():
+    """Obtener o crear instancia del cliente de Capital.com"""
+    global capital_client
+    if capital_client is None:
+        capital_client = create_capital_client_from_env()
+        # Crear sesión automáticamente
+        try:
+            capital_client.create_session()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to connect to Capital.com: {str(e)}")
+    return capital_client
 
 def ensure_bot_exists():
     """Asegurar que el bot existe antes de usarlo"""
@@ -72,11 +91,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inicializar exchange (Binance público, sin API keys)
-exchange = ccxt.binance({
-    'sandbox': False,
-    'enableRateLimit': True,
-})
+# Capital.com client se inicializa bajo demanda usando get_capital_client()
 
 # Modelos Pydantic para requests
 class BotConfigUpdate(BaseModel):
@@ -171,9 +186,13 @@ async def health_check():
     🏥 Estado de salud del servidor
     """
     try:
-        # Verificar conexión a exchange
-        ticker = exchange.fetch_ticker('BTC/USDT')
-        exchange_status = "connected" if ticker else "disconnected"
+        # Verificar conexión a Capital.com
+        try:
+            client = get_capital_client()
+            ping_result = client.ping()
+            capital_status = "connected" if ping_result.get("success") else "disconnected"
+        except Exception:
+            capital_status = "disconnected"
         
         # Verificar base de datos
         db_status = "connected" if db_manager else "disconnected"
@@ -187,7 +206,7 @@ async def health_check():
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "services": {
-                "exchange": exchange_status,
+                "capital_com": capital_status,
                 "database": db_status,
                 "trading_bot": bot_status
             },
