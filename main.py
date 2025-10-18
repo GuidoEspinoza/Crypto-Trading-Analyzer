@@ -32,6 +32,9 @@ from src.core.enhanced_risk_manager import EnhancedRiskManager
 from src.core.capital_client import CapitalClient, create_capital_client_from_env
 # BacktestingEngine removido durante la limpieza del proyecto
 
+# Balance Manager
+from src.core.balance_manager import start_balance_manager, stop_balance_manager, get_current_balance_sync
+
 # Importar configuración global
 from src.config.main_config import GLOBAL_SYMBOLS
 
@@ -93,6 +96,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Eventos de startup y shutdown
+@app.on_event("startup")
+async def startup_event():
+    """Inicializar servicios al arrancar el servidor"""
+    try:
+        # Inicializar Balance Manager
+        await start_balance_manager()
+        print("✅ Balance Manager iniciado correctamente")
+    except Exception as e:
+        print(f"❌ Error iniciando Balance Manager: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Limpiar recursos al cerrar el servidor"""
+    try:
+        # Detener Balance Manager
+        await stop_balance_manager()
+        print("✅ Balance Manager detenido correctamente")
+    except Exception as e:
+        print(f"❌ Error deteniendo Balance Manager: {e}")
 
 # Capital.com client se inicializa bajo demanda usando get_capital_client()
 
@@ -813,6 +837,59 @@ async def reset_paper_trading():
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/balance/current")
+async def get_current_balance():
+    """Obtener el balance actual de Capital.com"""
+    try:
+        balance_data = get_current_balance_sync()
+        if balance_data and balance_data.get('available', 0) > 0:
+            return {
+                "status": "success",
+                "message": "Balance obtenido correctamente",
+                "data": balance_data
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": "No se pudo obtener el balance actual o balance es 0",
+                "data": balance_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo balance: {str(e)}")
+
+@app.get("/balance/history")
+async def get_balance_history(limit: int = 50, db: Session = Depends(get_db)):
+    """Obtener historial de balances"""
+    try:
+        from src.database.models import BalanceHistory
+        
+        history = db.query(BalanceHistory).order_by(
+            BalanceHistory.retrieved_at.desc()
+        ).limit(limit).all()
+        
+        return {
+            "status": "success",
+            "message": f"Historial de {len(history)} registros obtenido",
+            "data": [
+                {
+                    "id": record.id,
+                    "available_balance": record.available_balance,
+                    "total_balance": record.total_balance,
+                    "deposit": record.deposit,
+                    "profit_loss": record.profit_loss,
+                    "account_type": record.account_type,
+                    "currency": record.currency,
+                    "session_active": record.session_active,
+                    "connection_status": record.connection_status,
+                    "retrieved_at": record.retrieved_at.isoformat(),
+                    "created_at": record.created_at.isoformat() if record.created_at else None
+                }
+                for record in history
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo historial: {str(e)}")
 
 # Ejecutar servidor si se ejecuta directamente
 if __name__ == "__main__":

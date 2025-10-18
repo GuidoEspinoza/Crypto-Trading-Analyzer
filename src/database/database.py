@@ -15,7 +15,7 @@ import time
 
 from src.config.main_config import CacheConfig
 
-from .models import Base, Trade, Portfolio, Strategy, BacktestResult, TradingSignal, Settings
+from .models import Base, Trade, Portfolio, Strategy, BacktestResult, TradingSignal, Settings, BalanceHistory
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -61,12 +61,13 @@ class DatabaseManager:
         # Crear tablas si no existen
         self.create_tables()
         
-        # Inicializar PAPER_GLOBAL_INITIAL_BALANCE en settings si no existe
-        from src.config.main_config import PAPER_GLOBAL_INITIAL_BALANCE
+        # Inicializar GLOBAL_INITIAL_BALANCE en settings si no existe
+        from src.config.main_config import get_global_initial_balance
         try:
-            self.set_global_initial_balance_if_absent(PAPER_GLOBAL_INITIAL_BALANCE)
+            initial_balance = get_global_initial_balance()
+            self.set_global_initial_balance_if_absent(initial_balance)
         except Exception as e:
-            logger.error(f"⚠️ No se pudo inicializar PAPER_GLOBAL_INITIAL_BALANCE desde config: {e}")
+            logger.error(f"⚠️ No se pudo inicializar GLOBAL_INITIAL_BALANCE desde config: {e}")
         
         # Inicializar portfolio base si no existe
         self.initialize_base_portfolio()

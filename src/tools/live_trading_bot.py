@@ -190,8 +190,12 @@ class LiveTradingBot:
             "start_time": datetime.now(),
             "total_trades": 0,
             "successful_trades": 0,
-            "total_pnl": 0.0
+            "total_pnl": 0.0,
+            "last_known_trades": 0,
+            "last_known_successful": 0
         }
+        
+
     
     def get_status(self):
         """Obtener estado del bot delegando al TradingBot interno"""
@@ -535,37 +539,31 @@ class LiveTradingBot:
                 logger.info(f"   - Aprobado: {risk_assessment.is_approved}")
                 logger.info(f"   - Nivel de Riesgo: {risk_assessment.risk_level.value}")
                 
-                # Ejecutar si está aprobado
+                # Ejecutar si está aprobado - usar el método del trading_bot que maneja real trading
                 if risk_assessment.is_approved and self.trading_bot.enable_trading:
-                    trade_result = self.trading_bot.paper_trader.execute_signal(best_signal)
+                    logger.info(f"🔄 Procesando señal con trading_bot._process_signals para {best_signal.symbol}")
+                    logger.info(f"🔧 Real trading habilitado: {self.trading_bot.enable_real_trading}")
+                    logger.info(f"🔧 Capital client disponible: {self.trading_bot.capital_client is not None}")
                     
-                    if trade_result.success:
-                        self.trading_bot.stats["trades_executed"] += 1
-                        self.trading_bot.stats["daily_trades"] += 1
+                    # Usar el método del trading_bot que maneja tanto paper como real trading
+                    self.trading_bot._process_signals([best_signal])
+                    
+                    # Actualizar estadísticas locales basándose en las estadísticas del trading_bot
+                    current_trades = self.trading_bot.stats["trades_executed"]
+                    current_daily_trades = self.trading_bot.stats["daily_trades"]
+                    current_successful_trades = self.trading_bot.stats["successful_trades"]
+                    
+                    # Verificar si se ejecutó un nuevo trade
+                    if current_trades > self.session_stats.get("last_known_trades", 0):
                         self.session_stats["total_trades"] += 1
+                        self.session_stats["last_known_trades"] = current_trades
                         
-                        # Determinar si fue exitoso basándose en el tipo de trade y PnL real
-                        trade_was_profitable = False
-                        if best_signal.signal_type == "SELL":
-                            # Para ventas, verificar si hay PnL positivo en el mensaje
-                            if "PnL:" in trade_result.message and "$" in trade_result.message:
-                                try:
-                                    # Extraer PnL del mensaje: "PnL: $X.XX"
-                                    pnl_part = trade_result.message.split("PnL: $")[1].split(")")[0]
-                                    pnl_value = float(pnl_part)
-                                    trade_was_profitable = pnl_value > 0
-                                except:
-                                    trade_was_profitable = False
-                        else:
-                            # Para compras, solo contar como exitoso si se ejecutó correctamente
-                            # El éxito real se determinará cuando se venda
-                            trade_was_profitable = trade_result.success
-                        
-                        if trade_was_profitable:
-                            self.trading_bot.stats["successful_trades"] += 1
+                        # Verificar si fue exitoso
+                        if current_successful_trades > self.session_stats.get("last_known_successful", 0):
                             self.session_stats["successful_trades"] += 1
+                            self.session_stats["last_known_successful"] = current_successful_trades
                         
-                        logger.info(f"✅ Trade ejecutado: {trade_result.message}")
+                        logger.info(f"✅ Señal procesada por trading_bot para {best_signal.symbol}")
                         
                         # Actualizar last_signals con la señal ejecutada
                         self.last_signals[symbol] = {
@@ -576,7 +574,7 @@ class LiveTradingBot:
                             'executed': True
                         }
                     else:
-                        logger.warning(f"❌ Trade falló: {trade_result.message}")
+                        logger.warning(f"❌ No se ejecutó trade para {best_signal.symbol}")
                         self.last_signals[symbol] = {
                             'signal': best_signal,
                             'timestamp': datetime.now(),

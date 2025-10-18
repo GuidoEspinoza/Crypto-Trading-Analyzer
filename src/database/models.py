@@ -224,8 +224,7 @@ class TradingSignal(Base):
 
 class Settings(Base):
     """
-    ⚙️ Configuración global simple de clave-valor.
-    Usada para persistir valores como el balance inicial.
+    ⚙️ Configuraciones del sistema almacenadas en DB
     """
     __tablename__ = "settings"
     
@@ -238,3 +237,33 @@ class Settings(Base):
     
     def __repr__(self):
         return f"<Settings(key={self.key}, value={self.value})>"
+
+
+class BalanceHistory(Base):
+    """
+    💰 Historial de balances de Capital.com
+    """
+    __tablename__ = "balance_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Balance information
+    available_balance = Column(Float, nullable=False)
+    total_balance = Column(Float, nullable=True)
+    deposit = Column(Float, nullable=True)
+    profit_loss = Column(Float, nullable=True)
+    
+    # Account information
+    account_type = Column(String(20), default="DEMO")  # DEMO, LIVE
+    currency = Column(String(10), default="USD")
+    
+    # Connection status
+    session_active = Column(Boolean, default=True)
+    connection_status = Column(String(20), default="CONNECTED")  # CONNECTED, DISCONNECTED, ERROR
+    
+    # Timestamps
+    retrieved_at = Column(DateTime, default=func.now(), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    
+    def __repr__(self):
+        return f"<BalanceHistory(available={self.available_balance}, total={self.total_balance}, retrieved_at={self.retrieved_at})>"

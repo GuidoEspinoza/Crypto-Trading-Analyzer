@@ -36,12 +36,28 @@ def _get_env_float(var_name: str, default: float) -> float:
         logger.warning(f"Valor inválido para {var_name}: {value}, usando default {default}")
         return default
 
+# Utilidad para leer variables de entorno como boolean con fallback seguro
+def _get_env_bool(var_name: str, default: bool) -> bool:
+    value = os.getenv(var_name)
+    if value is None or value == "":
+        return default
+    
+    # Convertir string a boolean
+    value_lower = value.lower().strip()
+    if value_lower in ('true', '1', 'yes', 'on', 'enabled'):
+        return True
+    elif value_lower in ('false', '0', 'no', 'off', 'disabled'):
+        return False
+    else:
+        logger.warning(f"Valor inválido para {var_name}: {value}, usando default {default}")
+        return default
+
 # ============================================================================
 # 🎯 SELECTOR DE PERFIL DE TRADING - CAMBIAR AQUÍ
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "ELITE"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
+TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 
 # ============================================================================
 # 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
@@ -54,14 +70,78 @@ PRODUCTION_MODE = _get_env_float("PRODUCTION_MODE", 0.0) == 1.0  # False por def
 USE_LOCAL_DASHBOARD = not PRODUCTION_MODE  # Dashboard local solo en desarrollo
 USE_LOCAL_DATABASE = True  # DB siempre útil para logs y análisis
 PAPER_TRADING_ONLY = not PRODUCTION_MODE  # Paper trading en desarrollo, real en producción
-ENABLE_REAL_TRADING = PRODUCTION_MODE  # Trading real solo en producción
+ENABLE_REAL_TRADING = _get_env_bool("ENABLE_REAL_TRADING", PRODUCTION_MODE)  # Trading real configurado por variable de entorno
 
 # Configuraciones de logging y debugging
 VERBOSE_LOGGING = not PRODUCTION_MODE  # Logging detallado en desarrollo
 ENABLE_DEBUG_FEATURES = not PRODUCTION_MODE  # Características de debug
 
-# Balance inicial global para todas las posiciones en USD
+# ============================================================================
+# 💰 CONFIGURACIÓN DE BALANCE
+# ============================================================================
+
+def _get_capital_balance() -> float:
+    """
+    Obtiene el balance disponible real de la cuenta de Capital.com
+    
+    Returns:
+        float: Balance disponible en USD, o 0.0 si hay error
+    """
+    try:
+        # Importación diferida para evitar dependencias circulares
+        import sys
+        import importlib
+        
+        # Importar dinámicamente el módulo
+        capital_module = importlib.import_module('src.core.capital_client')
+        create_capital_client_from_env = getattr(capital_module, 'create_capital_client_from_env')
+        
+        # Crear cliente de Capital.com
+        capital_client = create_capital_client_from_env()
+        
+        # Obtener balance disponible
+        balance_info = capital_client.get_available_balance()
+        
+        if balance_info and 'available' in balance_info:
+            available_balance = float(balance_info['available'])
+            print(f"✅ Balance real obtenido de Capital.com: ${available_balance:,.2f}")
+            return available_balance
+        else:
+            print("⚠️ No se pudo obtener el balance de Capital.com, usando balance por defecto")
+            return 0.0
+            
+    except Exception as e:
+        print(f"❌ Error al obtener balance de Capital.com: {e}")
+        return 0.0
+
+# 💰 Balance inicial global para todas las posiciones en USD (paper trading)
 PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
+
+# 💰 Balance inicial global para todas las posiciones en USD (real trading)
+# Se obtiene dinámicamente de Capital.com cuando ENABLE_REAL_TRADING está habilitado
+REAL_GLOBAL_INITIAL_BALANCE = 0.0  # Se inicializa en 0, se obtiene dinámicamente cuando se necesite
+
+def get_global_initial_balance() -> float:
+    """
+    Obtiene el balance inicial global, ya sea del paper trading o del balance real de Capital.com
+    
+    Returns:
+        float: Balance inicial en USD
+    """
+    global REAL_GLOBAL_INITIAL_BALANCE
+    
+    if _get_env_bool("ENABLE_REAL_TRADING", False):
+        # Si el trading real está habilitado, obtener balance real
+        if REAL_GLOBAL_INITIAL_BALANCE == 0.0:  # Solo obtener si no se ha obtenido antes
+            REAL_GLOBAL_INITIAL_BALANCE = _get_capital_balance()
+        return REAL_GLOBAL_INITIAL_BALANCE
+    else:
+        # Si no, usar paper trading
+        return PAPER_GLOBAL_INITIAL_BALANCE
+
+# Balance inicial global para todas las posiciones en USD
+# Usa balance real si el trading real está habilitado, sino usa paper trading
+GLOBAL_INITIAL_BALANCE = PAPER_GLOBAL_INITIAL_BALANCE  # Por defecto paper trading, se actualiza dinámicamente
 
 # Precio base de USD (moneda fiat)
 USD_BASE_PRICE = 1.0
@@ -116,15 +196,11 @@ class TradingProfiles:
             "name": "Rápido",
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
             "timeframes": ["1m", "5m", "15m"],
-            "analysis_interval": 30,  # Intervalo de análisis (minutos)
+            "analysis_interval": 5,  # Intervalo de análisis (minutos)
             "min_confidence": 65.0,  # Aumentado para mejor calidad de señales
             "max_daily_trades": 20,  # Reducido para mejor selección
             "max_positions": 8,  # Reducido para mejor control
-            # Circuit Breaker Config - Optimizado
-            "max_consecutive_losses": 7,  # Aumentado para tolerancia
-            "circuit_breaker_cooldown_hours": 1.5,  # Reducido para eficiencia
-            "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
-            "gradual_reactivation": True,  # Nueva funcionalidad
+
             # Paper Trader Config - Optimizado
             "max_position_size": 0.15,  # 15% como decimal
             "max_total_exposure": 0.70,  # Exposición total máxima 70%
@@ -242,8 +318,7 @@ class TradingProfiles:
             # Error Handling Config
             "error_cooldown_seconds": 60,  # Tiempo de espera tras error (seg)
             "max_consecutive_errors": 5,  # Máximo errores consecutivos
-            "circuit_breaker_threshold": 10,  # Umbral para circuit breaker
-            "circuit_breaker_timeout": 300  # Timeout del circuit breaker (seg)
+
         },
         "ELITE": {
             "name": "Elite",
@@ -253,11 +328,7 @@ class TradingProfiles:
             "min_confidence": 86.0,
             "max_daily_trades": 8,
             "max_positions": 4,
-            # Circuit Breaker Config
-            "max_consecutive_losses": 3,
-            "circuit_breaker_cooldown_hours": 6,
-            "max_drawdown_threshold": 0.05,  # 5% como decimal
-            "gradual_reactivation": True,
+
             # Paper Trader Config
             "max_position_size": 0.10,  # 10% del balance
             "max_total_exposure": 0.55,  # 55% exposición total
@@ -370,8 +441,7 @@ class TradingProfiles:
             # Error Handling Config
             "error_cooldown_seconds": 75,
             "max_consecutive_errors": 4,
-            "circuit_breaker_threshold": 8,
-            "circuit_breaker_timeout": 360
+
         },
         "CONSERVADOR": {
             "name": "Conservador",
@@ -381,11 +451,7 @@ class TradingProfiles:
             "min_confidence": 85.0,  # Aumentado para máxima seguridad
             "max_daily_trades": 6,  # Aumentado ligeramente para oportunidades
             "max_positions": 3,  # Aumentado para diversificación mínima
-            # Circuit Breaker Config - Ultra conservador
-            "max_consecutive_losses": 2,  # Muy estricto
-            "circuit_breaker_cooldown_hours": 8,  # Cooldown largo
-            "max_drawdown_threshold": 0.05,  # Estandarizado: 5% como decimal
-            "gradual_reactivation": True,  # Nueva funcionalidad
+
             # Paper Trader Config - Conservador
             "max_position_size": 0.05,  # 5% como decimal
             "max_total_exposure": 0.35,  # 35% como decimal
@@ -503,8 +569,7 @@ class TradingProfiles:
             # Error Handling Config
             "error_cooldown_seconds": 120,  # Mayor tiempo de espera
             "max_consecutive_errors": 2,  # Menor tolerancia a errores
-            "circuit_breaker_threshold": 5,  # Menor umbral para circuit breaker
-            "circuit_breaker_timeout": 600  # Mayor timeout del circuit breaker
+
         }
     }
     
@@ -561,7 +626,12 @@ class TradingBotConfig:
         return TradingProfiles.get_current_profile()["timeframes"]
     
     # Valor por defecto del portfolio para cálculos cuando no hay datos
-    DEFAULT_PORTFOLIO_VALUE: float = PAPER_GLOBAL_INITIAL_BALANCE
+    @classmethod
+    def get_default_portfolio_value(cls) -> float:
+        """Obtiene el valor por defecto del portfolio."""
+        return get_global_initial_balance()
+    
+    DEFAULT_PORTFOLIO_VALUE: float = 1000.0  # Valor por defecto, se actualiza dinámicamente
     
     # 🎯 CONFIGURACIÓN DINÁMICA ADICIONAL BASADA EN PERFIL
     @classmethod
@@ -628,10 +698,7 @@ class TradingBotConfig:
         """Máximo de pérdidas consecutivas antes de activar circuit breaker según perfil activo."""
         return TradingProfiles.get_current_profile()["max_consecutive_losses"]
     
-    @classmethod
-    def get_circuit_breaker_cooldown_hours(cls) -> int:
-        """Horas de cooldown después de activar circuit breaker según perfil activo."""
-        return TradingProfiles.get_current_profile()["circuit_breaker_cooldown_hours"]
+
     
     @classmethod
     def get_max_drawdown_threshold(cls) -> float:
@@ -647,7 +714,12 @@ class PaperTraderConfig:
     """Configuración del simulador de trading (paper trading)."""
     
     # Balance inicial en USD para simulación
-    INITIAL_BALANCE: float = PAPER_GLOBAL_INITIAL_BALANCE
+    @classmethod
+    def get_initial_balance(cls) -> float:
+        """Obtiene el balance inicial según configuración."""
+        return get_global_initial_balance()
+    
+    INITIAL_BALANCE: float = 1000.0  # Valor por defecto, se actualiza dinámicamente
     
     @classmethod
     def get_max_position_size(cls) -> float:
@@ -1651,13 +1723,12 @@ class ConfigValidator:
         'max_drawdown_threshold': (0.05, 0.5),
         'volatility_adjustment_factor': (0.5, 3.0),
         'min_confidence_score': (30, 95),
-        'analysis_interval': (30, 3600),
+        'analysis_interval': (5, 3600),
         'position_check_interval': (10, 300),
         'connection_timeout': (5, 120),
         'max_retries': (1, 10),
         'retry_delay': (0.5, 30.0),
-        'max_consecutive_losses': (1, 20),
-        'circuit_breaker_cooldown_hours': (1, 48)
+        'max_consecutive_losses': (1, 20)
     }
     
     @classmethod

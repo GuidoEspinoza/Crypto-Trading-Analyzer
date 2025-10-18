@@ -9,7 +9,7 @@ import os
 import schedule
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import threading
 import json
@@ -137,6 +137,10 @@ class TradingBot:
         self.max_concurrent_positions = self.config.get_max_concurrent_positions()
         self.enable_trading = True  # Activar/desactivar ejecución de trades
         
+        # Configuración de trading real vs paper trading
+        self.enable_real_trading = os.getenv('ENABLE_REAL_TRADING', 'false').lower() == 'true'
+        self.real_trading_size_multiplier = float(os.getenv('REAL_TRADING_SIZE_MULTIPLIER', '0.1'))  # 10% del tamaño de paper trading por defecto
+        
         # Configuración de timeframes profesional desde configuración centralizada
         self.primary_timeframe = self.config.get_primary_timeframe()
         self.confirmation_timeframe = self.config.get_confirmation_timeframe()
@@ -174,22 +178,8 @@ class TradingBot:
             "last_reset_day": initial_last_reset_day
         }
         
-        # Circuit breaker avanzado
+        # Tracking de pérdidas consecutivas para estadísticas
         self.consecutive_losses = 0
-        self.circuit_breaker_active = False
-        self.circuit_breaker_activated_at = None
-        self.max_consecutive_losses = self.config.get_max_consecutive_losses()
-        self.circuit_breaker_cooldown_hours = self.config.get_circuit_breaker_cooldown_hours()
-        
-        # Nuevas funcionalidades del circuit breaker
-        self.max_drawdown_threshold = self.config.get_max_drawdown_threshold()  # Ya en decimal
-        self.current_drawdown = 0.0
-        self.peak_portfolio_value = 0.0
-        self.gradual_reactivation_enabled = True
-        self.reactivation_phase = 0  # 0: inactivo, 1-3: fases de reactivación
-        self.reactivation_trades_allowed = 0
-        self.reactivation_success_count = 0
-        self.circuit_breaker_trigger_reason = ""
         
         # Thread para ejecución
         self.analysis_thread = None
@@ -591,15 +581,7 @@ class TradingBot:
         Args:
             signals: Lista de señales generadas
         """
-        # Verificar circuit breaker avanzado
-        if not self._check_circuit_breaker():
-            self.logger.warning("🚨 Circuit breaker active - skipping signal processing")
-            return
-        
-        # Verificar límites de reactivación gradual
-        if not self._can_trade_during_reactivation():
-            self.logger.info("🟡 Reactivation limits reached - skipping signal processing")
-            return
+
         
         # Filtrar señales por confianza mínima
         high_confidence_signals = [
@@ -639,7 +621,13 @@ class TradingBot:
                 
                 # Ejecutar si está aprobado
                 if risk_assessment.is_approved and self.enable_trading:
+                    # Ejecutar paper trade siempre
                     trade_result = self.paper_trader.execute_signal(signal)
+                    
+                    # Ejecutar trade real si está habilitado
+                    real_trade_result = None
+                    if self.enable_real_trading and self.capital_client:
+                        real_trade_result = self._execute_real_trade(signal, risk_assessment)
                     
                     if trade_result.success:
                         self.stats["trades_executed"] += 1
@@ -665,10 +653,21 @@ class TradingBot:
                         if trade_was_profitable:
                             self.stats["successful_trades"] += 1
                         
-                        # Actualizar tracking de pérdidas consecutivas
-                        self._update_consecutive_losses(trade_was_profitable)
+                        # Actualizar tracking de pérdidas consecutivas para estadísticas
+                        if trade_was_profitable:
+                            self.consecutive_losses = 0
+                        else:
+                            self.consecutive_losses += 1
                         
-                        self.logger.info(f"✅ Trade executed: {trade_result.message}")
+                        # Mensaje de log combinado
+                        log_message = f"✅ Paper Trade executed: {trade_result.message}"
+                        if real_trade_result:
+                            if real_trade_result.get("success"):
+                                log_message += f" | 🔴 Real Trade: SUCCESS - Deal ID: {real_trade_result.get('deal_id', 'N/A')}"
+                            else:
+                                log_message += f" | 🔴 Real Trade: FAILED - {real_trade_result.get('error', 'Unknown error')}"
+                        
+                        self.logger.info(log_message)
                         
                         # Emitir evento de trade ejecutado
                         self._emit_trade_event(signal, trade_result, risk_assessment)
@@ -731,203 +730,7 @@ class TradingBot:
             # Sin acción antes del horario de reset o si ya se realizó en el día
             pass
     
-    def _check_circuit_breaker(self) -> bool:
-        """
-        🚨 Verificar estado del circuit breaker avanzado
-        
-        Returns:
-            bool: True si el trading está permitido, False si está bloqueado
-        """
-        # Verificar drawdown antes que pérdidas consecutivas
-        self._check_drawdown_circuit_breaker()
-        
-        # Si no está activo, permitir trading
-        if not self.circuit_breaker_active:
-            return True
-        
-        # Verificar si ha pasado el tiempo de cooldown
-        if self.circuit_breaker_activated_at:
-            time_since_activation = datetime.now() - self.circuit_breaker_activated_at
-            cooldown_duration = timedelta(hours=self.circuit_breaker_cooldown_hours)
-            
-            if time_since_activation >= cooldown_duration:
-                # Reactivación gradual
-                if self.gradual_reactivation_enabled:
-                    self._initiate_gradual_reactivation()
-                else:
-                    # Desactivar circuit breaker después del cooldown
-                    self.circuit_breaker_active = False
-                    self.circuit_breaker_activated_at = None
-                    self.consecutive_losses = 0
-                    self.logger.info(f"🟢 Circuit breaker deactivated after {self.circuit_breaker_cooldown_hours}h cooldown")
-                return True
-            else:
-                remaining_time = cooldown_duration - time_since_activation
-                remaining_hours = remaining_time.total_seconds() / 3600
-                self.logger.info(f"🔴 Circuit breaker active - {remaining_hours:.1f}h remaining")
-                return False
-        
-        return False
-    
-    def _update_consecutive_losses(self, trade_was_profitable: bool):
-        """
-        📊 Actualizar contador de pérdidas consecutivas y reactivación gradual
-        
-        Args:
-            trade_was_profitable: True si el trade fue rentable, False si fue pérdida
-        """
-        if trade_was_profitable:
-            # Resetear contador si el trade fue rentable
-            self.consecutive_losses = 0
-            self.logger.info(f"✅ Profitable trade - consecutive losses reset to 0")
-            
-            # Actualizar progreso de reactivación gradual
-            self._update_reactivation_success(True)
-            
-        else:
-            # Incrementar contador de pérdidas
-            self.consecutive_losses += 1
-            self.logger.warning(f"❌ Loss #{self.consecutive_losses}/{self.max_consecutive_losses}")
-            
-            # Actualizar progreso de reactivación gradual (pérdida)
-            self._update_reactivation_success(False)
-            
-            # Activar circuit breaker si se alcanza el límite
-            if self.consecutive_losses >= self.max_consecutive_losses and not self.circuit_breaker_active:
-                self.circuit_breaker_active = True
-                self.circuit_breaker_activated_at = datetime.now()
-                self.circuit_breaker_trigger_reason = f"CONSECUTIVE_LOSSES_{self.consecutive_losses}"
-                self.logger.error(f"🚨 CIRCUIT BREAKER ACTIVATED! {self.consecutive_losses} consecutive losses")
-                self.logger.error(f"🛑 Trading suspended for {self.circuit_breaker_cooldown_hours} hours")
-    
-    def _get_remaining_cooldown_hours(self) -> float:
-        """
-        ⏰ Calcular horas restantes de cooldown del circuit breaker
-        
-        Returns:
-            float: Horas restantes de cooldown (0 si no está activo)
-        """
-        if not self.circuit_breaker_active or not self.circuit_breaker_activated_at:
-            return 0.0
-        
-        time_since_activation = datetime.now() - self.circuit_breaker_activated_at
-        cooldown_duration = timedelta(hours=self.circuit_breaker_cooldown_hours)
-        remaining_time = cooldown_duration - time_since_activation
-        
-        if remaining_time.total_seconds() <= 0:
-            return 0.0
-        
-        return remaining_time.total_seconds() / 3600
-    
-    def _check_drawdown_circuit_breaker(self):
-        """
-        📉 Verificar circuit breaker por drawdown del portafolio
-        """
-        try:
-            portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-            current_value = portfolio_summary.get("total_value", 0)
-            
-            # Actualizar pico del portafolio
-            if current_value > self.peak_portfolio_value:
-                self.peak_portfolio_value = current_value
-                self.current_drawdown = 0.0
-            elif self.peak_portfolio_value > 0:
-                # Calcular drawdown actual
-                self.current_drawdown = (self.peak_portfolio_value - current_value) / self.peak_portfolio_value
-                
-                # Activar circuit breaker si el drawdown excede el umbral
-                if (self.current_drawdown >= self.max_drawdown_threshold and 
-                    not self.circuit_breaker_active):
-                    
-                    self.circuit_breaker_active = True
-                    self.circuit_breaker_activated_at = datetime.now()
-                    self.circuit_breaker_trigger_reason = f"DRAWDOWN_{self.current_drawdown:.1%}"
-                    
-                    self.logger.error(f"🚨 CIRCUIT BREAKER ACTIVATED BY DRAWDOWN!")
-                    self.logger.error(f"📉 Current drawdown: {self.current_drawdown:.1%} (threshold: {self.max_drawdown_threshold:.1%})")
-                    self.logger.error(f"💰 Peak value: ${self.peak_portfolio_value:,.2f}, Current: ${current_value:,.2f}")
-                    
-        except Exception as e:
-            self.logger.error(f"Error checking drawdown circuit breaker: {e}")
-    
-    def _initiate_gradual_reactivation(self):
-        """
-        🔄 Iniciar reactivación gradual del trading
-        """
-        try:
-            if self.reactivation_phase == 0:
-                # Fase 1: Solo 1 trade de prueba
-                self.reactivation_phase = 1
-                self.reactivation_trades_allowed = 1
-                self.reactivation_success_count = 0
-                self.logger.info(f"🟡 Iniciando reactivación gradual - Fase 1: {self.reactivation_trades_allowed} trade permitido")
-                
-            elif self.reactivation_phase == 1 and self.reactivation_success_count >= 1:
-                # Fase 2: Hasta 3 trades
-                self.reactivation_phase = 2
-                self.reactivation_trades_allowed = 3
-                self.reactivation_success_count = 0
-                self.logger.info(f"🟡 Reactivación gradual - Fase 2: {self.reactivation_trades_allowed} trades permitidos")
-                
-            elif self.reactivation_phase == 2 and self.reactivation_success_count >= 2:
-                # Fase 3: Trading normal pero con límites reducidos
-                self.reactivation_phase = 3
-                self.reactivation_trades_allowed = 5
-                self.reactivation_success_count = 0
-                self.logger.info(f"🟡 Reactivación gradual - Fase 3: {self.reactivation_trades_allowed} trades permitidos")
-                
-            elif self.reactivation_phase == 3 and self.reactivation_success_count >= 3:
-                # Reactivación completa
-                self._complete_reactivation()
-                
-        except Exception as e:
-            self.logger.error(f"Error in gradual reactivation: {e}")
-    
-    def _complete_reactivation(self):
-        """
-        ✅ Completar reactivación del circuit breaker
-        """
-        self.circuit_breaker_active = False
-        self.circuit_breaker_activated_at = None
-        self.consecutive_losses = 0
-        self.reactivation_phase = 0
-        self.reactivation_trades_allowed = 0
-        self.reactivation_success_count = 0
-        self.circuit_breaker_trigger_reason = ""
-        
-        self.logger.info(f"🟢 Circuit breaker completamente reactivado - Trading normal restaurado")
-    
-    def _can_trade_during_reactivation(self) -> bool:
-        """
-        🔍 Verificar si se puede hacer trading durante la reactivación gradual
-        """
-        if self.reactivation_phase == 0:
-            return True  # No hay reactivación en curso
-            
-        # Contar trades ejecutados en la fase actual
-        today = datetime.now().date()
-        trades_today = self.stats.get("daily_trades", 0)
-        
-        if trades_today < self.reactivation_trades_allowed:
-            return True
-        else:
-            self.logger.info(f"🟡 Límite de trades de reactivación alcanzado: {trades_today}/{self.reactivation_trades_allowed}")
-            return False
-    
-    def _update_reactivation_success(self, trade_was_profitable: bool):
-        """
-        📊 Actualizar contador de éxito durante reactivación
-        """
-        if self.reactivation_phase > 0 and trade_was_profitable:
-            self.reactivation_success_count += 1
-            self.logger.info(f"✅ Trade exitoso durante reactivación: {self.reactivation_success_count} en fase {self.reactivation_phase}")
-            
-            # Verificar si se puede avanzar a la siguiente fase
-            if ((self.reactivation_phase == 1 and self.reactivation_success_count >= 1) or
-                (self.reactivation_phase == 2 and self.reactivation_success_count >= 2) or
-                (self.reactivation_phase == 3 and self.reactivation_success_count >= 3)):
-                
-                self._initiate_gradual_reactivation()
+
     
     def _update_strategy_stats(self):
         """
@@ -975,15 +778,6 @@ class TradingBot:
         
         portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
         
-        # Información adicional del circuit breaker
-        circuit_breaker_info = {
-            "circuit_breaker_active": self.circuit_breaker_active,
-            "consecutive_losses": self.consecutive_losses,
-            "max_consecutive_losses": self.max_consecutive_losses,
-            "circuit_breaker_activated_at": self.circuit_breaker_activated_at,
-            "circuit_breaker_cooldown_hours": self.circuit_breaker_cooldown_hours
-        }
-        
         status = BotStatus(
             is_running=self.is_running,
             uptime=uptime,
@@ -996,9 +790,6 @@ class TradingBot:
             last_analysis_time=datetime.now() - timedelta(minutes=self.analysis_interval) if self.is_running else datetime.now(),
             next_analysis_time=next_analysis
         )
-        
-        # Agregar información del circuit breaker como atributo adicional
-        status.circuit_breaker_info = circuit_breaker_info
         
         return status
     
@@ -1047,17 +838,7 @@ class TradingBot:
                 "symbols_monitored": self.symbols,
                 "min_confidence_threshold": self.min_confidence_threshold
             },
-            "risk_management": {
-                **risk_report,
-                "circuit_breaker": {
-                    "active": self.circuit_breaker_active,
-                    "consecutive_losses": self.consecutive_losses,
-                    "max_consecutive_losses": self.max_consecutive_losses,
-                    "activated_at": self.circuit_breaker_activated_at.isoformat() if self.circuit_breaker_activated_at else None,
-                    "cooldown_hours": self.circuit_breaker_cooldown_hours,
-                    "remaining_cooldown_hours": self._get_remaining_cooldown_hours() if hasattr(self, '_get_remaining_cooldown_hours') else 0
-                }
-            },
+            "risk_management": risk_report,
             "open_positions": open_positions,
             "position_monitor": {
                 "status": self.position_monitor.get_monitoring_status(),
@@ -1326,6 +1107,205 @@ class TradingBot:
             self.logger.warning("⚠️ Event queue full, dropping analysis event")
         except Exception as e:
             self.logger.error(f"❌ Error emitting analysis event: {e}")
+    
+    def _normalize_symbol_for_capital(self, symbol: str) -> str:
+        """
+        🔄 Normalizar símbolo para Capital.com
+        
+        Args:
+            symbol: Símbolo original (ej: ETHUSD, ETH)
+            
+        Returns:
+            Símbolo normalizado para Capital.com
+        """
+        # Mapeo de símbolos comunes
+        symbol_mapping = {
+            "ETHUSD": "ETHUSD",
+            "ETH": "ETHUSD",
+            "BTCUSD": "BTCUSD", 
+            "BTC": "BTCUSD",
+            "ADAUSD": "ADAUSD",
+            "ADA": "ADAUSD",
+            "SOLUSD": "SOLUSD",
+            "SOL": "SOLUSD",
+            "DOTUSD": "DOTUSD",
+            "DOT": "DOTUSD"
+        }
+        
+        # Convertir a mayúsculas y buscar en el mapeo
+        normalized = symbol_mapping.get(symbol.upper(), symbol.upper())
+        
+        # Si no está en el mapeo y no termina en USD, agregar USD
+        if normalized not in symbol_mapping.values() and not normalized.endswith("USD"):
+            normalized = f"{normalized}USD"
+            
+        return normalized
+    
+    def _execute_real_trade(self, signal: TradingSignal, risk_assessment) -> Dict[str, Any]:
+        """
+        🔴 Ejecutar trade real en Capital.com
+        
+        Args:
+            signal: Señal de trading
+            risk_assessment: Evaluación de riesgo
+            
+        Returns:
+            Dict con resultado del trade real
+        """
+        try:
+            # 1. Verificar balance disponible
+            balance_result = self.capital_client.get_available_balance()
+            if not balance_result.get("success"):
+                return {
+                    "success": False,
+                    "error": f"Failed to get account balance: {balance_result.get('error')}"
+                }
+            
+            available_balance = balance_result.get("available", 0)
+            currency_symbol = balance_result.get("symbol", "$")
+            
+            self.logger.info(f"💰 Available balance: {currency_symbol}{available_balance}")
+            
+            # 2. Convertir símbolo al formato de Capital.com
+            capital_symbol = self._normalize_symbol_for_capital(signal.symbol)
+            
+            # 3. Calcular tamaño de posición para trading real basado en balance disponible
+            # Obtener max_position_size del perfil activo (15% por defecto)
+            from src.config.main_config import TradingProfiles
+            max_position_pct = TradingProfiles.get_current_profile()["max_position_size"]
+            
+            # Calcular valor máximo de posición basado en balance real disponible
+            max_position_value = available_balance * max_position_pct
+            
+            # Calcular tamaño en unidades del activo
+            current_price = signal.price if hasattr(signal, 'price') else signal.current_price
+            real_size = max_position_value / current_price
+            
+            # 4. Redondear a 2 decimales para evitar problemas de precisión
+            real_size = round(real_size, 2)
+            
+            # Log detallado del cálculo
+            self.logger.info(f"💰 Cálculo de posición real:")
+            self.logger.info(f"   Balance disponible: {currency_symbol}{available_balance:.2f}")
+            self.logger.info(f"   Max position size: {max_position_pct:.1%}")
+            self.logger.info(f"   Valor máximo posición: {currency_symbol}{max_position_value:.2f}")
+            self.logger.info(f"   Precio actual {capital_symbol}: {currency_symbol}{current_price:.2f}")
+            self.logger.info(f"   Tamaño calculado: {real_size:.4f} unidades")
+            
+            # 5. Verificar si tenemos suficiente balance para el trade
+            # El valor real de la posición ya está calculado como max_position_value
+            # Usar un factor de seguridad del 20% para el margen requerido
+            required_margin = max_position_value * 0.2
+            
+            if available_balance < required_margin:
+                return {
+                    "success": False,
+                    "error": f"Insufficient balance. Available: {currency_symbol}{available_balance:.2f}, Required margin: {currency_symbol}{required_margin:.2f}, Position value: {currency_symbol}{max_position_value:.2f}"
+                }
+            
+            # Verificar tamaño mínimo (Capital.com generalmente requiere mínimo 0.01)
+            if real_size < 0.01:
+                return {
+                    "success": False,
+                    "error": f"Position size too small: {real_size} (minimum: 0.01)"
+                }
+            
+            # 6. Obtener valores de TP y SL de la señal
+            stop_loss = None
+            take_profit = None
+            
+            if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
+                stop_loss = signal.stop_loss_price
+                self.logger.info(f"🛡️ Stop Loss: ${stop_loss:.4f}")
+            
+            if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
+                take_profit = signal.take_profit_price
+                self.logger.info(f"🎯 Take Profit: ${take_profit:.4f}")
+            
+            # Si no hay TP/SL en la señal, usar valores del risk assessment
+            if stop_loss is None and hasattr(risk_assessment, 'dynamic_stop_loss'):
+                stop_loss = risk_assessment.dynamic_stop_loss.stop_loss_price
+                self.logger.info(f"🛡️ Stop Loss (from risk assessment): ${stop_loss:.4f}")
+                
+            if take_profit is None and hasattr(risk_assessment, 'dynamic_take_profit'):
+                take_profit = risk_assessment.dynamic_take_profit.take_profit_price
+                self.logger.info(f"🎯 Take Profit (from risk assessment): ${take_profit:.4f}")
+            
+            self.logger.info(f"🔴 Executing REAL trade: {signal.signal_type} {capital_symbol} size={real_size}")
+            self.logger.info(f"🔴 Stop Loss: {stop_loss}, Take Profit: {take_profit}")
+            self.logger.info(f"🔴 Capital.com API URL: {self.capital_client.base_url}")
+            
+            # Ejecutar orden según el tipo de señal
+            if signal.signal_type == "BUY":
+                self.logger.info(f"🔴 Enviando orden BUY a Capital.com...")
+                result = self.capital_client.buy_market_order(
+                    epic=capital_symbol,
+                    size=real_size,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit
+                )
+                self.logger.info(f"🔴 Respuesta de Capital.com BUY: {result}")
+            elif signal.signal_type == "SELL":
+                # Para SELL, primero verificar si tenemos posiciones abiertas
+                self.logger.info(f"🔴 Verificando posiciones existentes para SELL...")
+                positions_result = self.capital_client.get_positions()
+                if not positions_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": f"Failed to get positions: {positions_result.get('error')}"
+                    }
+                
+                # Buscar posición abierta para este símbolo
+                open_position = None
+                for position in positions_result.get("positions", []):
+                    if position.get("market", {}).get("epic") == capital_symbol:
+                        open_position = position
+                        break
+                
+                if open_position:
+                    # Cerrar posición existente
+                    deal_id = open_position.get("position", {}).get("dealId")
+                    position_size = abs(float(open_position.get("position", {}).get("size", 0)))
+                    close_size = min(real_size, position_size)
+                    
+                    self.logger.info(f"🔴 Cerrando posición existente - Deal ID: {deal_id}, Size: {close_size}")
+                    result = self.capital_client.close_position(
+                        deal_id=deal_id,
+                        direction="SELL",
+                        size=close_size
+                    )
+                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {result}")
+                else:
+                    # Abrir nueva posición de venta
+                    self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+                    result = self.capital_client.sell_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit
+                    )
+                    self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
+            else:
+                return {
+                    "success": False,
+                    "error": f"Unknown signal type: {signal.signal_type}"
+                }
+            
+            # Log del resultado
+            if result.get("success"):
+                self.logger.info(f"🔴 Real trade SUCCESS: {signal.signal_type} {capital_symbol} - Deal ID: {result.get('deal_id')}")
+            else:
+                self.logger.error(f"🔴 Real trade FAILED: {signal.signal_type} {capital_symbol} - Error: {result.get('error')}")
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Exception executing real trade: {str(e)}"
+            self.logger.error(f"🔴 {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg
+            }
     
     def get_events(self) -> List[Dict]:
         """📥 Obtener eventos pendientes para LiveTradingBot"""

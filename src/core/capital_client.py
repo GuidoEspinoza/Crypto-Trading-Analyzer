@@ -358,6 +358,64 @@ class CapitalClient:
                 "error": error_msg
             }
     
+    def get_available_balance(self) -> Dict[str, Any]:
+        """
+        💰 Obtener balance disponible de la cuenta principal
+        
+        Returns:
+            Dict con el balance disponible y información adicional
+        """
+        accounts_result = self.get_accounts()
+        
+        if not accounts_result.get("success"):
+            return {
+                "success": False,
+                "error": f"Failed to get accounts: {accounts_result.get('error')}"
+            }
+        
+        try:
+            accounts_data = accounts_result.get("accounts", {})
+            accounts_list = accounts_data.get("accounts", [])
+            
+            if not accounts_list:
+                return {
+                    "success": False,
+                    "error": "No accounts found"
+                }
+            
+            # Buscar la cuenta principal (preferred=True) o tomar la primera
+            main_account = None
+            for account in accounts_list:
+                if account.get("preferred", False):
+                    main_account = account
+                    break
+            
+            if not main_account:
+                main_account = accounts_list[0]
+            
+            balance_info = main_account.get("balance", {})
+            
+            return {
+                "success": True,
+                "account_id": main_account.get("accountId"),
+                "account_name": main_account.get("accountName"),
+                "currency": main_account.get("currency"),
+                "symbol": main_account.get("symbol"),
+                "available": balance_info.get("available", 0),
+                "balance": balance_info.get("balance", 0),
+                "deposit": balance_info.get("deposit", 0),
+                "profit_loss": balance_info.get("profitLoss", 0),
+                "full_balance_info": balance_info
+            }
+            
+        except Exception as e:
+            error_msg = f"Error parsing account balance: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg
+            }
+    
     def get_markets(self, search_term: Optional[str] = None, epics: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Get available markets/instruments
@@ -665,6 +723,198 @@ class CapitalClient:
             "info"
         )
     
+    def place_order(self, epic: str, direction: str, size: float, order_type: str = "MARKET", 
+                   stop_level: Optional[float] = None, limit_level: Optional[float] = None,
+                   guaranteed_stop: bool = False, force_open: bool = True) -> Dict[str, Any]:
+        """
+        Place a trading order on Capital.com
+        
+        Args:
+            epic: Market identifier (e.g., "ETHUSD")
+            direction: "BUY" or "SELL"
+            size: Order size
+            order_type: "MARKET" or "LIMIT" (default: "MARKET")
+            stop_level: Stop loss level (optional)
+            limit_level: Take profit level (optional)
+            guaranteed_stop: Whether to use guaranteed stop (default: False)
+            force_open: Whether to force open new position (default: True)
+            
+        Returns:
+            Dict containing order result
+        """
+        if not self._ensure_valid_session():
+            return {"success": False, "error": "Failed to establish valid session"}
+        
+        # Endpoint correcto según documentación oficial
+        url = f"{self.base_url}/positions"
+        
+        # Prepare order data según formato oficial de Capital.com
+        order_data = {
+            "epic": epic,
+            "direction": direction.upper(),
+            "size": size,  # Enviar como número, no string
+            "guaranteedStop": guaranteed_stop
+        }
+        
+        # Add stop and limit levels if provided (nombres correctos según API)
+        if stop_level is not None:
+            order_data["stopLevel"] = stop_level
+        if limit_level is not None:
+            order_data["profitLevel"] = limit_level  # Capital.com usa 'profitLevel' no 'limitLevel'
+        
+        try:
+            logger.info(f"Placing {direction} order for {epic}: size={size}, type={order_type}")
+            logger.info(f"Order payload: {order_data}")
+            
+            response = self.session.post(url, json=order_data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Order placed successfully: {result}")
+                return {
+                    "success": True,
+                    "deal_reference": result.get("dealReference"),
+                    "deal_id": result.get("dealId"),
+                    "epic": epic,
+                    "direction": direction,
+                    "size": size,
+                    "order_type": order_type,
+                    "response": result
+                }
+            else:
+                error_msg = f"Failed to place order: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg, "status_code": response.status_code}
+                
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Network error placing order: {str(e)}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+    
+    def buy_market_order(self, epic: str, size: float, stop_loss: Optional[float] = None, 
+                        take_profit: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Place a market buy order
+        
+        Args:
+            epic: Market identifier (e.g., "ETHUSD")
+            size: Order size
+            stop_loss: Stop loss level (optional)
+            take_profit: Take profit level (optional)
+            
+        Returns:
+            Dict containing order result
+        """
+        return self.place_order(
+            epic=epic,
+            direction="BUY",
+            size=size,
+            order_type="MARKET",
+            stop_level=stop_loss,
+            limit_level=take_profit
+        )
+    
+    def sell_market_order(self, epic: str, size: float, stop_loss: Optional[float] = None, 
+                         take_profit: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Place a market sell order
+        
+        Args:
+            epic: Market identifier (e.g., "ETHUSD")
+            size: Order size
+            stop_loss: Stop loss level (optional)
+            take_profit: Take profit level (optional)
+            
+        Returns:
+            Dict containing order result
+        """
+        return self.place_order(
+            epic=epic,
+            direction="SELL",
+            size=size,
+            order_type="MARKET",
+            stop_level=stop_loss,
+            limit_level=take_profit
+        )
+    
+    def get_positions(self) -> Dict[str, Any]:
+        """
+        Get all open positions
+        
+        Returns:
+            Dict containing positions data
+        """
+        if not self._ensure_valid_session():
+            return {"success": False, "error": "Failed to establish valid session"}
+        
+        url = f"{self.base_url}/positions"
+        
+        try:
+            response = self.session.get(url)
+            
+            if response.status_code == 200:
+                result = response.json()
+                return {"success": True, "positions": result.get("positions", [])}
+            else:
+                error_msg = f"Failed to get positions: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg}
+                
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Network error getting positions: {str(e)}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+    
+    def close_position(self, deal_id: str, direction: str, size: float) -> Dict[str, Any]:
+        """
+        Close an existing position
+        
+        Args:
+            deal_id: Deal ID of the position to close
+            direction: "BUY" or "SELL" (opposite of original position)
+            size: Size to close
+            
+        Returns:
+            Dict containing close result
+        """
+        if not self._ensure_valid_session():
+            return {"success": False, "error": "Failed to establish valid session"}
+        
+        url = f"{self.base_url}/positions/otc"
+        
+        close_data = {
+            "dealId": deal_id,
+            "direction": direction.upper(),
+            "size": str(size),
+            "orderType": "MARKET",
+            "timeInForce": "FILL_OR_KILL"
+        }
+        
+        try:
+            logger.info(f"Closing position {deal_id}: direction={direction}, size={size}")
+            response = self.session.post(url, json=close_data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Position closed successfully: {result}")
+                return {
+                    "success": True,
+                    "deal_reference": result.get("dealReference"),
+                    "deal_id": deal_id,
+                    "direction": direction,
+                    "size": size,
+                    "response": result
+                }
+            else:
+                error_msg = f"Failed to close position: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg}
+                
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Network error closing position: {str(e)}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
     def close_session(self) -> Dict[str, Any]:
         """
         Close the current trading session
