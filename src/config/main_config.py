@@ -67,8 +67,7 @@ TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 PRODUCTION_MODE = _get_env_float("PRODUCTION_MODE", 0.0) == 1.0  # False por defecto (desarrollo)
 
 # Configuraciones dependientes del modo
-USE_LOCAL_DASHBOARD = not PRODUCTION_MODE  # Dashboard local solo en desarrollo
-USE_LOCAL_DATABASE = True  # DB siempre útil para logs y análisis
+# Dashboard eliminado - usando Capital.com directamente
 PAPER_TRADING_ONLY = not PRODUCTION_MODE  # Paper trading en desarrollo, real en producción
 ENABLE_REAL_TRADING = _get_env_bool("ENABLE_REAL_TRADING", PRODUCTION_MODE)  # Trading real configurado por variable de entorno
 
@@ -171,7 +170,6 @@ GLOBAL_SYMBOLS: List[str] = [
 # Zona horaria para Chile (CLT/CLST)
 # Usado en:
 # - TradingBot para programación de operaciones
-# - DatabaseManager para timestamps
 # - Logging para marcas de tiempo
 TIMEZONE: str = "America/Santiago"
 
@@ -1138,19 +1136,6 @@ class StrategyConfig:
 # CONFIGURACIÓN DE BASE DE DATOS
 # ============================================================================
 
-class DatabaseConfig:
-    """Configuración de la base de datos."""
-    
-    # Nombre del archivo de base de datos SQLite (por defecto: "trading_data.db")
-    DATABASE_NAME: str = "trading_data.db"
-    
-    # Días de retención de datos históricos (por defecto: 90)
-    DATA_RETENTION_DAYS: int = 90
-    
-    # Intervalo de limpieza automática en horas (por defecto: 24)
-    CLEANUP_INTERVAL_HOURS: int = 24
-
-
 # ============================================================================
 # CONFIGURACIÓN DE LOGGING
 # ============================================================================
@@ -1222,7 +1207,6 @@ def get_config(config_type: str) -> Any:
         'risk': RiskManagerConfig,
         'paper': PaperTraderConfig,
         'strategy': StrategyConfig,
-        'db': DatabaseConfig,
         'log': LoggingConfig,
         'live': LiveTradingConfig,
         'testing': TestingConfig,

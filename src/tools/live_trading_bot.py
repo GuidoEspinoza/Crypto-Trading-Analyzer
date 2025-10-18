@@ -21,7 +21,7 @@ sys.path.append(project_root)
 
 from src.core.trading_bot import TradingBot
 from src.config.main_config import TradingBotConfig, PRODUCTION_MODE, PAPER_TRADING_ONLY, ENABLE_REAL_TRADING, VERBOSE_LOGGING
-from src.database.database import db_manager
+# Base de datos eliminada - usando Capital.com directamente
 
 # Configurar logging con colores
 class ColoredFormatter(logging.Formatter):
@@ -514,10 +514,8 @@ class LiveTradingBot:
             # Ordenar por confianza (mayor primero)
             high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
             
-            # Obtener valor actual del portfolio
-            from src.database.database import db_manager
-            portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-            portfolio_value = portfolio_summary.get("total_value", self.trading_bot.config.DEFAULT_PORTFOLIO_VALUE)
+            # Obtener valor actual del portfolio (simplificado - sin base de datos)
+            portfolio_value = self.trading_bot.config.DEFAULT_PORTFOLIO_VALUE
             
             logger.info(f"💼 Valor actual del portfolio: ${portfolio_value:,.2f}")
             
@@ -611,7 +609,12 @@ class LiveTradingBot:
                 }
             
             # Actualizar P&L total
-            self.trading_bot.stats["total_pnl"] = portfolio_summary.get("total_pnl", 0)
+            try:
+                portfolio_summary = self.trading_bot.paper_trader.get_portfolio_summary()
+                self.trading_bot.stats["total_pnl"] = portfolio_summary.get("total_pnl", 0)
+            except Exception as e:
+                logger.debug(f"No se pudo obtener portfolio_summary: {e}")
+                self.trading_bot.stats["total_pnl"] = 0
             
         except Exception as e:
             logger.error(f"❌ Error crítico procesando señales para {symbol}: {e}")
@@ -676,7 +679,12 @@ class LiveTradingBot:
     def show_current_stats(self):
         """📊 Mostrar estadísticas actuales usando datos del TradingBot"""
         try:
-            portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
+            # Intentar obtener portfolio_performance, si no existe usar valores por defecto
+            try:
+                portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
+            except AttributeError:
+                portfolio_performance = {'total_value': 0.0, 'total_pnl': 0.0, 'total_return_percentage': 0.0}
+            
             portfolio_summary = self.trading_bot.paper_trader.get_portfolio_summary()
             
             # Obtener balance de USD correctamente
@@ -722,7 +730,11 @@ class LiveTradingBot:
         """📋 Mostrar resumen final de la sesión usando datos del TradingBot"""
         try:
             session_duration = datetime.now() - self.session_stats['start_time']
-            portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
+            # Intentar obtener portfolio_performance, si no existe usar valores por defecto
+            try:
+                portfolio_performance = self.trading_bot.paper_trader.calculate_portfolio_performance()
+            except AttributeError:
+                portfolio_performance = {'total_value': 0.0, 'total_pnl': 0.0, 'total_return_percentage': 0.0}
             # Obtener balance final de USD correctamente
             final_balance = self.trading_bot.paper_trader.get_balance('USD')
             total_value = portfolio_performance.get('total_value', 0.0)

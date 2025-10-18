@@ -35,8 +35,6 @@ from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
 from .position_adjuster import PositionAdjuster
 from .capital_client import CapitalClient, create_capital_client_from_env
-from database.database import db_manager
-from database.models import Strategy as DBStrategy
 
 # Configurar logging ANTES de la clase
 logging.basicConfig(level=logging.INFO)
@@ -68,7 +66,7 @@ class TradingBot:
     - Risk management integrado
     - Paper trading seguro
     - Logging completo
-    - Dashboard en tiempo real
+    - Monitoreo a través de Capital.com
     - Cache inteligente para mejor rendimiento
     - Procesamiento paralelo de estrategias
     """
@@ -102,8 +100,11 @@ class TradingBot:
         self.capital_client = None
         self._initialize_capital_client()
         
+        # Obtener balance real para sincronizar con paper trader
+        real_balance = self._get_real_balance()
+        
         # Componentes principales
-        self.paper_trader = PaperTrader()
+        self.paper_trader = PaperTrader(initial_balance=real_balance)
         self.risk_manager = EnhancedRiskManager(capital_client=self.capital_client)
         
         # Sistema de monitoreo de posiciones
@@ -197,6 +198,28 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize Capital.com client: {e}")
             self.capital_client = None
+    
+    def _get_real_balance(self) -> float:
+        """💰 Obtener balance real de Capital.com"""
+        try:
+            if self.capital_client and hasattr(self.capital_client, 'get_accounts'):
+                accounts = self.capital_client.get_accounts()
+                if accounts and len(accounts) > 0:
+                    # Usar el primer account disponible
+                    balance = float(accounts[0].get('balance', {}).get('available', 0.0))
+                    self.logger.info(f"💰 Balance real obtenido de Capital.com: ${balance:.2f}")
+                    return balance
+                else:
+                    self.logger.warning("⚠️ No se encontraron cuentas en Capital.com")
+            else:
+                self.logger.warning("⚠️ Cliente de Capital.com no disponible para obtener balance")
+        except Exception as e:
+            self.logger.error(f"❌ Error obteniendo balance real: {e}")
+        
+        # Fallback: usar balance por defecto de configuración
+        default_balance = 1000.0  # Balance por defecto
+        self.logger.info(f"💰 Usando balance por defecto: ${default_balance:.2f}")
+        return default_balance
 
     def set_trade_event_callback(self, callback):
         """
@@ -597,8 +620,8 @@ class TradingBot:
         high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
         
         # Obtener valor actual del portfolio
-        portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
-        portfolio_value = portfolio_summary.get("total_value", self.config.DEFAULT_PORTFOLIO_VALUE)
+        portfolio_summary = self.get_portfolio_summary()
+        portfolio_value = portfolio_summary.get("total_value", 1000.0)  # Valor por defecto
         
         self.logger.info(f"💼 Current portfolio value: ${portfolio_value:,.2f}")
         
@@ -734,33 +757,11 @@ class TradingBot:
     
     def _update_strategy_stats(self):
         """
-        📈 Actualizar estadísticas de estrategias en la base de datos
+        📈 Estadísticas de estrategias disponibles en Capital.com
         """
-        try:
-            with db_manager.get_db_session() as session:
-                for strategy_name in self.strategies.keys():
-                    # Buscar o crear estrategia en DB
-                    db_strategy = session.query(DBStrategy).filter(
-                        DBStrategy.name == f"{strategy_name}_AutoBot"
-                    ).first()
-                    
-                    if not db_strategy:
-                        db_strategy = DBStrategy(
-                            name=f"{strategy_name}_AutoBot",
-                            description=f"Estrategia {strategy_name} ejecutada por Trading Bot automático",
-                            is_active=True,
-                            is_paper_only=True
-                        )
-                        session.add(db_strategy)
-                    
-                    # Actualizar timestamp
-                    db_strategy.last_trade_at = datetime.now()
-                    db_strategy.updated_at = datetime.now()
-                
-                session.commit()
-                
-        except Exception as e:
-            self.logger.error(f"❌ Error updating strategy stats: {e}")
+        # Las estadísticas se pueden ver directamente en Capital.com
+        # No necesitamos mantener una base de datos local para esto
+        pass
     
     def get_status(self) -> BotStatus:
         """
@@ -776,7 +777,7 @@ class TradingBot:
             uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             next_analysis = datetime.now() + timedelta(minutes=self.analysis_interval)
         
-        portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
+        portfolio_summary = self.get_portfolio_summary()
         
         status = BotStatus(
             is_running=self.is_running,
@@ -795,19 +796,54 @@ class TradingBot:
     
     def get_portfolio_summary(self) -> Dict:
         """
-        📊 Obtener resumen del portfolio
+        📊 Obtener resumen del portfolio directamente de Capital.com
         
         Returns:
             Dict: Resumen del portfolio
         """
-        return self.paper_trader.get_portfolio_summary()
+        try:
+            # Obtener balance disponible de Capital.com
+            balance_info = self.capital_client.get_available_balance()
+            if isinstance(balance_info, dict):
+                available_balance = float(balance_info.get('available', 0.0))
+            elif isinstance(balance_info, (str, int, float)):
+                available_balance = float(balance_info)
+            else:
+                available_balance = 0.0
+            
+            # Obtener posiciones abiertas de Capital.com
+            positions = self.capital_client.get_positions()
+            
+            # Calcular valor total del portfolio
+            total_value = available_balance
+            total_pnl = 0.0
+            
+            if positions:
+                for position in positions:
+                    if position.get('size', 0) != 0:  # Solo posiciones activas
+                        current_value = float(position.get('size', 0)) * float(position.get('level', 0))
+                        total_value += abs(current_value)
+                        total_pnl += float(position.get('pnl', 0))
+            
+            return {
+                'total_value': total_value,
+                'available_balance': available_balance,
+                'total_pnl': total_pnl,
+                'open_positions': len(positions) if positions else 0,
+                'source': 'capital_com'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo portfolio de Capital.com: {e}")
+            # Fallback: usar paper trader si hay error
+            return self.paper_trader.get_portfolio_summary()
     
     def get_detailed_report(self) -> Dict:
         """
         📋 Obtener reporte detallado del bot
         """
         status = self.get_status()
-        portfolio_summary = db_manager.get_portfolio_summary(is_paper=True)
+        portfolio_summary = self.get_portfolio_summary()
         risk_report = self.risk_manager.generate_risk_report()
         open_positions = self.paper_trader.get_open_positions()
         
@@ -860,7 +896,8 @@ class TradingBot:
         try:
             active_strategies = [name for name, strategy in self.strategies.items()]
             
-            return {
+            config = {
+                # Configuraciones básicas
                 'analysis_interval_minutes': self.analysis_interval,
                 'active_strategies': active_strategies,
                 'is_running': self.is_running,
@@ -869,8 +906,58 @@ class TradingBot:
                 'max_daily_trades': self.max_daily_trades,
                 'min_confidence_threshold': self.min_confidence_threshold,
                 'enable_trading': self.enable_trading,
-                'symbols': self.symbols
+                'symbols': self.symbols,
+                
+                # Configuraciones de posiciones
+                'max_concurrent_positions': getattr(self, 'max_concurrent_positions', None),
+                
+                # Configuraciones de timeframes
+                'primary_timeframe': getattr(self, 'primary_timeframe', None),
+                'confirmation_timeframe': getattr(self, 'confirmation_timeframe', None),
+                'trend_timeframe': getattr(self, 'trend_timeframe', None),
+                
+                # Configuraciones de trading real
+                'enable_real_trading': getattr(self, 'enable_real_trading', False),
+                'real_trading_size_multiplier': getattr(self, 'real_trading_size_multiplier', 0.1),
             }
+            
+            # Agregar configuraciones del paper trader si está disponible
+            if hasattr(self, 'paper_trader') and self.paper_trader:
+                if hasattr(self.paper_trader, 'get_configuration'):
+                    paper_config = self.paper_trader.get_configuration()
+                    config.update({
+                        'max_position_size': paper_config.get('max_position_size'),
+                        'max_total_exposure': paper_config.get('max_total_exposure'),
+                        'min_trade_value': paper_config.get('min_trade_value'),
+                    })
+                else:
+                    # Valores por defecto si no hay método get_configuration
+                    config.update({
+                        'max_position_size': getattr(self.paper_trader, 'max_position_size', None),
+                        'max_total_exposure': getattr(self.paper_trader, 'max_total_exposure', None),
+                        'min_trade_value': getattr(self.paper_trader, 'min_trade_value', None),
+                    })
+            
+            # Agregar configuraciones del risk manager si está disponible
+            if hasattr(self, 'risk_manager') and self.risk_manager:
+                if hasattr(self.risk_manager, 'get_configuration'):
+                    risk_config = self.risk_manager.get_configuration()
+                    config.update({
+                        'max_risk_per_trade': risk_config.get('max_risk_per_trade'),
+                        'max_daily_risk': risk_config.get('max_daily_risk'),
+                        'max_drawdown_threshold': risk_config.get('max_drawdown_threshold'),
+                        'correlation_threshold': risk_config.get('correlation_threshold'),
+                    })
+                else:
+                    # Valores por defecto si no hay método get_configuration
+                    config.update({
+                        'max_risk_per_trade': getattr(self.risk_manager, 'max_risk_per_trade', None),
+                        'max_daily_risk': getattr(self.risk_manager, 'max_daily_risk', None),
+                        'max_drawdown_threshold': getattr(self.risk_manager, 'max_drawdown_threshold', None),
+                        'correlation_threshold': getattr(self.risk_manager, 'correlation_threshold', None),
+                    })
+            
+            return config
         except Exception as e:
             self.logger.error(f"❌ Error obteniendo configuración: {e}")
             return {}
@@ -883,6 +970,7 @@ class TradingBot:
             config: Diccionario con nueva configuración
         """
         try:
+            # Configuraciones básicas del bot
             if "analysis_interval_minutes" in config:
                 self.analysis_interval = max(1, config["analysis_interval_minutes"])
                 self.logger.info(f"⚙️ Analysis interval updated to {self.analysis_interval} minutes")
@@ -903,6 +991,68 @@ class TradingBot:
             if "symbols" in config and isinstance(config["symbols"], list):
                 self.symbols = config["symbols"]
                 self.logger.info(f"⚙️ Symbols updated: {', '.join(self.symbols)}")
+            
+            # Configuraciones de posiciones
+            if "max_concurrent_positions" in config:
+                self.max_concurrent_positions = max(1, config["max_concurrent_positions"])
+                self.logger.info(f"⚙️ Max concurrent positions updated to {self.max_concurrent_positions}")
+            
+            # Configuraciones de timeframes
+            if "primary_timeframe" in config:
+                self.primary_timeframe = config["primary_timeframe"]
+                self.logger.info(f"⚙️ Primary timeframe updated to {self.primary_timeframe}")
+            
+            if "confirmation_timeframe" in config:
+                self.confirmation_timeframe = config["confirmation_timeframe"]
+                self.logger.info(f"⚙️ Confirmation timeframe updated to {self.confirmation_timeframe}")
+            
+            if "trend_timeframe" in config:
+                self.trend_timeframe = config["trend_timeframe"]
+                self.logger.info(f"⚙️ Trend timeframe updated to {self.trend_timeframe}")
+            
+            # Configuraciones de trading real
+            if "enable_real_trading" in config:
+                self.enable_real_trading = bool(config["enable_real_trading"])
+                status = "enabled" if self.enable_real_trading else "disabled"
+                self.logger.info(f"⚙️ Real trading {status}")
+            
+            if "real_trading_size_multiplier" in config:
+                self.real_trading_size_multiplier = max(0.01, min(1.0, config["real_trading_size_multiplier"]))
+                self.logger.info(f"⚙️ Real trading size multiplier updated to {self.real_trading_size_multiplier}")
+            
+            # Configuraciones del paper trader (si están disponibles)
+            if hasattr(self, 'paper_trader') and self.paper_trader:
+                paper_config = {}
+                if "max_position_size" in config:
+                    paper_config["max_position_size"] = max(0.01, min(1.0, config["max_position_size"]))
+                if "max_total_exposure" in config:
+                    paper_config["max_total_exposure"] = max(0.01, min(1.0, config["max_total_exposure"]))
+                if "min_trade_value" in config:
+                    paper_config["min_trade_value"] = max(1.0, config["min_trade_value"])
+                
+                if paper_config:
+                    # Actualizar configuración del paper trader si tiene método de actualización
+                    if hasattr(self.paper_trader, 'update_configuration'):
+                        self.paper_trader.update_configuration(paper_config)
+                        self.logger.info(f"⚙️ Paper trader configuration updated: {paper_config}")
+            
+            # Configuraciones del risk manager (si están disponibles)
+            if hasattr(self, 'risk_manager') and self.risk_manager:
+                risk_config = {}
+                if "max_risk_per_trade" in config:
+                    risk_config["max_risk_per_trade"] = max(0.1, min(5.0, config["max_risk_per_trade"]))
+                if "max_daily_risk" in config:
+                    risk_config["max_daily_risk"] = max(0.5, min(10.0, config["max_daily_risk"]))
+                if "max_drawdown_threshold" in config:
+                    risk_config["max_drawdown_threshold"] = max(0.05, min(0.5, config["max_drawdown_threshold"]))
+                if "correlation_threshold" in config:
+                    risk_config["correlation_threshold"] = max(0.1, min(1.0, config["correlation_threshold"]))
+                
+                if risk_config:
+                    # Actualizar configuración del risk manager si tiene método de actualización
+                    if hasattr(self.risk_manager, 'update_configuration'):
+                        self.risk_manager.update_configuration(risk_config)
+                        self.logger.info(f"⚙️ Risk manager configuration updated: {risk_config}")
             
         except Exception as e:
             self.logger.error(f"❌ Error updating configuration: {e}")
@@ -1181,20 +1331,22 @@ class TradingBot:
             # 4. Redondear a 4 decimales para crypto (más precisión)
             real_size = round(real_size, 4)
             
+            # Calcular valores para mostrar correctamente
+            total_position_value = real_size * current_price  # Valor total de la posición
+            required_margin = total_position_value / leverage_used  # Margen requerido
+            
             # Log detallado del cálculo
-            self.logger.info(f"💰 Cálculo de posición real (ya con apalancamiento aplicado):")
+            self.logger.info(f"💰 Cálculo de posición real:")
             self.logger.info(f"   Balance disponible: {currency_symbol}{available_balance:.2f}")
             self.logger.info(f"   Tamaño recomendado: {real_size:.4f} unidades")
             self.logger.info(f"   Apalancamiento usado: {leverage_used}x")
             self.logger.info(f"   Precio actual {capital_symbol}: {currency_symbol}{current_price:.2f}")
-            self.logger.info(f"   Valor total posición: {currency_symbol}{position_value_usd:.2f}")
-            self.logger.info(f"   Verificación: {real_size:.4f} * {currency_symbol}{current_price:.2f} = {currency_symbol}{real_size * current_price:.2f}")
+            self.logger.info(f"   Valor total posición: {currency_symbol}{total_position_value:.2f}")
+            self.logger.info(f"   Margen requerido: {currency_symbol}{required_margin:.2f}")
+            self.logger.info(f"   Verificación: {real_size:.4f} * {currency_symbol}{current_price:.2f} = {currency_symbol}{total_position_value:.2f}")
             
             # 5. Verificar si tenemos suficiente balance para el trade
-            # El valor total de la posición ya está calculado en position_value_usd
-            total_position_value = position_value_usd
-            # Calcular margen requerido basado en el apalancamiento
-            required_margin = total_position_value / leverage_used
+            # Los valores ya están calculados arriba: total_position_value y required_margin
             
             if available_balance < required_margin:
                 return {

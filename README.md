@@ -98,11 +98,8 @@ python3 main.py
 
 ### 📊 Monitoreo Profesional
 ```bash
-# Dashboard en tiempo real
-python3 src/tools/trading_monitor.py
-
-# Estadísticas detalladas
-python3 src/database/db_manager_cli.py stats
+# Monitoreo directo en Capital.com
+# Todas las estadísticas y análisis disponibles en la plataforma
 
 # Análisis de rendimiento
 python3 main.py --report
@@ -157,13 +154,8 @@ crypto-trading-analyzer/
 ├── ⚙️ config/                 # Configuración optimizada
 │   ├── config.py             # 3 perfiles de trading
 │   └── production_config.py  # Configuración de producción
-├── 💾 database/               # Persistencia profesional
-│   ├── models.py             # Modelos de datos
-│   ├── database.py           # ORM optimizado
-│   └── migrations.py         # Sistema de migraciones
 ├── 🔧 tools/                  # Herramientas avanzadas
-│   ├── live_trading_bot.py   # Bot de trading en vivo
-│   └── trading_monitor.py    # Monitor en tiempo real
+│   └── live_trading_bot.py   # Bot de trading en vivo
 └── 🧪 tests/                  # Suite de testing completa
 ```
 
@@ -171,7 +163,7 @@ crypto-trading-analyzer/
 - **🐍 python3 3.8+**: Lenguaje principal optimizado
 - **⚡ Threading**: Procesamiento paralelo nativo
 - **📊 Capital.com API**: Conectividad con broker
-- **💾 SQLite**: Base de datos embebida
+- **💾 Capital.com**: Gestión de datos en la nube
 - **🐳 Docker**: Containerización profesional
 - **📈 TA-Lib**: Análisis técnico avanzado
 
@@ -183,11 +175,8 @@ crypto-trading-analyzer/
 python3 main.py --profile RAPIDO
 python3 main.py --profile CONSERVADOR
 
-# Monitor en tiempo real
-python3 src/tools/trading_monitor.py
-
-# Análisis de rendimiento
-python3 src/database/db_manager_cli.py stats
+# Monitoreo directo en Capital.com
+# Todas las estadísticas disponibles en la plataforma
 ```
 
 ### 🧪 Testing y Validación

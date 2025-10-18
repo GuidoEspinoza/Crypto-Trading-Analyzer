@@ -19,8 +19,6 @@ from sqlalchemy.orm import Session
 
 # Importaciones locales
 from src.config.main_config import TradingBotConfig, RiskManagerConfig, TradingProfiles, CacheConfig
-from database.database import db_manager
-from database.models import Trade
 from .enhanced_strategies import TradingSignal
 from .paper_trader import PaperTrader, TradeResult
 from .position_manager import PositionManager, PositionInfo
@@ -235,31 +233,27 @@ class PositionMonitor:
         logger.info("📊 Position monitoring loop ended")
     
     def _get_open_positions(self) -> List[Dict]:
-        """📊 Obtener posiciones abiertas de la base de datos"""
+        """📊 Obtener posiciones abiertas directamente de Capital.com"""
         try:
-            with db_manager.get_db_session() as session:
-                # Obtener todas las posiciones abiertas, incluso sin SL/TP
-                open_trades = session.query(Trade).filter(
-                    Trade.status == "OPEN",
-                    Trade.is_paper_trade == True
-                ).all()
-                
-                return [
-                    {
-                        "id": trade.id,
-                        "symbol": trade.symbol,
-                        "trade_type": trade.trade_type,
-                        "entry_price": trade.entry_price,
-                        "quantity": trade.quantity,
-                        "stop_loss": trade.stop_loss,
-                        "take_profit": trade.take_profit,
-                        "entry_time": trade.entry_time,
-                        "strategy_name": trade.strategy_name
-                    }
-                    for trade in open_trades
-                ]
+            # Usar PositionManager que ya maneja Capital.com
+            active_positions = self.position_manager.get_active_positions(refresh_cache=True)
+            
+            return [
+                {
+                    "id": pos.trade_id,
+                    "symbol": pos.symbol,
+                    "trade_type": pos.trade_type,
+                    "entry_price": pos.entry_price,
+                    "quantity": pos.quantity,
+                    "stop_loss": pos.stop_loss,
+                    "take_profit": pos.take_profit,
+                    "entry_time": pos.entry_time,
+                    "strategy_name": getattr(pos, 'strategy_name', 'Unknown')
+                }
+                for pos in active_positions
+            ]
         except Exception as e:
-            logger.error(f"❌ Error getting open positions: {e}")
+            logger.error(f"❌ Error getting open positions from Capital.com: {e}")
             return []
     
     def _monitor_position(self, position: PositionInfo):
@@ -462,21 +456,12 @@ class PositionMonitor:
             logger.error(f"❌ Error executing position close for {status.trade_id}: {e}")
     
     def _update_closed_trade(self, status: PositionStatus):
-        """📝 Actualizar trade cerrado en base de datos"""
+        """📝 Registrar cierre de trade (información disponible en Capital.com)"""
         try:
-            with db_manager.get_db_session() as session:
-                trade = session.query(Trade).filter(Trade.id == status.trade_id).first()
-                if trade:
-                    trade.exit_price = status.current_price
-                    trade.exit_value = status.current_price * status.quantity
-                    trade.pnl = status.unrealized_pnl
-                    trade.pnl_percentage = status.unrealized_pnl_percentage
-                    trade.status = "CLOSED"
-                    trade.exit_time = datetime.now()
-                    trade.notes = f"{trade.notes or ''} | Auto closed: {status.close_reason}"
-                    
-                    session.commit()
-                    logger.debug(f"📝 Trade {status.trade_id} updated in database")
+            # El historial de trades se puede consultar directamente en Capital.com
+            # No necesitamos mantener una base de datos local
+            logger.info(f"📝 Trade {status.trade_id} closed: {status.close_reason}")
+            logger.info(f"💰 Final PnL: {status.unrealized_pnl:.2f} ({status.unrealized_pnl_percentage:.2f}%)")
                     
         except Exception as e:
             logger.error(f"❌ Error updating closed trade {status.trade_id}: {e}")

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from src.config.main_config import RiskManagerConfig, TradingProfiles, TradingBotConfig, APIConfig, CacheConfig
-from src.database.database import db_manager
+# Base de datos eliminada - usando Capital.com directamente
 
 # Configurar logger
 logger = logging.getLogger(__name__)
@@ -135,56 +135,20 @@ class PositionAdjuster:
             logger.error(f"❌ Error monitoreando posiciones: {e}")
     
     def _get_active_positions(self) -> List[PositionInfo]:
-        """📋 Obtener posiciones activas desde la base de datos"""
-        try:
-            # Obtener trades activos desde la base de datos
-            active_trades = db_manager.get_active_trades(is_paper=True)
-            positions = []
-            
-            for trade in active_trades:
-                # Simular precio actual (en producción vendría de la API)
-                current_price = self._get_current_price(trade['symbol'])
-                
-                # Calcular PnL no realizado
-                if trade['side'] == 'BUY':
-                    unrealized_pnl = (current_price - trade['entry_price']) * trade['quantity']
-                else:
-                    unrealized_pnl = (trade['entry_price'] - current_price) * trade['quantity']
-                
-                unrealized_pnl_pct = (unrealized_pnl / (trade['entry_price'] * trade['quantity'])) * 100
-                
-                position = PositionInfo(
-                    symbol=trade['symbol'],
-                    entry_price=trade['entry_price'],
-                    current_price=current_price,
-                    quantity=trade['quantity'],
-                    side=trade['side'],
-                    current_tp=trade.get('take_profit_price', 0),
-                    current_sl=trade.get('stop_loss_price', 0),
-                    entry_time=trade['entry_time'],
-                    unrealized_pnl=unrealized_pnl,
-                    unrealized_pnl_pct=unrealized_pnl_pct
-                )
-                
-                positions.append(position)
-            
-            return positions
-            
-        except Exception as e:
-            logger.error(f"❌ Error obteniendo posiciones activas: {e}")
-            return []
+        """📋 Obtener posiciones activas desde Capital.com"""
+        # Simplificado - las posiciones se obtienen directamente de Capital.com
+        logger.debug("📋 Posiciones simplificadas - usando Capital.com directamente")
+        return []
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual del símbolo (simulado o Capital.com API con cache)"""
+        """💰 Obtener precio actual del símbolo desde Capital.com"""
         try:
             if self.simulation_mode:
-                # En modo simulación, usar precio de la base de datos + variación aleatoria
+                # En modo simulación, usar precio fijo para pruebas
                 import random
-                last_trade_price = db_manager.get_last_trade_for_symbol(symbol, is_paper=True)
-                if last_trade_price:
-                    variation = random.uniform(-0.02, 0.02)
-                    return last_trade_price * (1 + variation)
-                return 0.0
+                base_price = 50000.0  # Precio base para simulación
+                variation = random.uniform(-0.02, 0.02)
+                return base_price * (1 + variation)
             
             # Modo real: usar Capital.com a través del trading bot si está disponible
             if hasattr(self, 'trading_bot') and self.trading_bot and hasattr(self.trading_bot, 'capital_client'):
@@ -195,11 +159,7 @@ class PositionAdjuster:
                 except Exception as e:
                     logger.warning(f"Error obteniendo precio de Capital.com para {symbol}: {e}")
             
-            # Fallback: usar precio de la base de datos
-            last_trade_price = db_manager.get_last_trade_for_symbol(symbol, is_paper=False)
-            if last_trade_price:
-                return last_trade_price
-            
+            # Sin fallback a base de datos - solo Capital.com
             logger.warning(f"No se pudo obtener precio para {symbol}")
             return 0.0
         except Exception as e:

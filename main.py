@@ -3,34 +3,22 @@
 FastAPI backend para análisis técnico de criptomonedas
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-import os
-import pandas as pd
-import pandas_ta as ta
-from typing import Dict, List, Optional
+from typing import List, Optional
 import uvicorn
-from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# Importar nuestros indicadores avanzados
-from src.core.advanced_indicators import AdvancedIndicators, FibonacciLevels, IchimokuCloud
-
-# Importar database
-from src.database import get_db, db_manager
-from src.database.models import Trade, Portfolio, Strategy, TradingSignal
-
 # 🤖 Importar Trading Engine
 from src.core.trading_bot import TradingBot
-# Estrategias originales removidas - usando solo enhanced strategies
+# Estrategias mejoradas
 from src.core.enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
 from src.core.paper_trader import PaperTrader
 from src.core.enhanced_risk_manager import EnhancedRiskManager
 # Capital.com API Client
 from src.core.capital_client import CapitalClient, create_capital_client_from_env
-# BacktestingEngine removido durante la limpieza del proyecto
 
 # Balance Manager
 from src.core.balance_manager import start_balance_manager, stop_balance_manager, get_current_balance_sync
@@ -122,22 +110,66 @@ async def shutdown_event():
 
 # Modelos Pydantic para requests
 class BotConfigUpdate(BaseModel):
+    # Configuraciones básicas del bot
     analysis_interval_minutes: Optional[int] = Field(None, ge=1, description="Intervalo de análisis en minutos")
     max_daily_trades: Optional[int] = Field(None, ge=1, description="Límite máximo de operaciones diarias")
     min_confidence_threshold: Optional[float] = Field(None, ge=0, le=100, description="Umbral mínimo de confianza (%) entre 0 y 100")
     enable_trading: Optional[bool] = Field(None, description="Habilitar/deshabilitar ejecución de trades")
     symbols: Optional[List[str]] = Field(None, description="Lista de símbolos a monitorear")
     trading_mode: Optional[str] = Field(None, description="Modo de trading ('paper' o 'live') - actualmente solo 'paper'")
+    
+    # Configuraciones de posiciones y riesgo
+    max_concurrent_positions: Optional[int] = Field(None, ge=1, description="Máximo número de posiciones concurrentes")
+    max_position_size: Optional[float] = Field(None, ge=0.01, le=1.0, description="Tamaño máximo de posición como porcentaje del balance (0.01-1.0)")
+    max_total_exposure: Optional[float] = Field(None, ge=0.01, le=1.0, description="Exposición total máxima como porcentaje del balance (0.01-1.0)")
+    min_trade_value: Optional[float] = Field(None, ge=1.0, description="Valor mínimo de trade en USD")
+    
+    # Configuraciones de timeframes
+    primary_timeframe: Optional[str] = Field(None, description="Timeframe principal para análisis (ej: '1h', '4h', '1d')")
+    confirmation_timeframe: Optional[str] = Field(None, description="Timeframe de confirmación (ej: '15m', '1h', '4h')")
+    trend_timeframe: Optional[str] = Field(None, description="Timeframe para análisis de tendencia (ej: '4h', '1d')")
+    
+    # Configuraciones de gestión de riesgo
+    max_risk_per_trade: Optional[float] = Field(None, ge=0.1, le=5.0, description="Riesgo máximo por trade como porcentaje del balance (0.1-5.0)")
+    max_daily_risk: Optional[float] = Field(None, ge=0.5, le=10.0, description="Riesgo máximo diario como porcentaje del balance (0.5-10.0)")
+    max_drawdown_threshold: Optional[float] = Field(None, ge=0.05, le=0.5, description="Umbral máximo de drawdown como decimal (0.05-0.5)")
+    correlation_threshold: Optional[float] = Field(None, ge=0.1, le=1.0, description="Umbral de correlación para evitar posiciones similares (0.1-1.0)")
+    
+    # Configuraciones de trading real
+    enable_real_trading: Optional[bool] = Field(None, description="Habilitar trading real (requiere configuración adicional)")
+    real_trading_size_multiplier: Optional[float] = Field(None, ge=0.01, le=1.0, description="Multiplicador de tamaño para trading real vs paper (0.01-1.0)")
 
     model_config = {
         "json_schema_extra": {
             "example": {
+                # Configuraciones básicas
                 "analysis_interval_minutes": 15,
                 "max_daily_trades": 10,
                 "min_confidence_threshold": 65,
                 "enable_trading": True,
                 "symbols": GLOBAL_SYMBOLS,
-                "trading_mode": "paper"
+                "trading_mode": "paper",
+                
+                # Configuraciones de posiciones
+                "max_concurrent_positions": 5,
+                "max_position_size": 0.15,
+                "max_total_exposure": 0.6,
+                "min_trade_value": 50.0,
+                
+                # Timeframes
+                "primary_timeframe": "1h",
+                "confirmation_timeframe": "15m",
+                "trend_timeframe": "4h",
+                
+                # Gestión de riesgo
+                "max_risk_per_trade": 1.0,
+                "max_daily_risk": 3.0,
+                "max_drawdown_threshold": 0.15,
+                "correlation_threshold": 0.7,
+                
+                # Trading real
+                "enable_real_trading": False,
+                "real_trading_size_multiplier": 0.1
             }
         }
     }
@@ -182,12 +214,14 @@ async def root():
             "trading_bot": {
                 "title": "🤖 Trading Bot",
                 "endpoints": [
-                    "GET /bot/status - Estado del bot",
+                    "GET /bot/dashboard - Dashboard unificado del bot (con parámetro detailed opcional)",
                     "POST /bot/start - Iniciar trading bot",
                     "POST /bot/stop - Detener trading bot",
-                    "GET /bot/report - Reporte detallado",
-                    "GET /bot/config - Configuración actual",
-                    "PUT /bot/config - Actualizar configuración",
+                    "GET /bot/config - Configuración completa actual",
+                    "PUT /bot/config - Actualizar configuración completa",
+                    "GET /bot/trading-mode - Modo de trading actual",
+                    "PUT /bot/trading-mode - Cambiar modo de trading",
+                    "GET /bot/trading-capabilities - Capacidades disponibles",
                     "POST /bot/force-analysis - Análisis forzado",
                     "POST /bot/emergency-stop - Parada de emergencia"
                 ]
@@ -221,9 +255,6 @@ async def health_check():
         except Exception:
             capital_status = "disconnected"
         
-        # Verificar base de datos
-        db_status = "connected" if db_manager else "disconnected"
-        
         # Verificar trading bot
         bot_status = "not_initialized"
         if trading_bot is not None:
@@ -234,7 +265,6 @@ async def health_check():
             "timestamp": datetime.now().isoformat(),
             "services": {
                 "capital_com": capital_status,
-                "database": db_status,
                 "trading_bot": bot_status
             },
             "version": "4.0.0"
@@ -244,16 +274,23 @@ async def health_check():
 
 # 🤖 **TRADING BOT**
 
-@app.get("/bot/status")
-async def get_bot_status():
+@app.get("/bot/dashboard")
+async def get_bot_dashboard(detailed: bool = False):
     """
-    📊 Obtener estado actual del trading bot
+    📊 Dashboard del trading bot - Estado y reporte unificado
+    
+    Args:
+        detailed: Si es True, incluye información detallada del bot y análisis completo
     """
     try:
         bot = ensure_bot_exists()
         status = bot.get_status()
         
-        return {
+        # Obtener balance inicial real del paper trader
+        initial_balance = bot.paper_trader.initial_balance if bot.paper_trader else 1000.0
+        
+        # Información básica (siempre incluida)
+        dashboard_data = {
             "status": "success",
             "bot_status": {
                 "is_running": status.is_running,
@@ -264,15 +301,27 @@ async def get_bot_status():
                 "win_rate": (status.successful_trades / max(1, status.total_trades_executed)) * 100,
                 "current_portfolio_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - db_manager.get_global_initial_balance()) / max(1e-9, db_manager.get_global_initial_balance())) * 100,
+                "total_return_percentage": ((status.current_portfolio_value - initial_balance) / max(1e-9, initial_balance)) * 100,
+                "initial_balance": initial_balance,
                 "active_strategies": status.active_strategies,
                 "last_analysis_time": status.last_analysis_time.isoformat() if status.last_analysis_time else None,
                 "next_analysis_time": status.next_analysis_time.isoformat() if status.next_analysis_time else None
             },
             "timestamp": datetime.now().isoformat()
         }
+        
+        # Si se solicita información detallada, agregar reporte completo
+        if detailed:
+            detailed_report = bot.get_detailed_report() if hasattr(bot, 'get_detailed_report') else {}
+            dashboard_data["detailed_report"] = detailed_report
+            dashboard_data["note"] = "Información detallada incluida - reporte completo del bot"
+        
+        return dashboard_data
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting bot status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting bot dashboard: {str(e)}")
+
+
 
 @app.post("/bot/start")
 async def start_trading_bot():
@@ -336,27 +385,20 @@ async def stop_trading_bot():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error stopping bot: {str(e)}")
 
-@app.get("/bot/report")
-async def get_bot_detailed_report():
-    """
-    📋 Obtener reporte detallado del trading bot
-    """
-    try:
-        bot = ensure_bot_exists()
-        report = bot.get_detailed_report() if hasattr(bot, 'get_detailed_report') else {"message": "Report not available"}
-        
-        return {
-            "status": "success",
-            "report": report,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
 
 @app.get("/bot/config")
 async def get_bot_configuration():
     """
-    ⚙️ Obtener configuración actual del bot
+    ⚙️ Obtener configuración completa actual del bot
+    
+    Devuelve todas las configuraciones del trading bot incluyendo:
+    - Configuraciones básicas (intervalo, límites, símbolos)
+    - Gestión de posiciones y exposición
+    - Timeframes de análisis
+    - Configuraciones de gestión de riesgo
+    - Estado del trading real
+    - Estadísticas actuales del bot
     """
     try:
         bot = get_trading_bot()
@@ -383,7 +425,38 @@ async def get_bot_configuration():
 @app.put("/bot/config")
 async def update_bot_configuration(config: BotConfigUpdate):
     """
-    ⚙️ Actualizar configuración del bot
+    ⚙️ Actualizar configuración completa del bot
+    
+    Permite modificar todas las configuraciones del trading bot:
+    
+    **Configuraciones Básicas:**
+    - analysis_interval_minutes: Intervalo de análisis (minutos)
+    - max_daily_trades: Límite de operaciones diarias
+    - min_confidence_threshold: Umbral mínimo de confianza (0-100%)
+    - enable_trading: Habilitar/deshabilitar trading
+    - symbols: Lista de símbolos a monitorear
+    - trading_mode: Modo de trading ('paper' o 'live')
+    
+    **Gestión de Posiciones:**
+    - max_concurrent_positions: Máximo posiciones simultáneas
+    - max_position_size: Tamaño máximo por posición (% del balance)
+    - max_total_exposure: Exposición total máxima (% del balance)
+    - min_trade_value: Valor mínimo de trade (USD)
+    
+    **Timeframes de Análisis:**
+    - primary_timeframe: Timeframe principal ('1h', '4h', '1d')
+    - confirmation_timeframe: Timeframe de confirmación ('15m', '1h', '4h')
+    - trend_timeframe: Timeframe de tendencia ('4h', '1d')
+    
+    **Gestión de Riesgo:**
+    - max_risk_per_trade: Riesgo máximo por trade (% del balance)
+    - max_daily_risk: Riesgo máximo diario (% del balance)
+    - max_drawdown_threshold: Umbral máximo de drawdown (decimal)
+    - correlation_threshold: Umbral de correlación entre posiciones
+    
+    **Trading Real (Experimental):**
+    - enable_real_trading: Habilitar trading real
+    - real_trading_size_multiplier: Multiplicador de tamaño para trading real
     """
     try:
         # Convertir a diccionario eliminando valores None
@@ -640,97 +713,7 @@ async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timefr
 
 
 
-@app.get("/test/strategy/{strategy_name}/{symbol}")
-async def test_strategy_comprehensive(strategy_name: str, symbol: str, 
-                                    timeframe: str = "1h",
-                                    test_mode: str = "signal_only"):
-    """🧪 Prueba comprehensiva de estrategias con diferentes modos"""
-    try:
-        # Crear estrategia
-        if strategy_name.lower() == "professionalrsi":
-            strategy = ProfessionalRSIStrategy()
-        elif strategy_name.lower() == "multitimeframe":
-            strategy = MultiTimeframeStrategy()
-        elif strategy_name.lower() == "ensemble":
-            strategy = EnsembleStrategy()
-        else:
-            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
-        
-        # Analizar señal
-        signal = strategy.analyze(symbol, timeframe)
-        
-        # Análisis de riesgo si está disponible
-        risk_analysis = None
-        if test_mode in ["full", "risk_analysis"]:
-            try:
-                risk_manager = EnhancedRiskManager()
-                risk_assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
-                risk_analysis = {
-                    "overall_risk_score": risk_assessment.overall_risk_score,
-                    "risk_level": risk_assessment.risk_level.value,
-                    "position_sizing": {
-                        "recommended_size": risk_assessment.position_sizing.recommended_size,
-                        "max_position_size": risk_assessment.position_sizing.max_position_size,
-                        "risk_per_trade": risk_assessment.position_sizing.risk_per_trade
-                    },
-                    "recommendations": risk_assessment.recommendations
-                }
-            except Exception as risk_error:
-                risk_analysis = {"error": f"Error en análisis de riesgo: {str(risk_error)}"}
-        
-        # Backtesting rápido si está en modo completo
-        quick_backtest = None
-        if test_mode == "full":
-            try:
-                from datetime import timedelta
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=30)  # Último mes
-                
-                config = BacktestConfig(
-                    symbols=[symbol],
-                    start_date=start_date,
-                    end_date=end_date,
-                    initial_capital=db_manager.get_global_initial_balance(),
-                    timeframe=timeframe
-                )
-                
-                engine = BacktestingEngine(config)
-                metrics = engine.run_backtest(strategy, start_date, end_date)
-                
-                quick_backtest = {
-                    "period": "last_30_days",
-                    "total_return": metrics.total_return,
-                    "win_rate": metrics.win_rate,
-                    "total_trades": metrics.total_trades,
-                    "sharpe_ratio": metrics.sharpe_ratio
-                }
-            except Exception as bt_error:
-                quick_backtest = {"error": f"Error en backtesting rápido: {str(bt_error)}"}
-        
-        return {
-            "strategy_test_results": {
-                "strategy_name": strategy_name,
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "test_mode": test_mode,
-                "signal_analysis": {
-                    "action": signal.signal_type if signal else "NO_SIGNAL",
-                    "confidence": signal.confidence_score if signal else 0,
-                    "entry_price": signal.price if signal else None,
-                    "stop_loss_price": getattr(signal, 'stop_loss_price', None) if signal else None,
-                    "take_profit_price": getattr(signal, 'take_profit_price', None) if signal else None,
-                    "volume_confirmation": getattr(signal, 'volume_confirmation', None) if signal else None,
-                    "market_regime": getattr(signal, 'market_regime', None) if signal else None,
-                    "risk_reward_ratio": getattr(signal, 'risk_reward_ratio', None) if signal else None,
-                    "notes": signal.notes if signal else "No signal generated"
-                },
-                "risk_analysis": risk_analysis,
-                "quick_backtest": quick_backtest
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en prueba de estrategia: {str(e)}")
+# Endpoint de test strategy eliminado - se usa análisis directo de estrategias
 
 @app.get("/enhanced/risk-analysis/{symbol}")
 async def get_enhanced_risk_analysis(symbol: str):
@@ -740,9 +723,13 @@ async def get_enhanced_risk_analysis(symbol: str):
         strategy = ProfessionalRSIStrategy()
         signal = strategy.analyze(symbol, "1h")
         
+        # Obtener balance real del paper trader
+        bot = get_trading_bot()
+        current_portfolio_value = bot.paper_trader.get_balance() if bot.paper_trader else 1000.0
+        
         # Analizar riesgo
         risk_manager = EnhancedRiskManager()
-        risk_assessment = risk_manager.assess_trade_risk(signal, db_manager.get_global_initial_balance())
+        risk_assessment = risk_manager.assess_trade_risk(signal, current_portfolio_value)
         
         return {
             "symbol": symbol,
@@ -767,76 +754,7 @@ async def get_enhanced_risk_analysis(symbol: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 🎭 Paper Trading Endpoints
-@app.get("/paper-trading/summary")
-async def get_paper_trading_summary():
-    """
-    📊 Obtener resumen del portfolio de paper trading
-    """
-    try:
-        summary = db_manager.get_portfolio_summary(is_paper=True)
-        return {
-            "status": "success",
-            "portfolio": summary,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/paper-trading/positions")
-async def get_paper_trading_positions():
-    """
-    📈 Obtener posiciones abiertas del portfolio
-    """
-    try:
-        paper_trader = PaperTrader()
-        positions = paper_trader.get_open_positions()
-        return {
-            "status": "success",
-            "positions": positions,
-            "total_positions": len(positions),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/paper-trading/performance")
-async def get_paper_trading_performance():
-    """
-    📊 Obtener métricas de performance del portfolio
-    """
-    try:
-        paper_trader = PaperTrader()
-        performance = paper_trader.calculate_portfolio_performance()
-        return {
-            "status": "success",
-            "performance": performance,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/paper-trading/reset")
-async def reset_paper_trading():
-    """
-    🔄 Resetear el portfolio de paper trading a los valores por defecto
-    """
-    try:
-        paper_trader = PaperTrader()
-        result = paper_trader.reset_portfolio()
-        
-        if result["success"]:
-            return {
-                "status": "success",
-                "message": result["message"],
-                "initial_balance": result["initial_balance"],
-                "timestamp": result["timestamp"]
-            }
-        else:
-            raise HTTPException(status_code=500, detail=result["message"])
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Endpoints de paper trading eliminados - se usa Capital.com directamente
 
 @app.get("/balance/current")
 async def get_current_balance():
@@ -858,38 +776,7 @@ async def get_current_balance():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo balance: {str(e)}")
 
-@app.get("/balance/history")
-async def get_balance_history(limit: int = 50, db: Session = Depends(get_db)):
-    """Obtener historial de balances"""
-    try:
-        from src.database.models import BalanceHistory
-        
-        history = db.query(BalanceHistory).order_by(
-            BalanceHistory.retrieved_at.desc()
-        ).limit(limit).all()
-        
-        return {
-            "status": "success",
-            "message": f"Historial de {len(history)} registros obtenido",
-            "data": [
-                {
-                    "id": record.id,
-                    "available_balance": record.available_balance,
-                    "total_balance": record.total_balance,
-                    "deposit": record.deposit,
-                    "profit_loss": record.profit_loss,
-                    "account_type": record.account_type,
-                    "currency": record.currency,
-                    "session_active": record.session_active,
-                    "connection_status": record.connection_status,
-                    "retrieved_at": record.retrieved_at.isoformat(),
-                    "created_at": record.created_at.isoformat() if record.created_at else None
-                }
-                for record in history
-            ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo historial: {str(e)}")
+# Historial de balance eliminado - se usa Capital.com directamente
 
 # Ejecutar servidor si se ejecuta directamente
 if __name__ == "__main__":

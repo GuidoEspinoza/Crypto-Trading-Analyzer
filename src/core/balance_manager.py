@@ -11,8 +11,7 @@ from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 
 from src.core.capital_client import create_capital_client_from_env
-from src.database.database import DatabaseManager
-from src.database.models import BalanceHistory
+# Base de datos eliminada - usando Capital.com directamente
 from src.config.main_config import _get_env_float, _get_env_bool
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,6 @@ class BalanceManager:
         """
         self.update_interval = update_interval
         self.capital_client = None
-        self.db_manager = DatabaseManager()
         self.is_running = False
         self.last_balance_update = None
         self.session_refresh_interval = 3600  # Renovar sesión cada hora
@@ -164,28 +162,9 @@ class BalanceManager:
             return False
     
     async def _save_balance_to_db(self, balance_info: Dict[str, Any]):
-        """Guarda el balance en la base de datos"""
-        try:
-            with self.db_manager.get_db_session() as session:
-                balance_record = BalanceHistory(
-                    available_balance=balance_info.get('available', 0.0),
-                    total_balance=balance_info.get('balance', 0.0),
-                    deposit=balance_info.get('deposit', 0.0),
-                    profit_loss=balance_info.get('profitLoss', 0.0),
-                    account_type="DEMO" if _get_env_bool("IS_DEMO", True) else "LIVE",
-                    currency="USD",
-                    session_active=True,
-                    connection_status="CONNECTED",
-                    retrieved_at=datetime.now()
-                )
-                
-                session.add(balance_record)
-                session.commit()
-                
-                logger.debug(f"💾 Balance guardado en DB: ${balance_info.get('available', 0.0):,.2f}")
-                
-        except Exception as e:
-            logger.error(f"❌ Error guardando balance en DB: {e}")
+        """Guarda el balance (simplificado - sin base de datos)"""
+        # Simplificado - sin guardar en base de datos
+        logger.debug(f"💾 Balance actualizado: ${balance_info.get('available', 0.0):,.2f}")
     
     async def _periodic_update_task(self):
         """Tarea que actualiza el balance periódicamente"""
