@@ -57,7 +57,7 @@ def _get_env_bool(var_name: str, default: bool) -> bool:
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "ELITE"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
+TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 
 # ============================================================================
 # 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
@@ -154,11 +154,7 @@ GLOBAL_SYMBOLS: List[str] = [
     # === Metales Preciosos ===
     "GOLD", "SILVER", "PALLADIUM", "PLATINUM",
     # === Criptomonedas ===
-    "BTCUSD",    # Bitcoin - El rey, menos volátil pero consistente
-    "ETHUSD",    # Ethereum - Ecosistema DeFi, alta liquidez
-    "SOLUSD",    # Solana - Alta volatilidad, gran potencial de crecimiento
-    "ADAUSD",    # Cardano - Proyectos sólidos, movimientos grandes
-    "XRPUSD",    # Ripple - Volatilidad extrema, oportunidades rápidas
+    "BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD", "XRPUSD"
 ]
 
 # ============================================================================
@@ -196,23 +192,23 @@ class TradingProfiles:
     PROFILES = {
         "RAPIDO": {
             "name": "Rápido",
-            "description": "Timeframes 1m-15m, máxima frecuencia optimizada",
+            "description": "Timeframes 1m-15m, máxima frecuencia optimizada institucional",
             "timeframes": ["1m", "5m", "15m"],
             "analysis_interval": 5,  # Intervalo de análisis (minutos)
-            "min_confidence": 65.0,  # Aumentado para mejor calidad de señales
-            "max_daily_trades": 20,  # Reducido para mejor selección
-            "max_positions": 8,  # Reducido para mejor control
+            "min_confidence": 75.0,  # ↑ OPTIMIZADO: de 65% - Menos ruido, mejor calidad
+            "max_daily_trades": 15,  # ↑ OPTIMIZADO: de 12 - Más oportunidades controladas
+            "max_positions": 6,  # ↑ OPTIMIZADO: de 5 - Mejor diversificación
 
-            # Paper Trader Config - Optimizado
+            # Paper Trader Config - OPTIMIZADO INSTITUCIONAL
             "max_position_size": 0.15,  # 15% como decimal
-            "max_total_exposure": 0.70,  # Exposición total máxima 70%
+            "max_total_exposure": 0.50,  # ↓ OPTIMIZADO: de 70% a 50% - Reduce correlación
             "min_trade_value": 5.0,  # Reducido para permitir pruebas
-            "paper_min_confidence": 60.0,  # Aumentado
+            "paper_min_confidence": 70.0,  # ↑ OPTIMIZADO: de 60% - Mejor filtrado
             "max_slippage": 0.06,  # Reducido para mejor ejecución
             "min_liquidity": 5.0,  # Aumentado para liquidez
-            # Risk Manager Config - Optimizado
-            "max_risk_per_trade": 1.2,  # Control de riesgo por operación
-            "max_daily_risk": 5.0,  # Protección diaria
+            # Risk Manager Config - OPTIMIZADO INSTITUCIONAL
+            "max_risk_per_trade": 0.5,  # ↓ OPTIMIZADO: de 1.2% a 0.5% - Control institucional
+            "max_daily_risk": 2.0,  # ↓ OPTIMIZADO: de 5% a 2% - Protección institucional
             "max_drawdown_threshold": 0.10,  # Estandarizado: 10% como decimal
             "correlation_threshold": 0.75,  # Optimizado
             "min_position_size": 12.0,  # Reducido para flexibilidad
@@ -228,11 +224,11 @@ class TradingProfiles:
             "breakeven_threshold": 0.006,  # Umbral de breakeven al 0.6% (decimal)
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 0.025,  # TP mínimo optimizado (decimal)
-            "tp_max_percentage": 0.055,  # TP máximo optimizado (decimal)
-            "sl_min_percentage": 0.008,  # SL mínimo más ajustado (decimal)
-            "sl_max_percentage": 0.025,  # SL máximo optimizado (decimal)
+            # Take Profit y Stop Loss Config - OPTIMIZADO R:R 2:1 MÍNIMO
+            "tp_min_percentage": 0.020,  # ↓ OPTIMIZADO: de 2.5% a 2% - Más realizaciones
+            "tp_max_percentage": 0.040,  # ↓ OPTIMIZADO: de 5.5% a 4% - Menos codicia
+            "sl_min_percentage": 0.010,  # ↑ OPTIMIZADO: de 0.8% a 1% - Mejor protección
+            "sl_max_percentage": 0.020,  # ↓ OPTIMIZADO: de 2.5% a 2% - Control pérdidas
             "tp_increment_percentage": 1.0,  # Factor base de TP
             "max_tp_adjustments": 5,  # Máximo ajustes de TP
             "tp_confidence_threshold": 0.7,  # Umbral confianza para ajustar TP
@@ -242,12 +238,12 @@ class TradingProfiles:
             "min_confidence_threshold": 0.6,  # Confianza mínima para trades
             "position_size_multiplier": 1.0,  # Multiplicador de tamaño de posición
             "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad
-            # Strategy Config - Optimizado
+            # Strategy Config - OPTIMIZADO INSTITUCIONAL
             "default_min_confidence": 52.0,  # Reducido para más oportunidades
             "default_atr_period": 10,
-            "rsi_min_confidence": 68.0,  # Aumentado para mejor calidad
-            "rsi_oversold": 35,  # Optimizado para señales de calidad
-            "rsi_overbought": 65,  # Optimizado para mejor balance
+            "rsi_min_confidence": 78.0,  # ↑ OPTIMIZADO: de 68% a 78% - Señales más fuertes
+            "rsi_oversold": 25,  # ↓ OPTIMIZADO: de 35 a 25 - Extremos reales
+            "rsi_overbought": 75,  # ↑ OPTIMIZADO: de 65 a 75 - Extremos reales
             "rsi_period": 10,
             "min_volume_ratio": 1.6,  # Aumentado para mejor calidad
             "min_confluence": 4,  # Aumentado para mejores señales
@@ -256,16 +252,16 @@ class TradingProfiles:
             "max_spread_threshold": 0.002,  # Optimizado más estricto
             "volume_weight": 0.22,  # Nuevo peso para volumen
             "confluence_threshold": 0.65,  # Nuevo umbral
-            # Multi-Timeframe Config - Optimizado
+            # Multi-Timeframe Config - OPTIMIZADO INSTITUCIONAL
             "mtf_enhanced_confidence": 62.0,  # Optimizado
-            "mtf_min_confidence": 65.0,  # Aumentado para calidad
+            "mtf_min_confidence": 75.0,  # ↑ OPTIMIZADO: de 65% a 75% - Mejor calidad
             "mtf_min_consensus": 0.65,  # Optimizado
             "mtf_require_trend_alignment": False,
             "mtf_min_timeframe_consensus": 2,
             "mtf_trend_alignment_required": False,
             "volume_timeframe": "5m",  # Nuevo timeframe para volumen
-            # Ensemble Config - Optimizado
-            "ensemble_min_consensus_threshold": 0.58,  # Optimizado
+            # Ensemble Config - OPTIMIZADO INSTITUCIONAL
+            "ensemble_min_consensus_threshold": 0.70,  # ↑ OPTIMIZADO: de 0.58 a 0.70 - Mejor consenso
             "ensemble_confidence_boost_factor": 1.3,  # Optimizado
             # Live Trading Config - Optimizado
             "trading_fees": 0.001,
@@ -324,23 +320,23 @@ class TradingProfiles:
         },
         "ELITE": {
             "name": "Elite",
-            "description": "Timeframes 1h-1d, precisión institucional con alta protección de ganancias",
+            "description": "Timeframes 1h-1d, precisión institucional premium optimizada",
             "timeframes": ["1h", "4h", "1d"],
             "analysis_interval": 30,
-            "min_confidence": 86.0,
-            "max_daily_trades": 8,
-            "max_positions": 4,
+            "min_confidence": 88.0,  # ↑ OPTIMIZADO: de 86% a 88% - Máxima calidad
+            "max_daily_trades": 10,  # ↑ OPTIMIZADO: de 8 a 10 - Más flexibilidad
+            "max_positions": 5,  # ↑ OPTIMIZADO: de 4 a 5 - Mantener control
 
-            # Paper Trader Config
+            # Paper Trader Config - OPTIMIZADO INSTITUCIONAL
             "max_position_size": 0.10,  # 10% del balance
-            "max_total_exposure": 0.55,  # 55% exposición total
+            "max_total_exposure": 0.40,  # ↓ OPTIMIZADO: de 55% a 40% - Más oportunidades controladas
             "min_trade_value": 15.0,
-            "paper_min_confidence": 82.0,
+            "paper_min_confidence": 85.0,  # ↑ OPTIMIZADO: de 82% - Filtrado premium
             "max_slippage": 0.03,
             "min_liquidity": 12.0,
-            # Risk Manager Config
-            "max_risk_per_trade": 0.6,   # 0.6% (se convierte a decimal en EnhancedRiskManager)
-            "max_daily_risk": 2.5,       # 2.5% (se convierte a decimal en EnhancedRiskManager)
+            # Risk Manager Config - OPTIMIZADO INSTITUCIONAL
+            "max_risk_per_trade": 0.8,   # ↑ OPTIMIZADO: de 0.6% a 0.8% - Más agresivo controlado
+            "max_daily_risk": 3.0,       # ↑ OPTIMIZADO: de 2.5% a 3% - Mejor aprovechamiento
             "max_drawdown_threshold": 0.05,
             "correlation_threshold": 0.50,
             "min_position_size": 20.0,
@@ -356,11 +352,11 @@ class TradingProfiles:
             "breakeven_threshold": 0.006,      # 0.6% en decimal
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
-            # Take Profit y Stop Loss Config (decimales)
-            "tp_min_percentage": 0.04,   # 4%
-            "tp_max_percentage": 0.12,   # 12%
-            "sl_min_percentage": 0.006,  # 0.6%
-            "sl_max_percentage": 0.015,  # 1.5%
+            # Take Profit y Stop Loss Config - OPTIMIZADO R:R 3:1 MÍNIMO
+            "tp_min_percentage": 0.030,  # ↓ OPTIMIZADO: de 4% a 3% - Más realizaciones
+            "tp_max_percentage": 0.090,  # ↓ OPTIMIZADO: de 12% a 9% - Menos codicia
+            "sl_min_percentage": 0.010,  # ↑ OPTIMIZADO: de 0.6% a 1% - Mejor protección
+            "sl_max_percentage": 0.030,  # ↑ OPTIMIZADO: de 1.5% a 3% - Más tolerancia
             "tp_increment_percentage": 1.0,
             "max_tp_adjustments": 6,
             "tp_confidence_threshold": 0.75,
@@ -369,12 +365,12 @@ class TradingProfiles:
             "min_confidence_threshold": 0.75,
             "position_size_multiplier": 1.0,
             "volatility_adjustment_factor": 1.0,
-            # Strategy Config
+            # Strategy Config - OPTIMIZADO INSTITUCIONAL ELITE
             "default_min_confidence": 80.0,
             "default_atr_period": 14,
-            "rsi_min_confidence": 88.0,
-            "rsi_oversold": 28,
-            "rsi_overbought": 72,
+            "rsi_min_confidence": 92.0,  # ↑ OPTIMIZADO: de 88% a 92% - Señales elite
+            "rsi_oversold": 20,  # ↓ OPTIMIZADO: de 28 a 20 - Extremos verdaderos
+            "rsi_overbought": 80,  # ↑ OPTIMIZADO: de 72 a 80 - Extremos verdaderos
             "rsi_period": 14,
             "min_volume_ratio": 2.0,
             "min_confluence": 5,
@@ -383,15 +379,15 @@ class TradingProfiles:
             "max_spread_threshold": 0.0007,
             "volume_weight": 0.20,
             "confluence_threshold": 0.80,
-            # Multi-Timeframe Config
+            # Multi-Timeframe Config - OPTIMIZADO INSTITUCIONAL ELITE
             "mtf_enhanced_confidence": 82.0,
-            "mtf_min_confidence": 86.0,
+            "mtf_min_confidence": 88.0,  # ↑ OPTIMIZADO: de 86% a 88% - Filtros premium
             "mtf_min_consensus": 0.80,
             "mtf_require_trend_alignment": True,
             "mtf_min_timeframe_consensus": 3,
             "mtf_trend_alignment_required": True,
             "volume_timeframe": "2h",
-            # Ensemble Config
+            # Ensemble Config - OPTIMIZADO INSTITUCIONAL ELITE
             "ensemble_min_consensus_threshold": 0.75,
             "ensemble_confidence_boost_factor": 1.20,
             # Live Trading Config
@@ -447,23 +443,23 @@ class TradingProfiles:
         },
         "CONSERVADOR": {
             "name": "Conservador",
-            "description": "Timeframes 4h-1d, máxima preservación de capital",
+            "description": "Timeframes 4h-1d, máxima preservación de capital optimizada",
             "timeframes": ["4h", "1d"],  # Timeframes más largos
             "analysis_interval": 60,  # Análisis menos frecuente (minutos)
-            "min_confidence": 85.0,  # Aumentado para máxima seguridad
-            "max_daily_trades": 6,  # Aumentado ligeramente para oportunidades
-            "max_positions": 3,  # Aumentado para diversificación mínima
+            "min_confidence": 90.0,  # ↑ OPTIMIZADO: de 85% a 90% - Solo lo mejor
+            "max_daily_trades": 8,  # ↑ OPTIMIZADO: de 6 a 8 - Más flexibilidad
+            "max_positions": 4,  # ↑ OPTIMIZADO: de 3 a 4 - Mejor diversificación
 
-            # Paper Trader Config - Conservador
+            # Paper Trader Config - OPTIMIZADO INSTITUCIONAL CONSERVADOR
             "max_position_size": 0.05,  # 5% como decimal
-            "max_total_exposure": 0.35,  # 35% como decimal
+            "max_total_exposure": 0.25,  # ↓ OPTIMIZADO: de 35% a 25% - Máxima protección
             "min_trade_value": 30.0,  # Reducido para permitir entradas de alta calidad
-            "paper_min_confidence": 80.0,  # Muy alto
+            "paper_min_confidence": 85.0,  # ↑ OPTIMIZADO: de 80% - Filtrado premium
             "max_slippage": 0.03,  # Muy estricto
             "min_liquidity": 15.0,  # Muy alto
-            # Risk Manager Config - Ultra conservador
-            "max_risk_per_trade": 0.4,  # Extremadamente bajo
-            "max_daily_risk": 1.5,  # Muy limitado para máxima protección
+            # Risk Manager Config - OPTIMIZADO INSTITUCIONAL ULTRA CONSERVADOR
+            "max_risk_per_trade": 0.3,  # ↓ OPTIMIZADO: de 0.4% a 0.3% - Máxima protección
+            "max_daily_risk": 1.0,  # ↓ OPTIMIZADO: de 1.5% a 1% - Control estricto
             "max_drawdown_threshold": 0.05,  # Corregido: 5% como decimal (mínimo permitido)
             "correlation_threshold": 0.4,  # Muy estricto
             "min_position_size": 30.0,  # Alto para calidad
@@ -479,11 +475,11 @@ class TradingProfiles:
             "breakeven_threshold": 0.01,  # Umbral de breakeven al 1% (decimal)
             "intelligent_trailing": True,  # Nueva funcionalidad
             "dynamic_position_sizing": True,  # Nueva funcionalidad
-            # Take Profit y Stop Loss Config - Rangos optimizados
-            "tp_min_percentage": 0.03,  # TP mínimo 3% (decimal)
-            "tp_max_percentage": 0.06,  # TP máximo 6% (decimal)
-            "sl_min_percentage": 0.01,  # SL mínimo 1% (decimal)
-            "sl_max_percentage": 0.03,  # SL máximo 3% (decimal)
+            # Take Profit y Stop Loss Config - OPTIMIZADO R:R 4:1 MÍNIMO
+            "tp_min_percentage": 0.020,  # ↓ OPTIMIZADO: de 3% a 2% - Realizaciones rápidas
+            "tp_max_percentage": 0.080,  # ↑ OPTIMIZADO: de 6% a 8% - Mantener conservador
+            "sl_min_percentage": 0.005,  # ↓ OPTIMIZADO: de 1% a 0.5% - Máxima protección
+            "sl_max_percentage": 0.020,  # ↓ OPTIMIZADO: de 3% a 2% - Más tolerancia
             "tp_increment_percentage": 0.8,  # Factor base de TP (conservador)
             "max_tp_adjustments": 3,  # Menos ajustes para conservador
             "tp_confidence_threshold": 0.8,  # Umbral más alto para conservador
@@ -493,12 +489,12 @@ class TradingProfiles:
             "min_confidence_threshold": 0.75,  # Confianza mínima para trades
             "position_size_multiplier": 0.8,  # Multiplicador de tamaño de posición
             "volatility_adjustment_factor": 1.0,  # Factor de ajuste por volatilidad
-            # Strategy Config - Ultra conservador
+            # Strategy Config - OPTIMIZADO INSTITUCIONAL ULTRA CONSERVADOR
             "default_min_confidence": 78.0,  # Muy alto
             "default_atr_period": 21,  # Período más largo
-            "rsi_min_confidence": 88.0,  # Extremadamente alto
-            "rsi_oversold": 22,  # Optimizado para mejor calidad
-            "rsi_overbought": 78,  # Optimizado para mejor calidad
+            "rsi_min_confidence": 95.0,  # ↑ OPTIMIZADO: de 88% a 95% - Solo señales premium
+            "rsi_oversold": 15,  # ↓ OPTIMIZADO: de 22 a 15 - Extremos verdaderos
+            "rsi_overbought": 85,  # ↑ OPTIMIZADO: de 78 a 85 - Extremos verdaderos
             "rsi_period": 21,  # Período más largo
             "min_volume_ratio": 2.5,  # Alto para calidad
             "min_confluence": 5,  # Muy alto
@@ -509,14 +505,14 @@ class TradingProfiles:
             "confluence_threshold": 0.8,  # Muy alto
             # Multi-Timeframe Config - Ultra conservador
             "mtf_enhanced_confidence": 82.0,  # Muy alto
-            "mtf_min_confidence": 88.0,  # Extremadamente alto
+            "mtf_min_confidence": 90.0,  # ↑ OPTIMIZADO: de 88% a 90% - Filtrado premium
             "mtf_min_consensus": 0.85,  # Muy alto
             "mtf_require_trend_alignment": True,
             "mtf_min_timeframe_consensus": 3,
             "mtf_trend_alignment_required": True,
             "volume_timeframe": "4h",  # Timeframe más largo
             # Ensemble Config - Ultra conservador
-            "ensemble_min_consensus_threshold": 0.8,  # Muy alto
+            "ensemble_min_consensus_threshold": 0.85,  # ↑ OPTIMIZADO: de 80% a 85% - Consenso máximo
             "ensemble_confidence_boost_factor": 1.1,  # Conservador
             # Live Trading Config - Conservador
             "trading_fees": 0.001,

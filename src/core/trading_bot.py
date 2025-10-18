@@ -93,6 +93,7 @@ class TradingBot:
         self.analysis_interval = analysis_interval_minutes or self.config.get_analysis_interval()
         self.is_running = False
         self.start_time = None
+        self.last_analysis_time = None
         
         # Configurar logger PRIMERO
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -618,6 +619,9 @@ class TradingBot:
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
             
+            # Actualizar tiempo del último análisis
+            self.last_analysis_time = datetime.now()
+            
             self.logger.info("✅ Optimized analysis cycle completed")
             
         except Exception as e:
@@ -872,13 +876,20 @@ class TradingBot:
         """
         uptime = "Not running"
         next_analysis = datetime.now()
+        last_analysis = self.last_analysis_time or datetime.now()
         
         if self.is_running and self.start_time:
             uptime_delta = datetime.now() - self.start_time
             hours, remainder = divmod(int(uptime_delta.total_seconds()), 3600)
             minutes, seconds = divmod(remainder, 60)
             uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            next_analysis = datetime.now() + timedelta(minutes=self.analysis_interval)
+            
+            # Calcular próximo análisis basado en el último análisis real
+            if self.last_analysis_time:
+                next_analysis = self.last_analysis_time + timedelta(minutes=self.analysis_interval)
+            else:
+                # Si no hay último análisis, el próximo será ahora + intervalo
+                next_analysis = datetime.now() + timedelta(minutes=self.analysis_interval)
         
         portfolio_summary = self.get_portfolio_summary()
         
@@ -891,7 +902,7 @@ class TradingBot:
             current_portfolio_value=portfolio_summary.get("total_value", 0),
             total_pnl=portfolio_summary.get("total_pnl", 0),
             active_strategies=list(self.strategies.keys()),
-            last_analysis_time=datetime.now() - timedelta(minutes=self.analysis_interval) if self.is_running else datetime.now(),
+            last_analysis_time=last_analysis,
             next_analysis_time=next_analysis
         )
         
