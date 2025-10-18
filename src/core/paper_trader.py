@@ -52,12 +52,14 @@ class PaperTrader:
     - Cálculo de P&L en tiempo real
     """
     
-    def __init__(self, initial_balance: float = None):
+    def __init__(self, initial_balance: float = None, initial_positions: Dict = None, capital_client=None):
         """
         Inicializar Paper Trader
         
         Args:
             initial_balance: Balance inicial en USD (opcional, usa config si no se especifica)
+            initial_positions: Posiciones iniciales de Capital.com para sincronizar (opcional)
+            capital_client: Cliente de Capital.com para obtener valores reales (opcional)
         """
         # Configuración del paper trader desde archivo centralizado
         self.config = PaperTraderConfig()
@@ -83,14 +85,18 @@ class PaperTrader:
             }
         }
         
-        # Historial de trades en memoria
-        self.trades = []
-        self.trade_counter = 1
-        
         # Configurar logging basado en modo de operación
         log_level = logging.DEBUG if VERBOSE_LOGGING else logging.INFO
         logging.basicConfig(level=log_level)
         self.logger = logging.getLogger(__name__)
+        
+        # Sincronizar posiciones iniciales de Capital.com si se proporcionan
+        if initial_positions:
+            self._sync_initial_positions(initial_positions, capital_client)
+        
+        # Historial de trades en memoria
+        self.trades = []
+        self.trade_counter = 1
         
         # Verificaciones de modo de operación
         if PRODUCTION_MODE:
@@ -103,6 +109,106 @@ class PaperTrader:
             self.logger.info("🧪 Running in DEVELOPMENT MODE")
         
         self.logger.info(f"🎭 Paper Trader initialized with ${self.initial_balance:,.2f}")
+    
+    def _sync_initial_positions(self, capital_positions: Dict, capital_client=None):
+        """
+        🔄 Sincronizar posiciones iniciales de Capital.com con el paper trader
+        
+        Args:
+            capital_positions: Diccionario con posiciones de Capital.com
+            capital_client: Cliente de Capital.com para obtener valores reales
+        """
+        try:
+            synced_positions = 0
+            real_available_balance = None
+            real_equity = None
+            real_pnl = None
+            
+            # Obtener valores reales de Capital.com si el cliente está disponible
+            if capital_client and hasattr(capital_client, 'get_available_balance'):
+                try:
+                    balance_info = capital_client.get_available_balance()
+                    if balance_info.get("success"):
+                        real_available_balance = float(balance_info.get("available", 0))
+                        real_equity = float(balance_info.get("balance", 0))
+                        real_pnl = float(balance_info.get("profit_loss", 0))
+                        
+                        self.logger.info(f"💰 Valores reales de Capital.com:")
+                        self.logger.info(f"   Available: ${real_available_balance:.2f}")
+                        self.logger.info(f"   Equity: ${real_equity:.2f}")
+                        self.logger.info(f"   P&L: ${real_pnl:.2f}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ No se pudieron obtener valores reales de Capital.com: {e}")
+            
+            for symbol, position_data in capital_positions.items():
+                direction = position_data.get('direction', '').upper()
+                size = float(position_data.get('size', 0))
+                avg_price = float(position_data.get('level', 0))
+                
+                if size == 0 or avg_price == 0:
+                    continue
+                
+                # En CFDs, BUY = posición larga (cantidad positiva), SELL = posición corta (cantidad negativa)
+                if direction == 'BUY':
+                    quantity = size  # Posición larga
+                elif direction == 'SELL':
+                    quantity = -size  # Posición corta (cantidad negativa)
+                else:
+                    self.logger.warning(f"⚠️ Dirección desconocida para {symbol}: {direction}")
+                    continue
+                
+                # Calcular valor de la posición
+                position_value = abs(quantity) * avg_price
+                
+                # Agregar posición al portfolio del paper trader
+                self.portfolio[symbol] = {
+                    "quantity": quantity,
+                    "avg_price": avg_price,
+                    "current_price": avg_price,  # Se actualizará con precios reales
+                    "current_value": position_value,
+                    "unrealized_pnl": 0.0,
+                    "unrealized_pnl_percentage": 0.0,
+                    "last_updated": datetime.now()
+                }
+                
+                synced_positions += 1
+                position_type = "LONG" if quantity > 0 else "SHORT"
+                self.logger.info(f"🔄 Sincronizada posición {position_type}: {abs(quantity):.6f} {symbol} @ ${avg_price:.2f}")
+            
+            # Usar valores reales de Capital.com si están disponibles
+            if real_available_balance is not None and real_equity is not None:
+                # Usar el balance disponible real de Capital.com
+                self.portfolio["USD"]["quantity"] = real_available_balance
+                self.portfolio["USD"]["current_value"] = real_available_balance
+                
+                # Guardar valores reales para cálculos de portfolio
+                self._real_equity = real_equity
+                self._real_pnl = real_pnl
+                
+                self.logger.info(f"✅ Sincronizadas {synced_positions} posiciones de Capital.com con paper trader")
+                self.logger.info(f"💰 Balance USD real: ${real_available_balance:.2f}")
+                self.logger.info(f"📈 Equity real: ${real_equity:.2f}")
+                self.logger.info(f"💵 P&L real: ${real_pnl:.2f}")
+            else:
+                # Fallback: usar cálculo anterior si no hay valores reales
+                total_portfolio_value = sum(abs(pos["quantity"]) * pos["avg_price"] 
+                                          for symbol, pos in self.portfolio.items() 
+                                          if symbol != "USD")
+                adjusted_usd_balance = max(self.initial_balance, total_portfolio_value * 0.2)
+                
+                self.portfolio["USD"]["quantity"] = adjusted_usd_balance
+                self.portfolio["USD"]["current_value"] = adjusted_usd_balance
+                
+                self.logger.info(f"✅ Sincronizadas {synced_positions} posiciones de Capital.com con paper trader")
+                self.logger.info(f"💰 Valor total del portfolio calculado: ${total_portfolio_value:.2f}")
+                self.logger.info(f"💵 Balance USD ajustado: ${adjusted_usd_balance:.2f}")
+                
+            if synced_positions == 0:
+                self.logger.info("ℹ️ No hay posiciones activas en Capital.com para sincronizar")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error sincronizando posiciones iniciales: {e}")
+            # No fallar la inicialización por este error
     
     def reset_portfolio(self) -> Dict:
         """
@@ -231,7 +337,10 @@ class PaperTrader:
     
     def _execute_buy(self, signal: 'TradingSignal') -> TradeResult:
         """
-        📈 Ejecutar una orden de compra
+        📈 Ejecutar una orden de compra (CFD - Posición Larga)
+        
+        En CFDs, BUY significa abrir una posición larga (apostar que el precio sube)
+        o cerrar una posición corta existente.
         
         Args:
             signal: Señal de compra
@@ -243,72 +352,20 @@ class PaperTrader:
             symbol = signal.symbol
             price = signal.price
             
-            # Calcular cantidad basada en el tamaño máximo de posición
-            usd_balance = self.get_balance("USD")
-            max_trade_value = min(
-                usd_balance * self.max_balance_usage,
-                self.max_position_size
-            )
+            # En CFDs, verificar si ya tenemos una posición abierta
+            if symbol in self.portfolio:
+                position = self.portfolio[symbol]
+                current_quantity = position["quantity"]
+                
+                # Si ya tenemos posición corta, cerrarla primero
+                if current_quantity < 0:
+                    return self._close_short_position(symbol, price)
+                # Si ya tenemos posición larga, aumentarla o cerrarla según la estrategia
+                elif current_quantity > 0:
+                    return self._increase_long_position(symbol, price)
             
-            if max_trade_value < self.min_trade_value:
-                return TradeResult(
-                    success=False,
-                    trade_id=None,
-                    message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
-                    entry_price=price,
-                    quantity=0.0,
-                    entry_value=0.0
-                )
-            
-            # Calcular cantidad y fees
-            quantity = max_trade_value / price
-            fee = max_trade_value * FEE_RATE
-            total_cost = max_trade_value + fee
-            
-            if total_cost > usd_balance:
-                return TradeResult(
-                    success=False,
-                    trade_id=None,
-                    message=f"Insufficient balance: ${total_cost:,.2f} required, ${usd_balance:,.2f} available",
-                    entry_price=price,
-                    quantity=0.0,
-                    entry_value=0.0
-                )
-            
-            # Actualizar portfolio
-            self._update_usd_balance(-total_cost)
-            self._update_asset_balance(symbol, quantity, price)
-            
-            # Crear registro de trade
-            trade_id = self.trade_counter
-            self.trade_counter += 1
-            
-            trade_record = {
-                "id": trade_id,
-                "symbol": symbol,
-                "trade_type": "BUY",
-                "quantity": quantity,
-                "entry_price": price,
-                "entry_value": max_trade_value,
-                "fee": fee,
-                "status": "OPEN",
-                "entry_time": datetime.now(),
-                "is_paper_trade": True,
-                "notes": f"Paper trade BUY {symbol}"
-            }
-            
-            self.trades.append(trade_record)
-            
-            self.logger.info(f"✅ BUY executed: {quantity:.6f} {symbol} @ ${price:.2f} (Trade #{trade_id})")
-            
-            return TradeResult(
-                success=True,
-                trade_id=trade_id,
-                message=f"BUY order executed successfully",
-                entry_price=price,
-                quantity=quantity,
-                entry_value=max_trade_value
-            )
+            # Abrir nueva posición larga (CFD BUY)
+            return self._open_long_position(symbol, price)
             
         except Exception as e:
             self.logger.error(f"❌ Error executing buy: {e}")
@@ -321,9 +378,140 @@ class PaperTrader:
                 entry_value=0.0
             )
     
+    def _close_short_position(self, symbol: str, price: float) -> TradeResult:
+        """🔄 Cerrar posición corta existente"""
+        position = self.portfolio[symbol]
+        quantity = abs(position["quantity"])  # Convertir a positivo
+        entry_price = position["avg_price"]
+        
+        # En posición corta, ganamos cuando el precio baja
+        # P&L = (precio_entrada - precio_salida) * cantidad
+        entry_value = quantity * entry_price
+        exit_value = quantity * price
+        gross_pnl = entry_value - exit_value  # Invertido para posición corta
+        fee = exit_value * FEE_RATE
+        net_pnl = gross_pnl - fee
+        
+        # Actualizar portfolio (liberar margen y agregar P&L)
+        margin_released = entry_value + (entry_value * FEE_RATE)  # Margen original
+        self._update_usd_balance(margin_released + net_pnl)
+        self._update_asset_balance(symbol, quantity, price)  # Eliminar posición (cantidad positiva para cancelar negativa)
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "BUY_CLOSE_SHORT",
+            "quantity": quantity,
+            "entry_price": entry_price,
+            "exit_price": price,
+            "exit_value": exit_value,
+            "fee": fee,
+            "pnl": net_pnl,
+            "status": "CLOSED",
+            "exit_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade CLOSE SHORT {symbol} | PnL: ${net_pnl:.2f}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        self.logger.info(f"✅ CLOSE SHORT: {quantity:.6f} {symbol} @ ${price:.2f} | PnL: {pnl_sign}${net_pnl:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"SHORT position closed | PnL: {pnl_sign}${net_pnl:.2f}",
+            entry_price=price,
+            quantity=quantity,
+            entry_value=exit_value
+        )
+    
+    def _open_long_position(self, symbol: str, price: float) -> TradeResult:
+        """📈 Abrir nueva posición larga (CFD BUY)"""
+        # Calcular cantidad basada en el tamaño máximo de posición
+        usd_balance = self.get_balance("USD")
+        max_trade_value = min(
+            usd_balance * self.max_balance_usage,
+            usd_balance * self.max_position_size  # Corregido: multiplicar por balance
+        )
+        
+        if max_trade_value < self.min_trade_value:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Calcular cantidad y fees
+        quantity = max_trade_value / price
+        fee = max_trade_value * FEE_RATE
+        margin_required = max_trade_value + fee  # Margen requerido para la posición
+        
+        if margin_required > usd_balance:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance: ${margin_required:,.2f} required, ${usd_balance:,.2f} available",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Actualizar portfolio (reservar margen)
+        self._update_usd_balance(-margin_required)
+        self._update_asset_balance(symbol, quantity, price)
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "BUY_OPEN_LONG",
+            "quantity": quantity,
+            "entry_price": price,
+            "entry_value": max_trade_value,
+            "fee": fee,
+            "status": "OPEN",
+            "entry_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade OPEN LONG {symbol}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        self.logger.info(f"✅ OPEN LONG: {quantity:.6f} {symbol} @ ${price:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"LONG position opened successfully",
+            entry_price=price,
+            quantity=quantity,
+            entry_value=max_trade_value
+        )
+    
+    def _increase_long_position(self, symbol: str, price: float) -> TradeResult:
+        """📈 Aumentar posición larga existente"""
+        # Por simplicidad, por ahora cerramos la posición existente y abrimos una nueva
+        # En el futuro se puede implementar lógica más sofisticada
+        return self._open_long_position(symbol, price)
+    
     def _execute_sell(self, signal: 'TradingSignal') -> TradeResult:
         """
-        📉 Ejecutar una orden de venta
+        📉 Ejecutar una orden de venta (CFD - Posición Corta)
+        
+        En CFDs, SELL significa abrir una posición corta (apostar que el precio baja)
+        No necesitas tener el activo para vender.
         
         Args:
             signal: Señal de venta
@@ -335,70 +523,20 @@ class PaperTrader:
             symbol = signal.symbol
             price = signal.price
             
-            # Verificar si tenemos posición en este asset
-            if symbol not in self.portfolio:
-                return TradeResult(
-                    success=False,
-                    trade_id=None,
-                    message=f"No position in {symbol} to sell",
-                    entry_price=price,
-                    quantity=0.0,
-                    entry_value=0.0
-                )
+            # En CFDs, verificar si ya tenemos una posición abierta
+            if symbol in self.portfolio:
+                position = self.portfolio[symbol]
+                current_quantity = position["quantity"]
+                
+                # Si ya tenemos posición larga, cerrarla primero
+                if current_quantity > 0:
+                    return self._close_long_position(symbol, price)
+                # Si ya tenemos posición corta, aumentarla o cerrarla según la estrategia
+                elif current_quantity < 0:
+                    return self._increase_short_position(symbol, price)
             
-            position = self.portfolio[symbol]
-            available_quantity = position["quantity"]
-            
-            if available_quantity <= 0:
-                return TradeResult(
-                    success=False,
-                    trade_id=None,
-                    message=f"No {symbol} available to sell",
-                    entry_price=price,
-                    quantity=0.0,
-                    entry_value=0.0
-                )
-            
-            # Vender toda la posición
-            quantity = available_quantity
-            sale_value = quantity * price
-            fee = sale_value * FEE_RATE
-            net_proceeds = sale_value - fee
-            
-            # Actualizar portfolio
-            self._update_usd_balance(net_proceeds)
-            self._update_asset_balance(symbol, -quantity, price)
-            
-            # Crear registro de trade
-            trade_id = self.trade_counter
-            self.trade_counter += 1
-            
-            trade_record = {
-                "id": trade_id,
-                "symbol": symbol,
-                "trade_type": "SELL",
-                "quantity": quantity,
-                "exit_price": price,
-                "exit_value": sale_value,
-                "fee": fee,
-                "status": "CLOSED",
-                "exit_time": datetime.now(),
-                "is_paper_trade": True,
-                "notes": f"Paper trade SELL {symbol}"
-            }
-            
-            self.trades.append(trade_record)
-            
-            self.logger.info(f"✅ SELL executed: {quantity:.6f} {symbol} @ ${price:.2f} (Trade #{trade_id})")
-            
-            return TradeResult(
-                success=True,
-                trade_id=trade_id,
-                message=f"SELL order executed successfully",
-                entry_price=price,
-                quantity=quantity,
-                entry_value=sale_value
-            )
+            # Abrir nueva posición corta (CFD SELL)
+            return self._open_short_position(symbol, price)
             
         except Exception as e:
             self.logger.error(f"❌ Error executing sell: {e}")
@@ -410,6 +548,132 @@ class PaperTrader:
                 quantity=0.0,
                 entry_value=0.0
             )
+    
+    def _close_long_position(self, symbol: str, price: float) -> TradeResult:
+        """🔄 Cerrar posición larga existente"""
+        position = self.portfolio[symbol]
+        quantity = position["quantity"]
+        entry_price = position["avg_price"]
+        
+        # Calcular P&L
+        sale_value = quantity * price
+        entry_value = quantity * entry_price
+        gross_pnl = sale_value - entry_value
+        fee = sale_value * FEE_RATE
+        net_pnl = gross_pnl - fee
+        
+        # Actualizar portfolio
+        self._update_usd_balance(sale_value - fee)  # Recibir dinero de la venta
+        self._update_asset_balance(symbol, -quantity, price)  # Eliminar posición
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "SELL_CLOSE_LONG",
+            "quantity": quantity,
+            "entry_price": entry_price,
+            "exit_price": price,
+            "exit_value": sale_value,
+            "fee": fee,
+            "pnl": net_pnl,
+            "status": "CLOSED",
+            "exit_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade CLOSE LONG {symbol} | PnL: ${net_pnl:.2f}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        self.logger.info(f"✅ CLOSE LONG: {quantity:.6f} {symbol} @ ${price:.2f} | PnL: {pnl_sign}${net_pnl:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"LONG position closed | PnL: {pnl_sign}${net_pnl:.2f}",
+            entry_price=price,
+            quantity=quantity,
+            entry_value=sale_value
+        )
+    
+    def _open_short_position(self, symbol: str, price: float) -> TradeResult:
+        """📉 Abrir nueva posición corta (CFD SELL)"""
+        # Calcular cantidad basada en el tamaño máximo de posición
+        usd_balance = self.get_balance("USD")
+        max_trade_value = min(
+            usd_balance * self.max_balance_usage,
+            usd_balance * self.max_position_size  # Corregido: multiplicar por balance
+        )
+        
+        if max_trade_value < self.min_trade_value:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # En posición corta, la cantidad es negativa
+        quantity = -(max_trade_value / price)  # Negativo para indicar posición corta
+        fee = max_trade_value * FEE_RATE
+        margin_required = max_trade_value + fee  # Margen requerido para la posición
+        
+        if margin_required > usd_balance:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance: ${margin_required:,.2f} required, ${usd_balance:,.2f} available",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Actualizar portfolio (reservar margen)
+        self._update_usd_balance(-margin_required)
+        self._update_asset_balance(symbol, quantity, price)  # Cantidad negativa
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "SELL_OPEN_SHORT",
+            "quantity": abs(quantity),  # Guardar como positivo en el registro
+            "entry_price": price,
+            "entry_value": max_trade_value,
+            "fee": fee,
+            "status": "OPEN",
+            "entry_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade OPEN SHORT {symbol}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        self.logger.info(f"✅ OPEN SHORT: {abs(quantity):.6f} {symbol} @ ${price:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"SHORT position opened successfully",
+            entry_price=price,
+            quantity=abs(quantity),
+            entry_value=max_trade_value
+        )
+    
+    def _increase_short_position(self, symbol: str, price: float) -> TradeResult:
+        """📉 Aumentar posición corta existente"""
+        # Por simplicidad, por ahora cerramos la posición existente y abrimos una nueva
+        # En el futuro se puede implementar lógica más sofisticada
+        return self._open_short_position(symbol, price)
     
     def get_portfolio_summary(self) -> Dict:
         """
@@ -578,6 +842,73 @@ class PaperTrader:
             self.logger.error(f"❌ Error getting trade history: {e}")
             return []
     
+    def calculate_portfolio_performance(self) -> Dict:
+        """
+        📊 Calcular rendimiento del portfolio usando valores reales de Capital.com
+        
+        Returns:
+            Dict: Métricas de rendimiento del portfolio
+        """
+        try:
+            # Si tenemos valores reales de Capital.com, usarlos
+            if hasattr(self, '_real_equity') and hasattr(self, '_real_pnl'):
+                total_value = self._real_equity
+                total_pnl = self._real_pnl
+                balance_usd = self.portfolio["USD"]["current_value"]
+                
+                # Calcular total invertido basado en equity - pnl
+                total_invested = total_value - total_pnl
+                
+                # Calcular porcentaje de rendimiento
+                total_return_percentage = (total_pnl / total_invested * 100) if total_invested > 0 else 0.0
+                
+                return {
+                    "total_value": total_value,
+                    "total_pnl": total_pnl,
+                    "total_return_percentage": total_return_percentage,
+                    "initial_balance": self.initial_balance,
+                    "usd_balance": balance_usd,
+                    "open_positions": len([pos for symbol, pos in self.portfolio.items() 
+                                         if symbol != "USD" and pos.get("quantity", 0) != 0])
+                }
+            
+            # Fallback: calcular usando posiciones del paper trader
+            total_value = 0.0
+            total_pnl = 0.0
+            
+            for symbol, position in self.portfolio.items():
+                current_value = position.get("current_value", 0.0)
+                unrealized_pnl = position.get("unrealized_pnl", 0.0)
+                
+                total_value += current_value
+                total_pnl += unrealized_pnl
+            
+            # Calcular porcentaje de retorno
+            total_return_percentage = 0.0
+            if self.initial_balance > 0:
+                total_return_percentage = (total_pnl / self.initial_balance) * 100
+            
+            return {
+                "total_value": total_value,
+                "total_pnl": total_pnl,
+                "total_return_percentage": total_return_percentage,
+                "initial_balance": self.initial_balance,
+                "usd_balance": self.get_balance("USD"),
+                "open_positions": len([pos for symbol, pos in self.portfolio.items() 
+                                     if symbol != "USD" and pos.get("quantity", 0) != 0])
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating portfolio performance: {e}")
+            return {
+                "total_value": self.initial_balance,
+                "total_pnl": 0.0,
+                "total_return_percentage": 0.0,
+                "initial_balance": self.initial_balance,
+                "usd_balance": self.initial_balance,
+                "open_positions": 0
+            }
+
     def get_statistics(self) -> Dict:
         """
         📊 Obtener estadísticas del trading
@@ -590,17 +921,17 @@ class PaperTrader:
             buy_trades = len([t for t in self.trades if t["trade_type"] == "BUY"])
             sell_trades = len([t for t in self.trades if t["trade_type"] == "SELL"])
             
-            portfolio_summary = self.get_portfolio_summary()
+            portfolio_performance = self.calculate_portfolio_performance()
             
             return {
                 "total_trades": total_trades,
                 "buy_trades": buy_trades,
                 "sell_trades": sell_trades,
                 "current_balance": self.get_balance("USD"),
-                "total_portfolio_value": portfolio_summary["total_value"],
-                "total_pnl": portfolio_summary["total_pnl"],
-                "total_pnl_percentage": portfolio_summary["total_pnl_percentage"],
-                "open_positions": len(self.get_open_positions())
+                "total_portfolio_value": portfolio_performance["total_value"],
+                "total_pnl": portfolio_performance["total_pnl"],
+                "total_pnl_percentage": portfolio_performance["total_return_percentage"],
+                "open_positions": portfolio_performance["open_positions"]
             }
         except Exception as e:
             self.logger.error(f"❌ Error getting statistics: {e}")

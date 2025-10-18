@@ -18,6 +18,7 @@ from ..config.main_config import (
     get_all_capital_symbols,
     GLOBAL_SYMBOLS
 )
+from ..utils.market_hours import market_hours_checker
 
 logger = logging.getLogger(__name__)
 
@@ -895,6 +896,18 @@ class CapitalClient:
         if not self._ensure_valid_session():
             return {"success": False, "error": "Failed to establish valid session"}
         
+        # Verificar si el mercado está disponible para operar usando la API de Capital.com
+        market_check = self.is_market_tradeable(epic)
+        if not market_check.get("tradeable", False):
+            market_status = market_check.get("market_status", "UNKNOWN")
+            logger.warning(f"Market {epic} is not tradeable: status is {market_status}")
+            return {
+                "success": False,
+                "error": f"Market not tradeable: {epic} status is {market_status}",
+                "epic": epic,
+                "market_status": market_status
+            }
+        
         # Endpoint correcto según documentación oficial
         url = f"{self.base_url}/positions"
         
@@ -1015,14 +1028,14 @@ class CapitalClient:
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
     
-    def close_position(self, deal_id: str, direction: str, size: float) -> Dict[str, Any]:
+    def close_position(self, deal_id: str, direction: str = None, size: float = None) -> Dict[str, Any]:
         """
-        Close an existing position
+        Close an existing position using DELETE method
         
         Args:
             deal_id: Deal ID of the position to close
-            direction: "BUY" or "SELL" (opposite of original position)
-            size: Size to close
+            direction: Not used with DELETE method (kept for compatibility)
+            size: Not used with DELETE method (kept for compatibility)
             
         Returns:
             Dict containing close result
@@ -1030,19 +1043,12 @@ class CapitalClient:
         if not self._ensure_valid_session():
             return {"success": False, "error": "Failed to establish valid session"}
         
-        url = f"{self.base_url}/positions/otc"
-        
-        close_data = {
-            "dealId": deal_id,
-            "direction": direction.upper(),
-            "size": str(size),
-            "orderType": "MARKET",
-            "timeInForce": "FILL_OR_KILL"
-        }
+        # Use DELETE method with deal_id in URL path as per Capital.com API documentation
+        url = f"{self.base_url}/positions/{deal_id}"
         
         try:
-            logger.info(f"Closing position {deal_id}: direction={direction}, size={size}")
-            response = self.session.post(url, json=close_data)
+            logger.info(f"Closing position {deal_id} using DELETE method")
+            response = self.session.delete(url)
             
             if response.status_code == 200:
                 result = response.json()
@@ -1051,8 +1057,6 @@ class CapitalClient:
                     "success": True,
                     "deal_reference": result.get("dealReference"),
                     "deal_id": deal_id,
-                    "direction": direction,
-                    "size": size,
                     "response": result
                 }
             else:
@@ -1064,6 +1068,119 @@ class CapitalClient:
             error_msg = f"Network error closing position: {str(e)}"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
+
+    def is_market_tradeable(self, symbol: str) -> Dict[str, Any]:
+        """
+        Check if a market is currently tradeable
+        
+        Args:
+            symbol: Trading symbol (epic)
+            
+        Returns:
+            Dict containing market status information
+        """
+        try:
+            # Usar tanto searchTerm como epics para obtener el estado correcto del mercado
+            # Esto sigue el patrón de los ejemplos: /markets?searchTerm=btcusd&epics=BTCUSD
+            search_term = symbol.lower()  # searchTerm en minúsculas
+            epics_param = symbol.upper()  # epics en mayúsculas
+            
+            if not self._ensure_valid_session():
+                return {
+                    "success": False,
+                    "tradeable": False,
+                    "error": "Failed to establish valid session"
+                }
+            
+            url = f"{self.base_url}/markets"
+            params = {
+                "searchTerm": search_term,
+                "epics": epics_param
+            }
+            
+            try:
+                response = self.session.get(url, params=params, timeout=10)
+                self.last_activity = time.time()
+                
+                if response.status_code != 200:
+                    error_msg = f"Failed to get market status: {response.status_code} - {response.text}"
+                    logger.error(error_msg)
+                    return {
+                        "success": False,
+                        "tradeable": False,
+                        "error": error_msg
+                    }
+                
+                markets_response = response.json()
+                logger.debug(f"Markets response for {symbol}: {markets_response}")
+                
+                # Handle different response formats
+                markets = []
+                if "markets" in markets_response:
+                    markets = markets_response["markets"]
+                elif "marketDetails" in markets_response:
+                    markets = markets_response["marketDetails"]
+                
+                if not markets:
+                    return {
+                        "success": False,
+                        "tradeable": False,
+                        "error": f"Market {symbol} not found"
+                    }
+                
+                # Find the specific market
+                market_info = None
+                for market in markets:
+                    # Check both epic and instrument.epic for different response formats
+                    market_epic = market.get("epic") or market.get("instrument", {}).get("epic")
+                    # Compare with both original symbol and uppercase version
+                    if market_epic == symbol or market_epic == epics_param:
+                        market_info = market
+                        break
+                
+                if not market_info:
+                    return {
+                        "success": False,
+                        "tradeable": False,
+                        "error": f"Market {symbol} not found in response"
+                    }
+                
+                # Get market status from different possible locations
+                market_status = (
+                    market_info.get("marketStatus") or 
+                    market_info.get("snapshot", {}).get("marketStatus") or
+                    "UNKNOWN"
+                )
+                
+                is_tradeable = market_status == "TRADEABLE"
+                
+                logger.info(f"📊 Market {symbol} status: {market_status} (tradeable: {is_tradeable})")
+                
+                return {
+                    "success": True,
+                    "tradeable": is_tradeable,
+                    "market_status": market_status,
+                    "symbol": symbol,
+                    "market_info": market_info
+                }
+                
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Network error checking market status: {str(e)}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "tradeable": False,
+                    "error": error_msg
+                }
+            
+        except Exception as e:
+            error_msg = f"Error checking market status for {symbol}: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "tradeable": False,
+                "error": error_msg
+            }
 
     def close_session(self) -> Dict[str, Any]:
         """

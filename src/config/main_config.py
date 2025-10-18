@@ -57,7 +57,7 @@ def _get_env_bool(var_name: str, default: bool) -> bool:
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
+TRADING_PROFILE = "ELITE"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 
 # ============================================================================
 # 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
@@ -152,9 +152,13 @@ USD_BASE_PRICE = 1.0
 # Lista de símbolos con nombres exactos como aparecen en Capital.com
 GLOBAL_SYMBOLS: List[str] = [
     # === Metales Preciosos ===
-    #"GOLD", "SILVER", "PALLADIUM", "PLATINUM",
+    "GOLD", "SILVER", "PALLADIUM", "PLATINUM",
     # === Criptomonedas ===
-    "BTCUSD", "XRPUSD", "ETHUSD" 
+    "BTCUSD",    # Bitcoin - El rey, menos volátil pero consistente
+    "ETHUSD",    # Ethereum - Ecosistema DeFi, alta liquidez
+    "SOLUSD",    # Solana - Alta volatilidad, gran potencial de crecimiento
+    "ADAUSD",    # Cardano - Proyectos sólidos, movimientos grandes
+    "XRPUSD",    # Ripple - Volatilidad extrema, oportunidades rápidas
 ]
 
 # ============================================================================

@@ -35,6 +35,7 @@ from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
 from .position_adjuster import PositionAdjuster
 from .capital_client import CapitalClient, create_capital_client_from_env
+from src.utils.market_hours import market_hours_checker
 
 # Configurar logging ANTES de la clase
 logging.basicConfig(level=logging.INFO)
@@ -103,8 +104,11 @@ class TradingBot:
         # Obtener balance real para sincronizar con paper trader
         real_balance = self._get_real_balance()
         
+        # Obtener posiciones existentes de Capital.com para sincronizar
+        initial_positions = self._get_capital_positions_for_sync()
+        
         # Componentes principales
-        self.paper_trader = PaperTrader(initial_balance=real_balance)
+        self.paper_trader = PaperTrader(initial_balance=real_balance, initial_positions=initial_positions, capital_client=self.capital_client)
         self.risk_manager = EnhancedRiskManager(capital_client=self.capital_client)
         
         # Sistema de monitoreo de posiciones
@@ -220,6 +224,59 @@ class TradingBot:
         default_balance = 1000.0  # Balance por defecto
         self.logger.info(f"💰 Usando balance por defecto: ${default_balance:.2f}")
         return default_balance
+    
+    def _get_capital_positions_for_sync(self) -> Dict:
+        """
+        🔄 Obtener posiciones de Capital.com para sincronizar con paper trader
+        
+        Returns:
+            Diccionario con posiciones en formato compatible con paper trader
+        """
+        try:
+            if not self.capital_client:
+                self.logger.info("ℹ️ Capital client not available, no positions to sync")
+                return {}
+            
+            positions_result = self.capital_client.get_positions()
+            if not positions_result.get("success"):
+                self.logger.warning(f"⚠️ Failed to get positions: {positions_result.get('error')}")
+                return {}
+            
+            positions_data = {}
+            capital_positions = positions_result.get("positions", [])
+            
+            for position in capital_positions:
+                # Extraer información de la posición
+                market_info = position.get("market", {})
+                position_info = position.get("position", {})
+                
+                symbol = market_info.get("epic", "").replace("_", "")  # ETHUSD, BTCUSD, etc.
+                direction = position_info.get("direction", "").upper()  # BUY o SELL
+                size = float(position_info.get("size", 0))
+                level = float(position_info.get("level", 0))  # Precio promedio
+                currency = position_info.get("currency", "USD")
+                
+                # Solo incluir posiciones activas
+                if size > 0 and level > 0 and symbol:
+                    positions_data[symbol] = {
+                        'direction': direction,
+                        'size': size,
+                        'level': level,
+                        'currency': currency
+                    }
+                    
+                    self.logger.debug(f"🔄 Posición encontrada: {direction} {size} {symbol} @ ${level:.2f}")
+            
+            if positions_data:
+                self.logger.info(f"📊 Encontradas {len(positions_data)} posiciones activas en Capital.com para sincronizar")
+            else:
+                self.logger.info("ℹ️ No hay posiciones activas en Capital.com para sincronizar")
+            
+            return positions_data
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error getting Capital.com positions for sync: {e}")
+            return {}
 
     def set_trade_event_callback(self, callback):
         """
@@ -362,8 +419,13 @@ class TradingBot:
         # Sistema de ajuste TP/SL desactivado (Opción A): no se inicia monitoreo
         # self._start_position_adjustment_monitoring()
         
-        # Programar primer análisis para evitar bloqueo
-        schedule.every(self.config.get_first_analysis_delay()).minutes.do(self._run_first_analysis).tag('first_analysis')
+        # Ejecutar primer análisis inmediatamente (sin delay)
+        self.logger.info("🔄 Running immediate initial analysis...")
+        try:
+            self._run_analysis_cycle()
+            self.logger.info("✅ Initial analysis completed successfully")
+        except Exception as e:
+            self.logger.error(f"❌ Error in initial analysis: {e}")
         
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
@@ -472,6 +534,36 @@ class TradingBot:
         """📋 Obtener lista de símbolos disponibles en Capital.com desde configuración centralizada"""
         return GLOBAL_SYMBOLS.copy()
 
+    def _log_market_status(self):
+        """📊 Mostrar estado de los mercados al inicio del análisis"""
+        try:
+            market_status = market_hours_checker.get_general_market_status()
+            
+            if market_status['open_markets']:
+                self.logger.info(f"🟢 Mercados abiertos: {', '.join(market_status['open_markets'])}")
+            
+            if market_status['closed_markets']:
+                self.logger.info(f"🔴 Mercados cerrados: {', '.join(market_status['closed_markets'])}")
+                
+            # Mostrar estado específico de los símbolos que estamos monitoreando
+            tradeable_symbols = []
+            non_tradeable_symbols = []
+            
+            for symbol in self.symbols:
+                if market_hours_checker.should_trade(symbol)[0]:
+                    tradeable_symbols.append(symbol)
+                else:
+                    non_tradeable_symbols.append(symbol)
+            
+            if tradeable_symbols:
+                self.logger.info(f"✅ Símbolos operables: {', '.join(tradeable_symbols)}")
+            
+            if non_tradeable_symbols:
+                self.logger.info(f"⏸️ Símbolos no operables: {', '.join(non_tradeable_symbols)}")
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error al verificar estado de mercados: {e}")
+
     def _run_scheduler(self):
         """
         ⏰ Ejecutar scheduler en loop
@@ -490,6 +582,9 @@ class TradingBot:
         """
         try:
             self.logger.info("🔄 Starting optimized analysis cycle...")
+            
+            # Mostrar estado de mercados
+            self._log_market_status()
             
             # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
@@ -632,6 +727,14 @@ class TradingBot:
                 if self.stats["daily_trades"] >= self.max_daily_trades:
                     self.logger.info("⏸️ Daily trade limit reached")
                     break
+                
+                # Verificar horarios de mercado
+                should_trade, market_reason = market_hours_checker.should_trade(signal.symbol)
+                if not should_trade:
+                    self.logger.info(f"⏰ {signal.symbol}: {market_reason}")
+                    continue
+                
+                self.logger.info(f"✅ {signal.symbol}: {market_reason}")
                 
                 # Análisis de riesgo
                 risk_assessment = self.risk_manager.assess_trade_risk(signal, portfolio_value)
@@ -802,30 +905,53 @@ class TradingBot:
             Dict: Resumen del portfolio
         """
         try:
+            logger.info(f"🔧 DEBUG: get_portfolio_summary iniciado")
+            logger.info(f"🔧 DEBUG: capital_client disponible: {self.capital_client is not None}")
+            
+            if self.capital_client is None:
+                raise Exception("Capital client no está inicializado")
+            
             # Obtener balance disponible de Capital.com
+            logger.info(f"🔧 DEBUG: llamando get_available_balance()")
             balance_info = self.capital_client.get_available_balance()
+            logger.info(f"🔧 DEBUG: balance_info from Capital.com: {balance_info}")
+            
             if isinstance(balance_info, dict):
                 available_balance = float(balance_info.get('available', 0.0))
+                # El balance total (equity) incluye posiciones abiertas
+                total_balance = float(balance_info.get('balance', available_balance))
+                total_pnl = float(balance_info.get('profit_loss', 0.0))
             elif isinstance(balance_info, (str, int, float)):
                 available_balance = float(balance_info)
+                total_balance = available_balance
+                total_pnl = 0.0
             else:
                 available_balance = 0.0
+                total_balance = 0.0
+                total_pnl = 0.0
             
-            # Obtener posiciones abiertas de Capital.com
-            positions = self.capital_client.get_positions()
+            logger.info(f"🔧 DEBUG: available_balance: ${available_balance:.2f}")
+            logger.info(f"🔧 DEBUG: total_balance (equity): ${total_balance:.2f}")
+            logger.info(f"🔧 DEBUG: profit_loss: ${total_pnl:.2f}")
             
-            # Calcular valor total del portfolio
-            total_value = available_balance
-            total_pnl = 0.0
+            # Obtener posiciones abiertas de Capital.com (solo para contar)
+            logger.info(f"🔧 DEBUG: llamando get_positions()")
+            positions_response = self.capital_client.get_positions()
+            logger.info(f"🔧 DEBUG: positions_response from Capital.com: {positions_response}")
             
-            if positions:
-                for position in positions:
-                    if position.get('size', 0) != 0:  # Solo posiciones activas
-                        current_value = float(position.get('size', 0)) * float(position.get('level', 0))
-                        total_value += abs(current_value)
-                        total_pnl += float(position.get('pnl', 0))
+            # Extraer la lista de posiciones de la respuesta
+            positions = []
+            if positions_response.get('success') and positions_response.get('positions'):
+                positions = positions_response.get('positions', [])
+                logger.info(f"🔧 DEBUG: extracted positions: {positions}")
+                logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
             
-            return {
+            # El valor total del portfolio es el balance total (equity) que ya incluye las posiciones
+            total_value = total_balance
+            
+            logger.info(f"🔧 DEBUG: final total_value (equity): ${total_value:.2f}")
+            
+            result = {
                 'total_value': total_value,
                 'available_balance': available_balance,
                 'total_pnl': total_pnl,
@@ -833,10 +959,17 @@ class TradingBot:
                 'source': 'capital_com'
             }
             
+            logger.info(f"🔧 DEBUG: get_portfolio_summary returning: {result}")
+            return result
+            
         except Exception as e:
-            logger.error(f"Error obteniendo portfolio de Capital.com: {e}")
+            import traceback
+            logger.error(f"❌ Error obteniendo portfolio de Capital.com: {e}")
+            logger.error(f"❌ Traceback completo: {traceback.format_exc()}")
             # Fallback: usar paper trader si hay error
-            return self.paper_trader.get_portfolio_summary()
+            fallback_result = self.paper_trader.get_portfolio_summary()
+            logger.info(f"🔧 DEBUG: using paper trader fallback: {fallback_result}")
+            return fallback_result
     
     def get_detailed_report(self) -> Dict:
         """
@@ -1057,19 +1190,7 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error updating configuration: {e}")
     
-    def _run_first_analysis(self):
-        """
-        🔄 Ejecutar primer análisis y eliminar del schedule
-        """
-        try:
-            self.logger.info("🔄 Running first analysis...")
-            self._run_analysis_cycle()
-            # Eliminar este job del schedule después de ejecutarlo
-            schedule.clear('first_analysis')
-            self.logger.info("✅ First analysis completed and removed from schedule")
-        except Exception as e:
-            self.logger.error(f"❌ Error in first analysis: {e}")
-            schedule.clear('first_analysis')
+
     
     def force_analysis(self):
         """
@@ -1263,33 +1384,14 @@ class TradingBot:
         🔄 Normalizar símbolo para Capital.com
         
         Args:
-            symbol: Símbolo original (ej: ETHUSD, ETH)
+            symbol: Símbolo original (ej: ETHUSD, US100, GOLD)
             
         Returns:
-            Símbolo normalizado para Capital.com
+            Símbolo tal como está definido en GLOBAL_SYMBOLS (sin modificaciones)
         """
-        # Mapeo de símbolos comunes
-        symbol_mapping = {
-            "ETHUSD": "ETHUSD",
-            "ETH": "ETHUSD",
-            "BTCUSD": "BTCUSD", 
-            "BTC": "BTCUSD",
-            "ADAUSD": "ADAUSD",
-            "ADA": "ADAUSD",
-            "SOLUSD": "SOLUSD",
-            "SOL": "SOLUSD",
-            "DOTUSD": "DOTUSD",
-            "DOT": "DOTUSD"
-        }
-        
-        # Convertir a mayúsculas y buscar en el mapeo
-        normalized = symbol_mapping.get(symbol.upper(), symbol.upper())
-        
-        # Si no está en el mapeo y no termina en USD, agregar USD
-        if normalized not in symbol_mapping.values() and not normalized.endswith("USD"):
-            normalized = f"{normalized}USD"
-            
-        return normalized
+        # Los símbolos en GLOBAL_SYMBOLS ya están en el formato correcto para Capital.com
+        # No necesitamos agregar USD automáticamente
+        return symbol.upper()
     
     def _execute_real_trade(self, signal: TradingSignal, risk_assessment) -> Dict[str, Any]:
         """

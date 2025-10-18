@@ -24,7 +24,9 @@ from src.core.capital_client import CapitalClient, create_capital_client_from_en
 from src.core.balance_manager import start_balance_manager, stop_balance_manager, get_current_balance_sync
 
 # Importar configuración global
-from src.config.main_config import GLOBAL_SYMBOLS
+from src.config.main_config import GLOBAL_SYMBOLS, TradingProfiles
+import re
+import os
 
 # Load environment variables
 load_dotenv('.env')
@@ -66,6 +68,44 @@ def ensure_bot_exists():
     if bot is None:
         raise HTTPException(status_code=500, detail="Trading bot not initialized")
     return bot
+
+def change_trading_profile(new_profile: str) -> bool:
+    """
+    Cambiar el perfil de trading modificando el archivo main_config.py
+    
+    Args:
+        new_profile: Nuevo perfil a establecer ("RAPIDO", "ELITE", "CONSERVADOR")
+    
+    Returns:
+        bool: True si el cambio fue exitoso, False en caso contrario
+    """
+    try:
+        config_file_path = os.path.join(os.path.dirname(__file__), "src", "config", "main_config.py")
+        
+        # Leer el archivo actual
+        with open(config_file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        
+        # Buscar y reemplazar la línea TRADING_PROFILE
+        pattern = r'TRADING_PROFILE\s*=\s*["\'][^"\']*["\']'
+        replacement = f'TRADING_PROFILE = "{new_profile}"'
+        
+        # Verificar que el patrón existe
+        if not re.search(pattern, content):
+            return False
+        
+        # Realizar el reemplazo
+        new_content = re.sub(pattern, replacement, content)
+        
+        # Escribir el archivo modificado
+        with open(config_file_path, 'w', encoding='utf-8') as file:
+            file.write(new_content)
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error cambiando perfil de trading: {str(e)}")
+        return False
 
 # Crear instancia de FastAPI
 app = FastAPI(
@@ -192,6 +232,30 @@ class TradingModeUpdate(BaseModel):
             ]
         }
     }
+
+class ProfileUpdate(BaseModel):
+    profile: str
+    restart_bot: Optional[bool] = True
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "profile": "ELITE",
+                "restart_bot": True
+            }
+        }
+
+class SymbolsUpdate(BaseModel):
+    symbols: List[str]
+    restart_bot: Optional[bool] = True
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "symbols": ["GOLD", "SILVER", "BTCUSD", "ETHUSD"],
+                "restart_bot": True
+            }
+        }
 
 # 🔧 **UTILIDADES**
 
@@ -640,9 +704,228 @@ async def emergency_stop_bot():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error during emergency stop: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error in emergency stop: {str(e)}")
 
-#  **ANÁLISIS EN TIEMPO REAL**
+@app.get("/bot/profile")
+async def get_current_profile():
+    """
+    📋 Obtener el perfil de trading activo actual
+    """
+    try:
+        current_profile = TradingProfiles.get_current_profile()
+        available_profiles = list(TradingProfiles.PROFILES.keys())
+        
+        return {
+            "status": "success",
+            "current_profile": {
+                "name": current_profile["name"],
+                "key": [k for k, v in TradingProfiles.PROFILES.items() if v == current_profile][0],
+                "description": current_profile["description"],
+                "analysis_interval": current_profile["analysis_interval"],
+                "min_confidence": current_profile["min_confidence"],
+                "max_daily_trades": current_profile["max_daily_trades"],
+                "timeframes": current_profile["timeframes"]
+            },
+            "available_profiles": [
+                {
+                    "key": key,
+                    "name": profile["name"],
+                    "description": profile["description"],
+                    "analysis_interval": profile["analysis_interval"]
+                }
+                for key, profile in TradingProfiles.PROFILES.items()
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting profile: {str(e)}")
+
+
+@app.put("/bot/profile")
+async def update_trading_profile(profile_config: ProfileUpdate):
+    """
+    🔄 Cambiar el perfil de trading activo
+    
+    **Perfiles disponibles:**
+    - **RAPIDO**: Timeframes 1m-15m, análisis cada 5 min, máxima frecuencia
+    - **ELITE**: Timeframes 15m-4h, análisis cada 30 min, equilibrio óptimo  
+    - **CONSERVADOR**: Timeframes 1h-1d, análisis cada 60 min, máxima estabilidad
+    
+    **Funcionalidad:** Cambia automáticamente el perfil modificando el archivo de configuración.
+    El bot se reiniciará automáticamente si `restart_bot=True`.
+    """
+    try:
+        # Validar que el perfil existe
+        if profile_config.profile not in TradingProfiles.PROFILES:
+            available = list(TradingProfiles.PROFILES.keys())
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Perfil '{profile_config.profile}' no válido. Opciones: {available}"
+            )
+        
+        # Obtener información del perfil actual y nuevo
+        current_profile_key = [k for k, v in TradingProfiles.PROFILES.items() 
+                              if v == TradingProfiles.get_current_profile()][0]
+        new_profile = TradingProfiles.PROFILES[profile_config.profile]
+        
+        if current_profile_key == profile_config.profile:
+            return {
+                "status": "info",
+                "message": f"El perfil '{profile_config.profile}' ya está activo",
+                "current_profile": current_profile_key,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Cambiar el perfil automáticamente
+        profile_changed = change_trading_profile(profile_config.profile)
+        
+        if not profile_changed:
+            raise HTTPException(
+                status_code=500, 
+                detail="Error modificando el archivo de configuración"
+            )
+        
+        # Reiniciar el bot si se solicita
+        restart_performed = False
+        bot_restart_error = None
+        
+        if profile_config.restart_bot:
+            try:
+                global trading_bot
+                bot = get_trading_bot()
+                if getattr(bot, 'is_running', False):
+                    bot.stop()
+                    # Recargar el módulo de configuración para que tome el nuevo perfil
+                    import importlib
+                    import src.config.main_config
+                    importlib.reload(src.config.main_config)
+                    
+                    # Crear nuevo bot con la nueva configuración
+                    trading_bot = None
+                    bot = get_trading_bot()
+                    bot.start()
+                    restart_performed = True
+                else:
+                    # Si el bot no está corriendo, solo recargar la configuración
+                    import importlib
+                    import src.config.main_config
+                    importlib.reload(src.config.main_config)
+                    trading_bot = None  # Forzar recreación del bot
+                    restart_performed = True
+                    
+            except Exception as e:
+                bot_restart_error = str(e)
+        
+        return {
+            "status": "success",
+            "message": f"Perfil cambiado exitosamente a '{profile_config.profile}'",
+            "previous_profile": current_profile_key,
+            "new_profile": profile_config.profile,
+            "new_profile_info": {
+                "name": new_profile["name"],
+                "description": new_profile["description"],
+                "analysis_interval": new_profile["analysis_interval"],
+                "min_confidence": new_profile["min_confidence"],
+                "timeframes": new_profile["timeframes"]
+            },
+            "restart_performed": restart_performed,
+            "restart_error": bot_restart_error,
+            "note": "El cambio se aplicó al archivo de configuración. Reinicia la aplicación para garantizar que todos los módulos usen la nueva configuración.",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating profile: {str(e)}")
+
+@app.get("/bot/symbols")
+async def get_current_symbols():
+    """
+    📊 Obtener la lista actual de símbolos a analizar
+    """
+    try:
+        bot = get_trading_bot()
+        current_symbols = getattr(bot, 'symbols', GLOBAL_SYMBOLS)
+        
+        return {
+            "status": "success",
+            "current_symbols": current_symbols,
+            "total_symbols": len(current_symbols),
+            "default_symbols": GLOBAL_SYMBOLS,
+            "symbol_categories": {
+                "metals": [s for s in current_symbols if s in ["GOLD", "SILVER"]],
+                "crypto": [s for s in current_symbols if "USD" in s and s not in ["GOLD", "SILVER"]],
+                "forex": [s for s in current_symbols if "/" in s],
+                "other": [s for s in current_symbols if s not in ["GOLD", "SILVER"] and "USD" not in s and "/" not in s]
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting symbols: {str(e)}")
+
+@app.put("/bot/symbols")
+async def update_symbols_list(symbols_config: SymbolsUpdate):
+    """
+    🔄 Actualizar la lista de símbolos a analizar
+    
+    **Símbolos disponibles comunes:**
+    - **Metales:** GOLD, SILVER
+    - **Crypto:** BTCUSD, ETHUSD, ADAUSD, SOLUSD, DOTUSD
+    - **Forex:** EUR/USD, GBP/USD, USD/JPY
+    
+    **Nota:** Los cambios se aplicarán al bot actual. Si `restart_bot=True`,
+    el bot se reiniciará para aplicar completamente los cambios.
+    """
+    try:
+        # Validar que la lista no esté vacía
+        if not symbols_config.symbols:
+            raise HTTPException(status_code=400, detail="La lista de símbolos no puede estar vacía")
+        
+        # Validar símbolos únicos
+        unique_symbols = list(set(symbols_config.symbols))
+        if len(unique_symbols) != len(symbols_config.symbols):
+            symbols_config.symbols = unique_symbols
+        
+        bot = get_trading_bot()
+        old_symbols = getattr(bot, 'symbols', GLOBAL_SYMBOLS).copy()
+        
+        # Actualizar símbolos en el bot
+        if hasattr(bot, 'symbols'):
+            bot.symbols = symbols_config.symbols
+        
+        # Si el bot está corriendo y se solicita reinicio
+        restart_performed = False
+        if symbols_config.restart_bot and getattr(bot, 'is_running', False):
+            try:
+                bot.stop()
+                bot.start()
+                restart_performed = True
+            except Exception as e:
+                # Si falla el reinicio, restaurar símbolos anteriores
+                bot.symbols = old_symbols
+                raise HTTPException(status_code=500, detail=f"Error reiniciando bot: {str(e)}")
+        
+        return {
+            "status": "success",
+            "message": f"Símbolos actualizados exitosamente. {'Bot reiniciado.' if restart_performed else 'Reinicio pendiente.'}",
+            "old_symbols": old_symbols,
+            "new_symbols": symbols_config.symbols,
+            "changes": {
+                "added": [s for s in symbols_config.symbols if s not in old_symbols],
+                "removed": [s for s in old_symbols if s not in symbols_config.symbols],
+                "total_count": len(symbols_config.symbols)
+            },
+            "restart_performed": restart_performed,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating symbols: {str(e)}")
+
+# 📊 **ANÁLISIS EN TIEMPO REAL**
 
 @app.get("/enhanced/strategies/list")
 async def get_enhanced_strategies():
