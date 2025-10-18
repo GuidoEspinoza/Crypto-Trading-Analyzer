@@ -415,7 +415,157 @@ class CapitalClient:
                 "success": False,
                 "error": error_msg
             }
-    
+
+    def get_account_preferences(self) -> Dict[str, Any]:
+        """
+        Get account preferences including leverage settings for different asset types
+        
+        Returns:
+            Dict containing account preferences with leverage information
+        """
+        if not self._ensure_valid_session():
+            return {
+                "success": False,
+                "error": "Failed to establish valid session"
+            }
+        
+        try:
+            response = self.session.get(
+                f"{self.base_url}/accounts/preferences",
+                headers={
+                    'CST': self.cst_token,
+                    'X-SECURITY-TOKEN': self.security_token
+                }
+            )
+            
+            if response.status_code == 200:
+                preferences_data = response.json()
+                self.last_activity = time.time()
+                
+                return {
+                    "success": True,
+                    "preferences": preferences_data,
+                    "leverages": preferences_data.get("leverages", {}),
+                    "hedging_mode": preferences_data.get("hedgingMode", False)
+                }
+            else:
+                error_msg = f"Failed to get account preferences: {response.status_code}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "status_code": response.status_code
+                }
+                
+        except Exception as e:
+            error_msg = f"Error getting account preferences: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+    def get_leverage_for_asset_type(self, asset_type: str) -> Dict[str, Any]:
+        """
+        Get leverage information for a specific asset type
+        
+        Args:
+            asset_type: Asset type (CRYPTOCURRENCIES, SHARES, CURRENCIES, INDICES, COMMODITIES)
+            
+        Returns:
+            Dict containing current and available leverage for the asset type
+        """
+        preferences = self.get_account_preferences()
+        
+        if not preferences.get("success"):
+            return {
+                "success": False,
+                "error": f"Failed to get preferences: {preferences.get('error')}"
+            }
+        
+        leverages = preferences.get("leverages", {})
+        asset_leverage = leverages.get(asset_type.upper())
+        
+        if not asset_leverage:
+            return {
+                "success": False,
+                "error": f"Asset type '{asset_type}' not found in preferences"
+            }
+        
+        return {
+             "success": True,
+             "asset_type": asset_type.upper(),
+             "current_leverage": asset_leverage.get("current", 1),
+             "available_leverages": asset_leverage.get("available", [1]),
+             "max_leverage": max(asset_leverage.get("available", [1]))
+         }
+
+    def get_asset_type_from_symbol(self, symbol: str) -> str:
+        """
+        Determine asset type from symbol
+        
+        Args:
+            symbol: Trading symbol (e.g., BTCUSD, ETHUSD, EURUSD, etc.)
+            
+        Returns:
+            Asset type string (CRYPTOCURRENCIES, CURRENCIES, SHARES, INDICES, COMMODITIES)
+        """
+        symbol_upper = symbol.upper()
+        
+        # Cryptocurrency symbols
+        crypto_symbols = [
+            'BTC', 'ETH', 'XRP', 'ADA', 'SOL', 'DOT', 'AVAX', 'MATIC', 'LINK', 'UNI',
+            'LTC', 'BCH', 'XLM', 'ALGO', 'ATOM', 'ICP', 'VET', 'FIL', 'TRX', 'ETC',
+            'AAVE', 'MKR', 'COMP', 'YFI', 'SNX', 'CRV', 'BAL', 'REN', 'KNC', 'ZRX'
+        ]
+        
+        # Check if it's a cryptocurrency
+        for crypto in crypto_symbols:
+            if symbol_upper.startswith(crypto) and ('USD' in symbol_upper or 'EUR' in symbol_upper or 'GBP' in symbol_upper):
+                return "CRYPTOCURRENCIES"
+        
+        # Currency pairs (Forex)
+        major_currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD']
+        if len(symbol_upper) == 6:  # Standard forex pair format like EURUSD
+            base = symbol_upper[:3]
+            quote = symbol_upper[3:]
+            if base in major_currencies and quote in major_currencies:
+                return "CURRENCIES"
+        
+        # Indices (usually contain numbers or specific patterns)
+        index_patterns = ['SPX', 'NAS', 'DOW', 'FTSE', 'DAX', 'CAC', 'NIKKEI', 'ASX']
+        for pattern in index_patterns:
+            if pattern in symbol_upper:
+                return "INDICES"
+        
+        # Commodities
+        commodity_symbols = ['GOLD', 'SILVER', 'OIL', 'BRENT', 'GAS', 'COPPER', 'PLATINUM']
+        for commodity in commodity_symbols:
+            if commodity in symbol_upper:
+                return "COMMODITIES"
+        
+        # Default to SHARES if no other type matches
+        return "SHARES"
+
+    def get_leverage_for_symbol(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get leverage information for a specific trading symbol
+        
+        Args:
+            symbol: Trading symbol
+            
+        Returns:
+            Dict containing leverage information for the symbol
+        """
+        asset_type = self.get_asset_type_from_symbol(symbol)
+        leverage_info = self.get_leverage_for_asset_type(asset_type)
+        
+        if leverage_info.get("success"):
+            leverage_info["symbol"] = symbol
+            leverage_info["detected_asset_type"] = asset_type
+        
+        return leverage_info
+
     def get_markets(self, search_term: Optional[str] = None, epics: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Get available markets/instruments

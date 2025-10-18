@@ -98,13 +98,13 @@ class TradingBot:
         # Configurar logger PRIMERO
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Componentes principales
-        self.paper_trader = PaperTrader()
-        self.risk_manager = EnhancedRiskManager()
-        
         # Cliente de Capital.com
         self.capital_client = None
         self._initialize_capital_client()
+        
+        # Componentes principales
+        self.paper_trader = PaperTrader()
+        self.risk_manager = EnhancedRiskManager(capital_client=self.capital_client)
         
         # Sistema de monitoreo de posiciones
         self.position_monitor = PositionMonitor(
@@ -1169,38 +1169,37 @@ class TradingBot:
             # 2. Convertir símbolo al formato de Capital.com
             capital_symbol = self._normalize_symbol_for_capital(signal.symbol)
             
-            # 3. Calcular tamaño de posición para trading real basado en balance disponible
-            # Obtener max_position_size del perfil activo (15% por defecto)
-            from src.config.main_config import TradingProfiles
-            max_position_pct = TradingProfiles.get_current_profile()["max_position_size"]
-            
-            # Calcular valor máximo de posición basado en balance real disponible
-            max_position_value = available_balance * max_position_pct
-            
-            # Calcular tamaño en unidades del activo
+            # 3. Usar el tamaño de posición calculado por el risk manager (que ya considera apalancamiento)
             current_price = signal.price if hasattr(signal, 'price') else signal.current_price
-            real_size = max_position_value / current_price
             
-            # 4. Redondear a 2 decimales para evitar problemas de precisión
-            real_size = round(real_size, 2)
+            # El risk_assessment ya calculó el tamaño óptimo en UNIDADES del activo
+            # recommended_size ya incluye el apalancamiento aplicado
+            real_size = risk_assessment.position_sizing.recommended_size
+            leverage_used = risk_assessment.position_sizing.leverage_used
+            position_value_usd = risk_assessment.position_sizing.position_value  # Valor total en USD
+            
+            # 4. Redondear a 4 decimales para crypto (más precisión)
+            real_size = round(real_size, 4)
             
             # Log detallado del cálculo
-            self.logger.info(f"💰 Cálculo de posición real:")
+            self.logger.info(f"💰 Cálculo de posición real (ya con apalancamiento aplicado):")
             self.logger.info(f"   Balance disponible: {currency_symbol}{available_balance:.2f}")
-            self.logger.info(f"   Max position size: {max_position_pct:.1%}")
-            self.logger.info(f"   Valor máximo posición: {currency_symbol}{max_position_value:.2f}")
+            self.logger.info(f"   Tamaño recomendado: {real_size:.4f} unidades")
+            self.logger.info(f"   Apalancamiento usado: {leverage_used}x")
             self.logger.info(f"   Precio actual {capital_symbol}: {currency_symbol}{current_price:.2f}")
-            self.logger.info(f"   Tamaño calculado: {real_size:.4f} unidades")
+            self.logger.info(f"   Valor total posición: {currency_symbol}{position_value_usd:.2f}")
+            self.logger.info(f"   Verificación: {real_size:.4f} * {currency_symbol}{current_price:.2f} = {currency_symbol}{real_size * current_price:.2f}")
             
             # 5. Verificar si tenemos suficiente balance para el trade
-            # El valor real de la posición ya está calculado como max_position_value
-            # Usar un factor de seguridad del 20% para el margen requerido
-            required_margin = max_position_value * 0.2
+            # El valor total de la posición ya está calculado en position_value_usd
+            total_position_value = position_value_usd
+            # Calcular margen requerido basado en el apalancamiento
+            required_margin = total_position_value / leverage_used
             
             if available_balance < required_margin:
                 return {
                     "success": False,
-                    "error": f"Insufficient balance. Available: {currency_symbol}{available_balance:.2f}, Required margin: {currency_symbol}{required_margin:.2f}, Position value: {currency_symbol}{max_position_value:.2f}"
+                    "error": f"Insufficient balance. Available: {currency_symbol}{available_balance:.2f}, Required margin: {currency_symbol}{required_margin:.2f}, Position value: {currency_symbol}{total_position_value:.2f}"
                 }
             
             # Verificar tamaño mínimo (Capital.com generalmente requiere mínimo 0.01)
