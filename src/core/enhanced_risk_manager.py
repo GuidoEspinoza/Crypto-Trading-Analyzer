@@ -86,9 +86,20 @@ class EnhancedRiskAssessment:
 class EnhancedRiskManager:
     """🛡️ Gestor de Riesgo Avanzado"""
     
-    def __init__(self):
+    def __init__(self, capital_client=None):
         # Configuración de riesgo desde archivo centralizado
         self.config = RiskManagerConfig()
+        self.capital_client = capital_client  # Cliente para obtener apalancamientos dinámicos
+        
+        # Debug logs más visibles
+        print(f"🔧 DEBUG: EnhancedRiskManager inicializado con capital_client: {capital_client is not None}")
+        logger.info(f"🔧 EnhancedRiskManager inicializado con capital_client: {capital_client is not None}")
+        if capital_client:
+            print(f"🔧 DEBUG: Capital client tiene get_leverage_for_symbol: {hasattr(capital_client, 'get_leverage_for_symbol')}")
+            logger.info(f"🔧 Capital client tiene get_leverage_for_symbol: {hasattr(capital_client, 'get_leverage_for_symbol')}")
+        else:
+            print("🔧 DEBUG: ❌ Capital client es None!")
+            logger.warning("🔧 ❌ Capital client es None!")
         self.max_portfolio_risk = self.config.get_max_risk_per_trade() / 100  # Convertir de % a decimal
         self.max_daily_risk = self.config.get_max_daily_risk() / 100  # Convertir de % a decimal
         self.max_drawdown_threshold = self.config.get_max_drawdown_threshold()  # Ya en decimal
@@ -113,10 +124,60 @@ class EnhancedRiskManager:
         self.open_positions = {}
         self.trade_history = []
         
+    def _get_dynamic_leverage(self, symbol: str) -> float:
+        """Obtener apalancamiento dinámico desde Capital.com API"""
+        print(f"🔧 DEBUG: Obteniendo apalancamiento dinámico para {symbol}")
+        logger.info(f"🔍 Obteniendo apalancamiento dinámico para {symbol}")
+        print(f"🔧 DEBUG: Capital client disponible: {self.capital_client is not None}")
+        logger.info(f"🔍 Capital client disponible: {self.capital_client is not None}")
+        
+        try:
+            if self.capital_client:
+                print(f"🔧 DEBUG: Capital client tiene get_leverage_for_symbol: {hasattr(self.capital_client, 'get_leverage_for_symbol')}")
+                logger.info(f"🔍 Capital client tiene get_leverage_for_symbol: {hasattr(self.capital_client, 'get_leverage_for_symbol')}")
+                if hasattr(self.capital_client, 'get_leverage_for_symbol'):
+                    print(f"🔧 DEBUG: Llamando get_leverage_for_symbol para {symbol}")
+                    logger.info(f"🔍 Llamando get_leverage_for_symbol para {symbol}")
+                    leverage_info = self.capital_client.get_leverage_for_symbol(symbol)
+                    print(f"🔧 DEBUG: Respuesta leverage_info: {leverage_info}")
+                    logger.info(f"🔍 Respuesta leverage_info: {leverage_info}")
+                    
+                    if leverage_info and leverage_info.get('success') and 'current_leverage' in leverage_info:
+                        dynamic_leverage = float(leverage_info['current_leverage'])
+                        print(f"🔧 DEBUG: ✅ Apalancamiento dinámico para {symbol}: {dynamic_leverage}x")
+                        logger.info(f"✅ Apalancamiento dinámico para {symbol}: {dynamic_leverage}x")
+                        return dynamic_leverage
+                    else:
+                        print(f"🔧 DEBUG: ⚠️ No se pudo obtener apalancamiento dinámico para {symbol}, usando perfil")
+                        logger.warning(f"⚠️ No se pudo obtener apalancamiento dinámico para {symbol}, usando perfil")
+                else:
+                    print(f"🔧 DEBUG: ⚠️ Capital client no tiene método get_leverage_for_symbol")
+                    logger.warning(f"⚠️ Capital client no tiene método get_leverage_for_symbol")
+            else:
+                print(f"🔧 DEBUG: ⚠️ Capital client no disponible, usando apalancamiento del perfil")
+                logger.warning("⚠️ Capital client no disponible, usando apalancamiento del perfil")
+        except Exception as e:
+            print(f"🔧 DEBUG: ❌ Error obteniendo apalancamiento dinámico para {symbol}: {e}")
+            logger.error(f"❌ Error obteniendo apalancamiento dinámico para {symbol}: {e}")
+            import traceback
+            print(f"🔧 DEBUG: Traceback: {traceback.format_exc()}")
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        
+        # Fallback al apalancamiento del perfil
+        profile = TradingProfiles.get_current_profile()
+        fallback_leverage = profile['default_leverage']
+        print(f"🔧 DEBUG: 🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
+        logger.info(f"🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
+        return fallback_leverage
+        
     def assess_trade_risk(self, signal: EnhancedSignal, current_portfolio_value: float) -> EnhancedRiskAssessment:
         """Evaluar riesgo de un trade específico"""
+        print(f"🔧 DEBUG: assess_trade_risk llamado para {signal.symbol}")
+        logger.info(f"🔍 assess_trade_risk llamado para {signal.symbol}")
         try:
             self.portfolio_value = current_portfolio_value
+            print(f"🔧 DEBUG: Portfolio value actualizado a: ${self.portfolio_value:.2f}")
+            logger.info(f"🔧 Portfolio value actualizado a: ${self.portfolio_value:.2f}")
             
             # Análisis de factores de riesgo del mercado
             market_risk = self._analyze_market_risk_factors(signal)
@@ -234,77 +295,82 @@ class EnhancedRiskManager:
     
     def _calculate_position_sizing(self, signal: EnhancedSignal, market_risk: Dict) -> PositionSizing:
         """Calcular tamaño de posición usando múltiples métodos"""
+        print(f"🔧 DEBUG: _calculate_position_sizing llamado para {signal.symbol}")
+        logger.info(f"🔍 _calculate_position_sizing llamado para {signal.symbol}")
         try:
-            # Método 1: Riesgo fijo por trade
-            risk_per_trade = self.portfolio_value * self.max_portfolio_risk
+            # NUEVA ESTRATEGIA: Cálculo basado en balance y apalancamiento dinámico
+            print(f"🔧 DEBUG: Iniciando cálculo con balance: ${self.portfolio_value:.2f}")
             
-            # Calcular distancia al stop loss
-            if signal.stop_loss_price > 0:
-                stop_distance = abs(signal.price - signal.stop_loss_price)
-                if stop_distance > 0:
-                    fixed_risk_size = risk_per_trade / stop_distance
-                else:
-                    fixed_risk_size = self.min_position_size
-            else:
-                fixed_risk_size = self.min_position_size
+            # Obtener apalancamiento dinámico primero
+            dynamic_leverage = self._get_dynamic_leverage(signal.symbol)
+            print(f"🔧 DEBUG: Apalancamiento obtenido: {dynamic_leverage}x")
             
-            # Método 2: Kelly Criterion (simplificado)
-            profile = TradingProfiles.get_current_profile()
-            win_rate = profile['kelly_win_rate']  # Tasa de ganancia desde perfil
-            avg_win = signal.risk_reward_ratio if signal.risk_reward_ratio > 0 else 1.5
-            avg_loss = profile['kelly_avg_loss']  # Pérdida promedio desde perfil
+            # Paso 1: Calcular monto de operación (% del balance)
+            print(f"🔧 DEBUG: max_position_size configurado: {self.max_position_size} ({self.max_position_size*100:.1f}%)")
+            monto_operacion = self.portfolio_value * self.max_position_size
+            print(f"🔧 DEBUG: Monto operación ({self.max_position_size*100:.1f}% del balance): ${monto_operacion:.2f}")
             
-            kelly_f = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
-            kelly_size = max(0, kelly_f * self.kelly_fraction * self.portfolio_value)
+            # Paso 2: Calcular valor de negociación (monto * apalancamiento)
+            valor_negociacion = monto_operacion * dynamic_leverage
+            print(f"🔧 DEBUG: Valor negociación (${monto_operacion:.2f} * {dynamic_leverage}x): ${valor_negociacion:.2f}")
             
-            # Método 3: Ajuste por volatilidad
-            volatility_multiplier = 1.0 - market_risk.get("volatility_risk", 0.5)
-            volatility_adjusted_size = fixed_risk_size * volatility_multiplier
+            # Paso 3: Calcular tamaño de posición (valor / precio actual)
+            precio_actual = signal.price
+            tamano_posicion = valor_negociacion / precio_actual
+            print(f"🔧 DEBUG: Tamaño posición (${valor_negociacion:.2f} / ${precio_actual:.2f}): {tamano_posicion:.6f}")
             
-            # Tomar el menor de los tamaños calculados
-            recommended_size = min(fixed_risk_size, kelly_size, volatility_adjusted_size)
-            
-            # Aplicar límites
+            # Aplicar límites mínimos y máximos
+            recommended_size = max(self.min_position_size, tamano_posicion)
             max_position_value = self.portfolio_value * self.max_position_size
-            recommended_size = max(self.min_position_size, 
-                                 min(recommended_size, max_position_value))
             
-            # Determinar nivel de riesgo
-            position_risk_ratio = recommended_size / self.portfolio_value
-            if position_risk_ratio <= 0.01:
+            # Determinar nivel de riesgo basado en el porcentaje del portfolio usado
+            position_risk_ratio = monto_operacion / self.portfolio_value
+            if position_risk_ratio <= 0.05:
                 risk_level = RiskLevel.VERY_LOW
-            elif position_risk_ratio <= 0.02:
+            elif position_risk_ratio <= 0.10:
                 risk_level = RiskLevel.LOW
-            elif position_risk_ratio <= 0.05:
+            elif position_risk_ratio <= 0.15:
                 risk_level = RiskLevel.MODERATE
-            elif position_risk_ratio <= 0.08:
+            elif position_risk_ratio <= 0.20:
                 risk_level = RiskLevel.HIGH
             else:
                 risk_level = RiskLevel.VERY_HIGH
             
-            # Reasoning
-            reasoning = f"Fixed risk: ${fixed_risk_size:.2f}, Kelly: ${kelly_size:.2f}, " \
-                       f"Vol adjusted: ${volatility_adjusted_size:.2f}"
+            print(f"🔧 DEBUG: Nivel de riesgo: {risk_level.value} (ratio: {position_risk_ratio:.3f})")
+            
+            # Reasoning actualizado para nueva estrategia
+            reasoning = f"Balance: ${self.portfolio_value:.2f}, Monto operación ({self.max_position_size*100:.1f}%): ${monto_operacion:.2f}, " \
+                       f"Apalancamiento: {dynamic_leverage}x, Valor negociación: ${valor_negociacion:.2f}, " \
+                       f"Precio: ${precio_actual:.2f}, Tamaño final: {tamano_posicion:.6f}"
+            
+            print(f"🔧 DEBUG: Reasoning: {reasoning}")
             
             return PositionSizing(
-                recommended_size=round(recommended_size, 2),
+                recommended_size=round(tamano_posicion, 6),  # Más precisión para crypto
                 max_position_size=round(max_position_value, 2),
-                risk_per_trade=round(risk_per_trade, 2),
-                position_value=round(recommended_size, 2),
-                leverage_used=profile['default_leverage'],  # Leverage desde perfil
+                risk_per_trade=round(monto_operacion, 2),  # El monto que arriesgamos
+                position_value=round(valor_negociacion, 2),  # El valor total de la posición
+                leverage_used=dynamic_leverage,  # Leverage dinámico desde Capital.com
                 risk_level=risk_level,
                 reasoning=reasoning,
-                max_risk_amount=round(risk_per_trade, 2)
+                max_risk_amount=round(monto_operacion, 2)  # El monto máximo que podemos perder
             )
             
         except Exception as e:
             logger.error(f"Error calculating position sizing: {e}")
+            # Obtener apalancamiento dinámico incluso en caso de error
+            try:
+                dynamic_leverage = self._get_dynamic_leverage(signal.symbol)
+            except:
+                profile = TradingProfiles.get_current_profile()
+                dynamic_leverage = profile['default_leverage']
+                
             return PositionSizing(
                 recommended_size=self.min_position_size,
                 max_position_size=self.portfolio_value * 0.01,
                 risk_per_trade=self.portfolio_value * 0.01,
                 position_value=self.min_position_size,
-                leverage_used=profile['default_leverage'],
+                leverage_used=dynamic_leverage,
                 risk_level=RiskLevel.LOW,
                 reasoning="Error in calculation - using minimum size",
                 max_risk_amount=round(self.portfolio_value * 0.01, 2)

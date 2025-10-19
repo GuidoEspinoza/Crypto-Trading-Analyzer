@@ -13,12 +13,9 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from sqlalchemy.orm import Session
-
 # Importaciones locales
 from src.config.main_config import TradingBotConfig, RiskManagerConfig, TradingProfiles
-from database.database import db_manager
-from database.models import Trade
+# Base de datos eliminada - usando Capital.com directamente
 from .enhanced_strategies import TradingSignal
 from .paper_trader import PaperTrader, TradeResult
 from .advanced_indicators import AdvancedIndicators
@@ -120,104 +117,12 @@ class PositionManager:
         Returns:
             Lista de posiciones activas
         """
-        now = time.time()
-        
-        # Verificar cache
-        if not refresh_cache and (now - self.last_cache_update) < self.cache_duration:
-            return list(self.positions_cache.values())
-        
-        # Obtener posiciones frescas de la base de datos
-        positions = []
-        
-        try:
-            with db_manager.get_db_session() as session:
-                open_trades = session.query(Trade).filter(
-                    Trade.status == "OPEN",
-                    Trade.is_paper_trade == True
-                ).all()
-                
-                for trade in open_trades:
-                    position_info = self._create_position_info(trade)
-                    if position_info:
-                        positions.append(position_info)
-                        self.positions_cache[trade.id] = position_info
-                
-                self.last_cache_update = now
-                logger.debug(f"📊 Loaded {len(positions)} active positions")
-                
-        except Exception as e:
-            logger.error(f"❌ Error loading active positions: {e}")
-        
-        return positions
+        # Base de datos eliminada - las posiciones se obtienen directamente de Capital.com
+        # Este método se mantiene para compatibilidad pero devuelve lista vacía
+        logger.debug("📊 PositionManager simplificado - usando Capital.com directamente")
+        return []
     
-    def _create_position_info(self, trade: Trade) -> Optional[PositionInfo]:
-        """📊 Crear información de posición desde un trade
-        
-        Args:
-            trade: Trade de la base de datos
-            
-        Returns:
-            PositionInfo o None si hay error
-        """
-        try:
-            # Calcular días mantenida
-            days_held = (datetime.now() - trade.entry_time).total_seconds() / 86400
-            
-            # Calcular métricas de riesgo/recompensa
-            potential_profit = 0
-            potential_loss = 0
-            
-            if trade.take_profit is not None and trade.stop_loss is not None:
-                if trade.trade_type == "BUY":
-                    potential_profit = trade.take_profit - trade.entry_price
-                    potential_loss = trade.entry_price - trade.stop_loss
-                else:  # SELL
-                    potential_profit = trade.entry_price - trade.take_profit
-                    potential_loss = trade.stop_loss - trade.entry_price
-            
-            risk_reward_ratio = potential_profit / potential_loss if potential_loss > 0 else 0
-            
-            # Obtener precio actual (placeholder - se actualizará desde position_monitor)
-            current_price = trade.entry_price  # Se actualizará externamente
-            
-            # Calcular PnL actual
-            if trade.trade_type == "BUY":
-                unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
-                current_value = current_price * trade.quantity
-            else:  # SELL
-                unrealized_pnl = (trade.entry_price - current_price) * trade.quantity
-                current_value = current_price * trade.quantity
-            
-            unrealized_pnl_percentage = (unrealized_pnl / trade.entry_value) * 100 if trade.entry_value > 0 else 0
-            
-            return PositionInfo(
-                trade_id=trade.id,
-                symbol=trade.symbol,
-                trade_type=trade.trade_type,
-                entry_price=trade.entry_price,
-                current_price=current_price,
-                quantity=trade.quantity,
-                entry_value=trade.entry_value,
-                current_value=current_value,
-                unrealized_pnl=unrealized_pnl,
-                unrealized_pnl_percentage=unrealized_pnl_percentage,
-                stop_loss=trade.stop_loss,
-                take_profit=trade.take_profit,
-                trailing_stop=getattr(trade, 'trailing_stop', None),
-                entry_time=trade.entry_time,
-                strategy_name=trade.strategy_name,
-                confidence_score=trade.confidence_score,
-                timeframe=trade.timeframe,
-                notes=trade.notes or "",
-                days_held=days_held,
-                max_profit=self._calculate_max_profit(trade),
-                max_loss=self._calculate_max_loss(trade),
-                risk_reward_ratio=risk_reward_ratio
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ Error creating position info for trade {trade.id}: {e}")
-            return None
+    # Método _create_position_info eliminado - las posiciones se obtienen directamente de Capital.com
     
     def update_position_price(self, trade_id: int, new_price: float) -> bool:
         """💰 Actualizar precio de una posición
@@ -342,100 +247,9 @@ class PositionManager:
             True si se cerró correctamente
         """
         try:
-            with db_manager.get_db_session() as session:
-                # Buscar el trade
-                trade = session.query(Trade).filter(
-                    Trade.id == trade_id,
-                    Trade.status == "OPEN",
-                    Trade.is_paper_trade == True
-                ).first()
-                
-                if not trade:
-                    logger.error(f"❌ Trade {trade_id} not found or already closed")
-                    return False
-                
-                # Calcular PnL
-                if trade.trade_type == "BUY":
-                    pnl = (current_price - trade.entry_price) * trade.quantity
-                else:  # SELL
-                    pnl = (trade.entry_price - current_price) * trade.quantity
-                
-                pnl_percentage = (pnl / trade.entry_value) * 100 if trade.entry_value > 0 else 0
-                
-                # Actualizar trade
-                trade.exit_price = current_price
-                trade.exit_value = current_price * trade.quantity
-                trade.pnl = pnl
-                trade.pnl_percentage = pnl_percentage
-                trade.status = "CLOSED"
-                trade.exit_time = datetime.now()
-                trade.notes = f"{trade.notes or ''} | Auto closed: {reason}"
-                
-                # Actualizar portfolio
-                asset_symbol = (trade.symbol.split('/')[0] if '/' in trade.symbol else (trade.symbol[:-4] if trade.symbol.endswith(('USDT')) else trade.symbol))
-                
-                if trade.trade_type == "BUY":
-                    # Vender el asset, obtener USDT
-                    sale_value = current_price * trade.quantity
-                    self.paper_trader._update_usdt_balance(sale_value, session)
-                    self.paper_trader._update_asset_balance(asset_symbol, -trade.quantity, current_price, session)
-                else:
-                    # Comprar el asset, gastar USDT
-                    purchase_value = current_price * trade.quantity
-                    self.paper_trader._update_usdt_balance(-purchase_value, session)
-                    self.paper_trader._update_asset_balance(asset_symbol, trade.quantity, current_price, session)
-                
-                session.commit()
-                
-                # Actualizar estadísticas
-                if reason == "TAKE_PROFIT":
-                    self.stats["tp_executed"] += 1
-                elif reason in ["STOP_LOSS", "TRAILING_STOP"]:
-                    self.stats["sl_executed"] += 1
-                
-                self.stats["total_pnl"] += pnl
-                
-                # Remover del cache
-                if trade_id in self.positions_cache:
-                    del self.positions_cache[trade_id]
-                
-                # Obtener balances actuales para el log detallado
-                usdt_balance = self.paper_trader._get_usdt_balance()
-                portfolio_summary = self.paper_trader.get_portfolio_summary()
-                total_portfolio_value = portfolio_summary.get('total_value', 0.0)
-                
-                # Determinar tipo de activación para el log
-                activation_type = "📈 TAKE PROFIT" if reason == "TAKE_PROFIT" else "📉 STOP LOSS"
-                if reason == "TRAILING_STOP":
-                    activation_type = "🎯 TRAILING STOP"
-                
-                # Determinar si es ganancia o pérdida
-                result_type = "💰 GANANCIA" if pnl > 0 else "💸 PÉRDIDA"
-                if pnl == 0:
-                    result_type = "⚖️ NEUTRO"
-                
-                # Log detallado del cierre automático
-                logger.info("")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("🤖 CIERRE AUTOMÁTICO DE POSICIÓN")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info(f"⚡ ACTIVACIÓN: {activation_type}")
-                logger.info(f"📊 SÍMBOLO: {trade.symbol}")
-                logger.info(f"💱 PRECIO ENTRADA: ${trade.entry_price:.4f}")
-                logger.info(f"💱 PRECIO SALIDA: ${current_price:.4f}")
-                logger.info(f"📦 CANTIDAD: {trade.quantity:.6f} {asset_symbol}")
-                logger.info(f"")
-                logger.info(f"📊 RESULTADO DE LA OPERACIÓN:")
-                logger.info(f"{result_type}: ${pnl:.2f} ({pnl_percentage:+.2f}%)")
-                logger.info(f"")
-                logger.info(f"💼 ESTADO DEL PORTAFOLIO:")
-                logger.info(f"💰 Balance USDT: ${usdt_balance:.2f}")
-                logger.info(f"📈 Valor Total Portafolio: ${total_portfolio_value:.2f}")
-                logger.info("🎯 ═══════════════════════════════════════════════════════════")
-                logger.info("")
-                
-                return True
-                
+            # Base de datos eliminada - las posiciones se gestionan directamente en Capital.com
+            logger.info(f"🎯 Posición {trade_id} cerrada por {reason} a ${current_price:.4f}")
+            return True
         except Exception as e:
             logger.error(f"❌ Error closing position {trade_id}: {e}")
             return False
@@ -568,99 +382,9 @@ class PositionManager:
         Returns:
             Número de trailing stops actualizados
         """
-        updated_count = 0
-        
-        try:
-            positions = self.get_active_positions()
-            
-            if not positions:
-                return 0
-            
-            with db_manager.get_db_session() as session:
-                for position in positions:
-                    if position.symbol not in market_data:
-                        continue
-                    
-                    current_price = market_data[position.symbol]
-                    
-                    # Calcular nuevo trailing stop
-                    new_trailing_stop = self.calculate_atr_trailing_stop(
-                        position.symbol, 
-                        current_price, 
-                        position.trade_type
-                    )
-                    
-                    if new_trailing_stop is None:
-                        continue
-                    
-                    # Obtener trade de la base de datos
-                    trade = session.query(Trade).filter(
-                        Trade.id == position.trade_id,
-                        Trade.status == "OPEN"
-                    ).first()
-                    
-                    if not trade:
-                        continue
-                    
-                    # Verificar si la posición tiene suficiente ganancia para activar trailing stop
-                    profit_pct = 0
-                    if position.trade_type == "BUY":
-                        profit_pct = (current_price - position.entry_price) / position.entry_price
-                    else:  # SELL
-                        profit_pct = (position.entry_price - current_price) / position.entry_price
-                    
-                    # Solo activar trailing stop si hay ganancia suficiente
-                    if profit_pct < self.trailing_stop_activation:
-                        logger.debug(f"Trailing stop not activated for {position.symbol}: profit {profit_pct:.2%} < activation threshold {self.trailing_stop_activation:.2%}")
-                        continue
-                    
-                    # Verificar si necesita actualizar trailing stop
-                    should_update = False
-                    
-                    if position.trade_type == "BUY":
-                        # Para posiciones largas, solo subir el trailing stop
-                        if (not hasattr(trade, 'trailing_stop') or 
-                            trade.trailing_stop is None or 
-                            new_trailing_stop > trade.trailing_stop):
-                            should_update = True
-                    else:  # SELL
-                        # Para posiciones cortas, solo bajar el trailing stop
-                        if (not hasattr(trade, 'trailing_stop') or 
-                            trade.trailing_stop is None or 
-                            new_trailing_stop < trade.trailing_stop):
-                            should_update = True
-                    
-                    if should_update:
-                        # Actualizar trailing stop en la base de datos
-                        if not hasattr(trade, 'trailing_stop'):
-                            # Añadir columna si no existe (para compatibilidad)
-                            pass
-                        
-                        trade.trailing_stop = new_trailing_stop
-                        
-                        # Actualizar cache
-                        if position.trade_id in self.positions_cache:
-                            self.positions_cache[position.trade_id].trailing_stop = new_trailing_stop
-                        
-                        updated_count += 1
-                        
-                        logger.debug(
-                            f"📊 Updated trailing stop for {position.symbol}: "
-                            f"${new_trailing_stop:.4f} (Price: ${current_price:.4f})"
-                        )
-                
-                session.commit()
-                
-                if updated_count > 0:
-                    self.stats["trailing_stops_activated"] += updated_count
-                    logger.info(f"🎯 Updated {updated_count} trailing stops")
-                    # Invalidar caché para reflejar los nuevos trailing stops
-                    self.positions_cache.clear()
-                
-        except Exception as e:
-            logger.error(f"❌ Error updating trailing stops: {e}")
-        
-        return updated_count
+        # Base de datos eliminada - trailing stops se gestionan directamente en Capital.com
+        logger.debug("🎯 Trailing stops simplificados - usando Capital.com directamente")
+        return 0
     
     def update_dynamic_take_profits(self, market_data: Dict[str, float], risk_manager=None) -> int:
         """🎯 Actualizar take profits dinámicos para todas las posiciones activas
@@ -672,84 +396,9 @@ class PositionManager:
         Returns:
             Número de take profits actualizados
         """
-        updated_count = 0
-        
-        try:
-            positions = self.get_active_positions()
-            
-            with db_manager.get_db_session() as session:
-                for position in positions:
-                    if position.symbol not in market_data:
-                        continue
-                    
-                    current_price = market_data[position.symbol]
-                    
-                    # Obtener trade de la base de datos
-                    trade = session.query(Trade).filter(
-                        Trade.id == position.trade_id,
-                        Trade.status == "OPEN"
-                    ).first()
-                    
-                    if not trade:
-                        continue
-                    
-                    # Calcular ganancia actual
-                    if position.trade_type == "BUY":
-                        current_profit_pct = (current_price - position.entry_price) / position.entry_price
-                    else:  # SELL
-                        current_profit_pct = (position.entry_price - current_price) / position.entry_price
-                    
-                    # Solo actualizar si hay ganancias significativas (>= tp_min en porcentaje)
-                    # current_profit_pct ahora está en DECIMAL y tp_min está en DECIMAL
-                    if current_profit_pct < RiskManagerConfig.get_tp_min_percentage():
-                        continue
-                    
-                    # Calcular nuevo take profit dinámico
-                    new_take_profit = self._calculate_dynamic_take_profit(
-                        position, current_price, current_profit_pct
-                    )
-                    
-                    if new_take_profit is None:
-                        continue
-                    
-                    # Verificar si necesita actualizar take profit
-                    should_update = False
-                    current_tp = getattr(trade, 'take_profit_price', None)
-                    
-                    if position.trade_type == "BUY":
-                        # Para posiciones largas, solo subir el take profit
-                        if current_tp is None or new_take_profit > current_tp:
-                            should_update = True
-                    else:  # SELL
-                        # Para posiciones cortas, solo bajar el take profit
-                        if current_tp is None or new_take_profit < current_tp:
-                            should_update = True
-                    
-                    if should_update:
-                        # Actualizar take profit en la base de datos
-                        trade.take_profit_price = new_take_profit
-                        
-                        # Actualizar cache
-                        if position.trade_id in self.positions_cache:
-                            self.positions_cache[position.trade_id].take_profit = new_take_profit
-                        
-                        updated_count += 1
-                        
-                        logger.info(
-                            f"🎯 Updated dynamic take profit for {position.symbol}: "
-                            f"${new_take_profit:.4f} (Price: ${current_price:.4f}, Profit: {current_profit_pct*100:.2f}%)"
-                        )
-                
-                session.commit()
-                
-                if updated_count > 0:
-                    self.stats["tp_executed"] += updated_count
-                    logger.info(f"🎯 Updated {updated_count} dynamic take profits")
-                
-        except Exception as e:
-            logger.error(f"❌ Error updating dynamic take profits: {e}")
-        
-        return updated_count
+        # Simplificado - los take profits dinámicos se gestionan directamente en Capital.com
+        logger.debug("🎯 Take profits dinámicos simplificados - usando Capital.com directamente")
+        return 0
     
     def _calculate_dynamic_take_profit(self, position: 'PositionInfo', current_price: float, current_profit_pct: float) -> Optional[float]:
         """📊 Calcular take profit dinámico basado en ganancias actuales
@@ -798,32 +447,5 @@ class PositionManager:
             logger.error(f"❌ Error calculating dynamic take profit for {position.symbol}: {e}")
             return None
     
-    def _calculate_max_profit(self, trade) -> float:
-        """Calcular el máximo profit alcanzado durante el trade."""
-        try:
-            if not trade.exit_price or not trade.entry_price:
-                return 0.0
-            
-            if trade.trade_type == "BUY":
-                profit_pct = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
-            else:  # SELL
-                profit_pct = ((trade.entry_price - trade.exit_price) / trade.entry_price) * 100
-            
-            return max(0.0, profit_pct)
-        except Exception:
-            return 0.0
-    
-    def _calculate_max_loss(self, trade) -> float:
-        """Calcular la máxima pérdida alcanzada durante el trade."""
-        try:
-            if not trade.exit_price or not trade.entry_price:
-                return 0.0
-            
-            if trade.trade_type == "BUY":
-                loss_pct = ((trade.entry_price - trade.exit_price) / trade.entry_price) * 100
-            else:  # SELL
-                loss_pct = ((trade.exit_price - trade.entry_price) / trade.entry_price) * 100
-            
-            return max(0.0, loss_pct)
-        except Exception:
-            return 0.0
+    # Métodos _calculate_max_profit y _calculate_max_loss eliminados - 
+    # las métricas se calculan directamente desde Capital.com

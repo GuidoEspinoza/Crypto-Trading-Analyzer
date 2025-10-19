@@ -1,8 +1,8 @@
-# 🤖 Crypto Trading Analyzer - Bot de Trading Inteligente
+# 🤖 Precious Metals Trading Analyzer - Bot de Trading Inteligente
 
 ## 🚀 El Futuro del Trading Automatizado
 
-**Crypto Trading Analyzer** es un sistema de trading automatizado de última generación que combina inteligencia artificial, análisis técnico avanzado y gestión de riesgo profesional para maximizar las oportunidades en el mercado de criptomonedas.
+**Precious Metals Trading Analyzer** es un sistema de trading automatizado de última generación que combina inteligencia artificial, análisis técnico avanzado y gestión de riesgo profesional para maximizar las oportunidades en el mercado de metales preciosos.
 
 ### ⚡ Capacidades Principales
 
@@ -53,11 +53,11 @@
 - **Take Profit Inteligente**: Optimización basada en momentum
 - **Kelly Criterion**: Sizing óptimo de posiciones
 
-### 📊 Activos Monitoreados (15 símbolos)
+### 📊 Metales Preciosos Monitoreados (4 símbolos)
 ```
-🥇 PRINCIPALES: BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, AVAXUSDT
-🚀 ALTCOINS:    ADAUSDT, XRPUSDT, LINKUSDT, DOGEUSDT, TRXUSDT
-⚡ VOLÁTILES:   DOTUSDT, MATICUSDT, ATOMUSDT, NEARUSDT, SUIUSDT
+🥇 METALES PRECIOSOS: GOLD, SILVER, PLATINUM, PALLADIUM
+💰 ALTA LIQUIDEZ:     Mercados globales 24/7
+⚡ VOLATILIDAD:       Análisis técnico optimizado para commodities
 ```
 
 ## 🚀 Inicio Rápido
@@ -98,11 +98,8 @@ python3 main.py
 
 ### 📊 Monitoreo Profesional
 ```bash
-# Dashboard en tiempo real
-python3 src/tools/trading_monitor.py
-
-# Estadísticas detalladas
-python3 src/database/db_manager_cli.py stats
+# Monitoreo directo en Capital.com
+# Todas las estadísticas y análisis disponibles en la plataforma
 
 # Análisis de rendimiento
 python3 main.py --report
@@ -133,10 +130,9 @@ TRADING_PROFILE=RAPIDO     # RAPIDO | ELITE | CONSERVADOR
 TRADING_MODE=paper         # paper | live
 ANALYSIS_INTERVAL=5        # minutos
 
-# API Binance
-BINANCE_API_KEY=your_key
-BINANCE_SECRET_KEY=your_secret
-BINANCE_TESTNET=true
+# API Capital.com (configuración pendiente)
+# CAPITAL_API_KEY=your_key
+# CAPITAL_SECRET_KEY=your_secret
 
 # Límites de Seguridad
 MAX_DAILY_TRADES=20
@@ -158,21 +154,16 @@ crypto-trading-analyzer/
 ├── ⚙️ config/                 # Configuración optimizada
 │   ├── config.py             # 3 perfiles de trading
 │   └── production_config.py  # Configuración de producción
-├── 💾 database/               # Persistencia profesional
-│   ├── models.py             # Modelos de datos
-│   ├── database.py           # ORM optimizado
-│   └── migrations.py         # Sistema de migraciones
 ├── 🔧 tools/                  # Herramientas avanzadas
-│   ├── live_trading_bot.py   # Bot de trading en vivo
-│   └── trading_monitor.py    # Monitor en tiempo real
+│   └── live_trading_bot.py   # Bot de trading en vivo
 └── 🧪 tests/                  # Suite de testing completa
 ```
 
 ### 🛠️ Stack Tecnológico
 - **🐍 python3 3.8+**: Lenguaje principal optimizado
 - **⚡ Threading**: Procesamiento paralelo nativo
-- **📊 CCXT**: Conectividad con exchanges
-- **💾 SQLite**: Base de datos embebida
+- **📊 Capital.com API**: Conectividad con broker
+- **💾 Capital.com**: Gestión de datos en la nube
 - **🐳 Docker**: Containerización profesional
 - **📈 TA-Lib**: Análisis técnico avanzado
 
@@ -184,11 +175,8 @@ crypto-trading-analyzer/
 python3 main.py --profile RAPIDO
 python3 main.py --profile CONSERVADOR
 
-# Monitor en tiempo real
-python3 src/tools/trading_monitor.py
-
-# Análisis de rendimiento
-python3 src/database/db_manager_cli.py stats
+# Monitoreo directo en Capital.com
+# Todas las estadísticas disponibles en la plataforma
 ```
 
 ### 🧪 Testing y Validación

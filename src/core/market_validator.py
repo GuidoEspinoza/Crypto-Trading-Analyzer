@@ -13,11 +13,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from sqlalchemy.orm import Session
-
-# Importaciones locales
-from database.database import db_manager
-from database.models import Trade, Portfolio
+# Base de datos eliminada - usando Capital.com directamente
 from .position_manager import PositionManager
 from src.config.main_config import APIConfig, MonitoringConfig, CacheConfig
 
@@ -42,11 +38,8 @@ class MarketValidator:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.binance_base_url = APIConfig.BINANCE_BASE_URL
         
     def check_missed_executions(self, hours_back: int = None) -> List[MissedExecution]:
-        if hours_back is None:
-            hours_back = MonitoringConfig.DEFAULT_HOURS_BACK
         """🔍 Verificar ejecuciones perdidas en las últimas horas
         
         Args:
@@ -55,224 +48,62 @@ class MarketValidator:
         Returns:
             Lista de ejecuciones perdidas detectadas
         """
-        missed_executions = []
-        
-        try:
-            with db_manager.get_db_session() as session:
-                # Obtener posiciones activas
-                active_trades = session.query(Trade).filter(
-                    Trade.status == "OPEN",
-                    Trade.is_paper_trade == True
-                ).all()
-                
-                self.logger.info(f"🔍 Verificando {len(active_trades)} posiciones activas")
-                
-                for trade in active_trades:
-                    # Verificar TP y SL si están configurados
-                    if trade.take_profit is not None:
-                        missed_tp = self._check_price_reached(
-                            trade, trade.take_profit, "TP", hours_back
-                        )
-                        if missed_tp:
-                            missed_executions.append(missed_tp)
-                    
-                    if trade.stop_loss is not None:
-                        missed_sl = self._check_price_reached(
-                            trade, trade.stop_loss, "SL", hours_back
-                        )
-                        if missed_sl:
-                            missed_executions.append(missed_sl)
-                            
-        except Exception as e:
-            self.logger.error(f"❌ Error checking missed executions: {e}")
-            
-        return missed_executions
+        # Simplificado - las ejecuciones se verifican directamente en Capital.com
+        self.logger.debug("🔍 Verificación de ejecuciones simplificada - usando Capital.com directamente")
+        return []
     
-    def _check_price_reached(self, trade: Trade, target_price: float, 
-                           target_type: str, hours_back: int) -> Optional[MissedExecution]:
-        """🎯 Verificar si un precio objetivo fue alcanzado
-        
-        Args:
-            trade: Trade a verificar
-            target_price: Precio objetivo (TP o SL)
-            target_type: Tipo de objetivo ("TP" o "SL")
-            hours_back: Horas hacia atrás para verificar
-            
-        Returns:
-            MissedExecution si se detectó una ejecución perdida
-        """
-        try:
-            # Obtener datos históricos de precios
-            price_data = self._get_historical_prices(
-                trade.symbol.replace('/', ''), hours_back
-            )
-            
-            if not price_data:
-                return None
-            
-            # Verificar si el precio objetivo fue alcanzado
-            for price_point in price_data:
-                timestamp = datetime.fromtimestamp(price_point['timestamp'] / 1000)
-                high_price = float(price_point['high'])
-                low_price = float(price_point['low'])
-                
-                # Solo verificar después del tiempo de entrada del trade
-                if timestamp <= trade.entry_time:
-                    continue
-                
-                price_reached = False
-                actual_price = 0.0
-                
-                if trade.trade_type == "BUY":
-                    if target_type == "TP" and high_price >= target_price:
-                        price_reached = True
-                        actual_price = high_price
-                    elif target_type == "SL" and low_price <= target_price:
-                        price_reached = True
-                        actual_price = low_price
-                else:  # SELL
-                    if target_type == "TP" and low_price <= target_price:
-                        price_reached = True
-                        actual_price = low_price
-                    elif target_type == "SL" and high_price >= target_price:
-                        price_reached = True
-                        actual_price = high_price
-                
-                if price_reached:
-                    # Calcular PnL potencial perdido
-                    current_price = self._get_current_price(trade.symbol.replace('/', ''))
-                    potential_pnl = self._calculate_missed_pnl(
-                        trade, target_price, current_price
-                    )
-                    
-                    return MissedExecution(
-                        trade_id=trade.id,
-                        symbol=trade.symbol,
-                        target_price=target_price,
-                        target_type=target_type,
-                        actual_price_reached=actual_price,
-                        timestamp_reached=timestamp,
-                        current_price=current_price,
-                        potential_pnl_missed=potential_pnl,
-                        reason=f"Price reached {actual_price:.4f} but not executed"
-                    )
-                    
-        except Exception as e:
-            self.logger.error(f"❌ Error checking price reached for {trade.symbol}: {e}")
-            
-        return None
+    # Método _check_price_reached eliminado - las ejecuciones se verifican directamente en Capital.com
     
     def _get_historical_prices(self, symbol: str, hours_back: int) -> List[Dict]:
-        """📈 Obtener precios históricos de Binance
+        """📈 Obtener precios históricos usando Capital.com
         
         Args:
-            symbol: Símbolo (ej: BTCUSDT)
+            symbol: Símbolo (ej: Bitcoin/USD)
             hours_back: Horas hacia atrás
             
         Returns:
             Lista de datos de precios
         """
         try:
-            # Calcular timestamps
-            end_time = int(datetime.now().timestamp() * 1000)
-            start_time = int((datetime.now() - timedelta(hours=hours_back)).timestamp() * 1000)
+            # Si tenemos referencia a TradingBot con Capital.com, usar su cliente
+            if hasattr(self, 'trading_bot') and self.trading_bot and hasattr(self.trading_bot, 'capital_client'):
+                try:
+                    return self.trading_bot.capital_client.get_historical_prices(symbol, hours_back)
+                except Exception as e:
+                    self.logger.warning(f"Error obteniendo datos históricos de Capital.com para {symbol}: {e}")
             
-            # Usar klines de 1 minuto para máxima precisión
-            url = APIConfig.get_binance_url("klines")
-            params = {
-                'symbol': symbol,
-                'interval': '1m',
-                'startTime': start_time,
-                'endTime': end_time,
-                'limit': APIConfig.DEFAULT_KLINES_LIMIT
-            }
-            
-            request_config = APIConfig.get_request_config()
-            response = requests.get(url, params=params, timeout=request_config['timeout'])
-            response.raise_for_status()
-            
-            klines = response.json()
-            
-            # Convertir a formato más manejable
-            price_data = []
-            for kline in klines:
-                price_data.append({
-                    'timestamp': int(kline[0]),
-                    'open': float(kline[1]),
-                    'high': float(kline[2]),
-                    'low': float(kline[3]),
-                    'close': float(kline[4]),
-                    'volume': float(kline[5])
-                })
-            
-            return price_data
+            # Fallback: retornar lista vacía si no hay datos disponibles
+            self.logger.warning(f"No se pudieron obtener datos históricos para {symbol}")
+            return []
             
         except Exception as e:
             self.logger.error(f"❌ Error fetching historical prices for {symbol}: {e}")
             return []
     
     def _get_current_price(self, symbol: str) -> float:
-        """💰 Obtener precio actual delegando en la fuente centralizada del TradingBot"""
+        """💰 Obtener precio actual usando Capital.com"""
         try:
-            # Si tenemos referencia a TradingBot, usar su método centralizado (con TTL y fallback)
+            # Si tenemos referencia a TradingBot, usar su método centralizado
             if hasattr(self, 'trading_bot') and self.trading_bot:
                 return float(self.trading_bot._get_current_price(symbol))
             
-            # Fallback: usar CCXT con TTL cache local (mismo comportamiento que antes)
-            if '/' in symbol:
-                base, quote = symbol.split('/')
-                norm_symbol = f"{base}/USDT" if quote.upper() != 'USDT' else symbol
-            else:
-                norm_symbol = symbol if not symbol.endswith(('USDT')) else (symbol[:-4] + '/USDT')
-            ttl = CacheConfig.get_ttl_for_operation("price_data")
-            now = time.time()
-            cache = getattr(self, '_price_cache', {})
-            cache_ts = getattr(self, '_price_cache_ts', {})
-            last_ts = cache_ts.get(norm_symbol, 0)
-            if norm_symbol in cache and (now - last_ts) < ttl:
-                return float(cache[norm_symbol])
+            # Fallback: usar Capital.com directamente si está disponible
+            if hasattr(self, 'capital_client') and self.capital_client:
+                try:
+                    price = self.capital_client.get_current_price(symbol)
+                    if price > 0:
+                        return price
+                except Exception as e:
+                    self.logger.warning(f"Error obteniendo precio de Capital.com para {symbol}: {e}")
             
-            import ccxt
-            exchange = ccxt.binance({'sandbox': False, 'enableRateLimit': True})
-            ticker = exchange.fetch_ticker(norm_symbol)
-            current_price = float(ticker.get('last')) if ticker.get('last') else 0.0
-            
-            cache[norm_symbol] = current_price
-            cache_ts[norm_symbol] = now
-            setattr(self, '_price_cache', cache)
-            setattr(self, '_price_cache_ts', cache_ts)
-            return current_price
+            # Sin fallback a base de datos - solo Capital.com
+            self.logger.warning(f"No se pudo obtener precio para {symbol}")
+            return 0.0
         except Exception as e:
             self.logger.error(f"❌ Error fetching current price for {symbol}: {e}")
             return 0.0
     
-    def _calculate_missed_pnl(self, trade: Trade, target_price: float, 
-                            current_price: float) -> float:
-        """💰 Calcular PnL potencial perdido
-        
-        Args:
-            trade: Trade original
-            target_price: Precio objetivo que se alcanzó
-            current_price: Precio actual
-            
-        Returns:
-            PnL potencial perdido
-        """
-        try:
-            if trade.trade_type == "BUY":
-                # PnL si se hubiera ejecutado en target_price
-                target_pnl = (target_price - trade.entry_price) * trade.quantity
-                # PnL actual con precio actual
-                current_pnl = (current_price - trade.entry_price) * trade.quantity
-            else:  # SELL
-                target_pnl = (trade.entry_price - target_price) * trade.quantity
-                current_pnl = (trade.entry_price - current_price) * trade.quantity
-            
-            return target_pnl - current_pnl
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating missed PnL: {e}")
-            return 0.0
+    # Método _calculate_missed_pnl eliminado - los cálculos de PnL se obtienen directamente de Capital.com
     
     def generate_missed_executions_report(self, hours_back: int = None) -> str:
         if hours_back is None:

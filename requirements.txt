@@ -12,7 +12,7 @@ python-dotenv==1.0.0      # Manejo de variables de entorno
 pandas==2.3.1             # Manipulación de datos financieros (compatible)
 numpy>=1.26.0,<2.0        # Cálculos numéricos (compatible con pandas-ta)
 pandas-ta==0.3.14b0       # ✅ REEMPLAZO: 150+ indicadores técnicos
-ccxt==4.5.0               # Cliente para múltiples exchanges (actualizado)
+TA-Lib==0.6.7             # Librería de análisis técnico para estrategias profesionales
 
 # Comunicación en tiempo real
 websockets>=15.0          # WebSockets nativos de Python (actualizado)

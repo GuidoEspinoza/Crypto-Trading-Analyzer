@@ -1,39 +1,33 @@
 """
-🎭 Universal Trading Analyzer - Paper Trader
-Ejecutor de trades virtuales con gestión automática de portfolio
+🎭 Universal Trading Analyzer - Paper Trader (Simplificado)
+Ejecutor de trades virtuales sin base de datos - usando Capital.com directamente
 """
 
 from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
-from sqlalchemy.orm import Session
 from dataclasses import dataclass
+import random
 
-# Importar modelos de database
+# Importar configuración
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.main_config import PaperTraderConfig, TradingBotConfig, USDT_BASE_PRICE, TRADING_FEES
+from src.config.main_config import PaperTraderConfig, TradingBotConfig, USD_BASE_PRICE, TRADING_FEES, PRODUCTION_MODE, PAPER_TRADING_ONLY, ENABLE_REAL_TRADING, VERBOSE_LOGGING
 
 # Asegurar conversión a float consistente desde configuración
 FEE_RATE: float = float(TRADING_FEES)
 
-from database.database import db_manager
-from database.models import Trade, Portfolio, TradingSignal as DBTradingSignal
 # Evitar import en tiempo de ejecución para no arrastrar dependencias pesadas
 if TYPE_CHECKING:
     from .enhanced_strategies import TradingSignal
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+# Configurar logging basado en modo de operación
+log_level = logging.DEBUG if VERBOSE_LOGGING else logging.INFO
+logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
-
-# 📊 CONFIGURACIÓN DEL PAPER TRADER PROFESIONAL
-# ===============================================
-# Todos los parámetros se obtienen desde config.py para centralizar la configuración
-# Los valores hardcodeados han sido eliminados para evitar inconsistencias
 
 @dataclass
 class TradeResult:
@@ -49,41 +43,172 @@ class TradeResult:
 
 class PaperTrader:
     """
-    🎭 Paper Trader - Ejecutor de trades virtuales
+    🎭 Paper Trader Simplificado - Sin base de datos
     
     Características:
-    - Gestión automática de portfolio
+    - Gestión automática de portfolio en memoria
     - Risk management integrado
-    - Tracking completo de trades
+    - Tracking básico de trades
     - Cálculo de P&L en tiempo real
     """
     
-    def __init__(self, initial_balance: float = None):
+    def __init__(self, initial_balance: float = None, initial_positions: Dict = None, capital_client=None):
         """
         Inicializar Paper Trader
         
         Args:
-            initial_balance: Balance inicial en USDT (opcional, usa config si no se especifica)
+            initial_balance: Balance inicial en USD (opcional, usa config si no se especifica)
+            initial_positions: Posiciones iniciales de Capital.com para sincronizar (opcional)
+            capital_client: Cliente de Capital.com para obtener valores reales (opcional)
         """
         # Configuración del paper trader desde archivo centralizado
         self.config = PaperTraderConfig()
-        # Obtener balance inicial desde la base de datos (fallback a 0.0)
-        try:
-            db_initial_balance = db_manager.get_global_initial_balance()
-        except Exception:
-            db_initial_balance = 0.0
-        self.initial_balance = initial_balance if initial_balance is not None else db_initial_balance
+        # Balance inicial desde configuración o parámetro
+        default_balance = 0.0  # Balance por defecto
+        self.initial_balance = initial_balance if initial_balance is not None else default_balance
         self.max_position_size = self.config.get_max_position_size()
         self.max_total_exposure = self.config.get_max_total_exposure()
         self.min_trade_value = self.config.get_min_trade_value()
         self.max_balance_usage = self.config.MAX_BALANCE_USAGE
         self.min_confidence_threshold = self.config.get_min_confidence_threshold()
         
-        # Configurar logging
-        logging.basicConfig(level=logging.INFO)
+        # Portfolio en memoria (simplificado)
+        self.portfolio = {
+            "USD": {
+                "quantity": self.initial_balance,
+                "avg_price": 1.0,
+                "current_price": 1.0,
+                "current_value": self.initial_balance,
+                "unrealized_pnl": 0.0,
+                "unrealized_pnl_percentage": 0.0,
+                "last_updated": datetime.now()
+            }
+        }
+        
+        # Configurar logging basado en modo de operación
+        log_level = logging.DEBUG if VERBOSE_LOGGING else logging.INFO
+        logging.basicConfig(level=log_level)
         self.logger = logging.getLogger(__name__)
         
+        # Sincronizar posiciones iniciales de Capital.com si se proporcionan
+        if initial_positions:
+            self._sync_initial_positions(initial_positions, capital_client)
+        
+        # Historial de trades en memoria
+        self.trades = []
+        self.trade_counter = 1
+        
+        # Verificaciones de modo de operación
+        if PRODUCTION_MODE:
+            if not PAPER_TRADING_ONLY:
+                self.logger.warning("⚠️  PRODUCTION MODE: Paper trading is disabled!")
+            if ENABLE_REAL_TRADING:
+                self.logger.warning("⚠️  PRODUCTION MODE: Real trading is enabled!")
+            self.logger.info("🏭 Running in PRODUCTION MODE")
+        else:
+            self.logger.info("🧪 Running in DEVELOPMENT MODE")
+        
         self.logger.info(f"🎭 Paper Trader initialized with ${self.initial_balance:,.2f}")
+    
+    def _sync_initial_positions(self, capital_positions: Dict, capital_client=None):
+        """
+        🔄 Sincronizar posiciones iniciales de Capital.com con el paper trader
+        
+        Args:
+            capital_positions: Diccionario con posiciones de Capital.com
+            capital_client: Cliente de Capital.com para obtener valores reales
+        """
+        try:
+            synced_positions = 0
+            real_available_balance = None
+            real_equity = None
+            real_pnl = None
+            
+            # Obtener valores reales de Capital.com si el cliente está disponible
+            if capital_client and hasattr(capital_client, 'get_available_balance'):
+                try:
+                    balance_info = capital_client.get_available_balance()
+                    if balance_info.get("success"):
+                        real_available_balance = float(balance_info.get("available", 0))
+                        real_equity = float(balance_info.get("balance", 0))
+                        real_pnl = float(balance_info.get("profit_loss", 0))
+                        
+                        self.logger.info(f"💰 Valores reales de Capital.com:")
+                        self.logger.info(f"   Available: ${real_available_balance:.2f}")
+                        self.logger.info(f"   Equity: ${real_equity:.2f}")
+                        self.logger.info(f"   P&L: ${real_pnl:.2f}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ No se pudieron obtener valores reales de Capital.com: {e}")
+            
+            for symbol, position_data in capital_positions.items():
+                direction = position_data.get('direction', '').upper()
+                size = float(position_data.get('size', 0))
+                avg_price = float(position_data.get('level', 0))
+                
+                if size == 0 or avg_price == 0:
+                    continue
+                
+                # En CFDs, BUY = posición larga (cantidad positiva), SELL = posición corta (cantidad negativa)
+                if direction == 'BUY':
+                    quantity = size  # Posición larga
+                elif direction == 'SELL':
+                    quantity = -size  # Posición corta (cantidad negativa)
+                else:
+                    self.logger.warning(f"⚠️ Dirección desconocida para {symbol}: {direction}")
+                    continue
+                
+                # Calcular valor de la posición
+                position_value = abs(quantity) * avg_price
+                
+                # Agregar posición al portfolio del paper trader
+                self.portfolio[symbol] = {
+                    "quantity": quantity,
+                    "avg_price": avg_price,
+                    "current_price": avg_price,  # Se actualizará con precios reales
+                    "current_value": position_value,
+                    "unrealized_pnl": 0.0,
+                    "unrealized_pnl_percentage": 0.0,
+                    "last_updated": datetime.now()
+                }
+                
+                synced_positions += 1
+                position_type = "LONG" if quantity > 0 else "SHORT"
+                self.logger.info(f"🔄 Sincronizada posición {position_type}: {abs(quantity):.6f} {symbol} @ ${avg_price:.2f}")
+            
+            # Usar valores reales de Capital.com si están disponibles
+            if real_available_balance is not None and real_equity is not None:
+                # Usar el balance disponible real de Capital.com
+                self.portfolio["USD"]["quantity"] = real_available_balance
+                self.portfolio["USD"]["current_value"] = real_available_balance
+                
+                # Guardar valores reales para cálculos de portfolio
+                self._real_equity = real_equity
+                self._real_pnl = real_pnl
+                
+                self.logger.info(f"✅ Sincronizadas {synced_positions} posiciones de Capital.com con paper trader")
+                self.logger.info(f"💰 Balance USD real: ${real_available_balance:.2f}")
+                self.logger.info(f"📈 Equity real: ${real_equity:.2f}")
+                self.logger.info(f"💵 P&L real: ${real_pnl:.2f}")
+            else:
+                # Fallback: usar cálculo anterior si no hay valores reales
+                total_portfolio_value = sum(abs(pos["quantity"]) * pos["avg_price"] 
+                                          for symbol, pos in self.portfolio.items() 
+                                          if symbol != "USD")
+                adjusted_usd_balance = max(self.initial_balance, total_portfolio_value * 0.2)
+                
+                self.portfolio["USD"]["quantity"] = adjusted_usd_balance
+                self.portfolio["USD"]["current_value"] = adjusted_usd_balance
+                
+                self.logger.info(f"✅ Sincronizadas {synced_positions} posiciones de Capital.com con paper trader")
+                self.logger.info(f"💰 Valor total del portfolio calculado: ${total_portfolio_value:.2f}")
+                self.logger.info(f"💵 Balance USD ajustado: ${adjusted_usd_balance:.2f}")
+                
+            if synced_positions == 0:
+                self.logger.info("ℹ️ No hay posiciones activas en Capital.com para sincronizar")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error sincronizando posiciones iniciales: {e}")
+            # No fallar la inicialización por este error
     
     def reset_portfolio(self) -> Dict:
         """
@@ -93,81 +218,73 @@ class PaperTrader:
             Dict con el resultado del reset
         """
         try:
-            with db_manager.get_db_session() as session:
-                # Eliminar todos los trades
-                session.query(Trade).filter(Trade.is_paper_trade == True).delete()
-                
-                # Resetear portfolio a valores iniciales
-                portfolio_entries = session.query(Portfolio).filter(Portfolio.is_paper == True).all()
-                
-                for entry in portfolio_entries:
-                    if entry.symbol == "USDT":
-                        # Restaurar balance inicial de USDT
-                        entry.quantity = self.initial_balance
-                        entry.avg_price = 1.0
-                        entry.current_price = 1.0
-                        entry.current_value = self.initial_balance
-                        entry.unrealized_pnl = 0.0
-                        entry.unrealized_pnl_percentage = 0.0
-                        entry.last_updated = datetime.now()
-                    else:
-                        # Eliminar todas las otras posiciones
-                        session.delete(entry)
-                
-                session.commit()
-                
-                self.logger.info(f"🔄 Portfolio reset to initial balance: ${self.initial_balance:,.2f}")
-                
-                return {
-                    "success": True,
-                    "message": f"Portfolio reset successfully to ${self.initial_balance:,.2f}",
-                    "initial_balance": self.initial_balance,
-                    "timestamp": datetime.now().isoformat()
+            # Resetear portfolio a valores iniciales
+            self.portfolio = {
+                "USD": {
+                    "quantity": self.initial_balance,
+                    "avg_price": 1.0,
+                    "current_price": 1.0,
+                    "current_value": self.initial_balance,
+                    "unrealized_pnl": 0.0,
+                    "unrealized_pnl_percentage": 0.0,
+                    "last_updated": datetime.now()
                 }
-                
+            }
+            
+            # Limpiar historial de trades
+            self.trades = []
+            self.trade_counter = 1
+            
+            self.logger.info(f"🔄 Portfolio reset to ${self.initial_balance:,.2f}")
+            
+            return {
+                "success": True,
+                "message": f"Portfolio reset successfully to ${self.initial_balance:,.2f}",
+                "initial_balance": self.initial_balance,
+                "current_balance": self.initial_balance
+            }
+            
         except Exception as e:
-            error_msg = f"Error resetting portfolio: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(f"❌ Error resetting portfolio: {e}")
             return {
                 "success": False,
-                "message": error_msg,
-                "timestamp": datetime.now().isoformat()
+                "message": f"Error resetting portfolio: {e}",
+                "initial_balance": self.initial_balance,
+                "current_balance": self.get_balance()
             }
     
-    def execute_signal(self, signal: TradingSignal) -> TradeResult:
+    def execute_signal(self, signal: 'TradingSignal') -> TradeResult:
         """
         🎯 Ejecutar una señal de trading
         
         Args:
-            signal: Señal generada por una estrategia
+            signal: Señal de trading a ejecutar
             
         Returns:
-            TradeResult: Resultado de la ejecución
+            TradeResult con el resultado de la operación
         """
         try:
-            self.logger.info(f"🎯 Processing signal: {signal.signal_type} {signal.symbol} @ {signal.price}")
-            
             # Validar señal
             if not self._validate_signal(signal):
                 return TradeResult(
                     success=False,
                     trade_id=None,
-                    message="❌ Signal validation failed",
+                    message="Signal validation failed",
                     entry_price=signal.price,
                     quantity=0.0,
                     entry_value=0.0
                 )
             
-            # Ejecutar según tipo de señal
-            if signal.signal_type == "BUY":
+            # Ejecutar según el tipo de señal
+            if signal.signal_type.upper() == "BUY":
                 return self._execute_buy(signal)
-            elif signal.signal_type == "SELL":
+            elif signal.signal_type.upper() == "SELL":
                 return self._execute_sell(signal)
-            else:  # HOLD
+            else:
                 return TradeResult(
-                    success=True,
+                    success=False,
                     trade_id=None,
-                    message="⚪ HOLD signal - No action taken",
+                    message=f"Unknown signal_type: {signal.signal_type}",
                     entry_price=signal.price,
                     quantity=0.0,
                     entry_value=0.0
@@ -178,885 +295,681 @@ class PaperTrader:
             return TradeResult(
                 success=False,
                 trade_id=None,
-                message=f"❌ Execution error: {str(e)}",
-                entry_price=signal.price,
+                message=f"Error executing signal: {e}",
+                entry_price=signal.price if hasattr(signal, 'price') else 0.0,
                 quantity=0.0,
                 entry_value=0.0
             )
     
-    def _validate_signal(self, signal: TradingSignal) -> bool:
+    def _validate_signal(self, signal: 'TradingSignal') -> bool:
         """
-        ✅ Validar si una señal es ejecutable
+        ✅ Validar una señal de trading
         
         Args:
             signal: Señal a validar
             
         Returns:
-            bool: True si es válida
+            bool: True si la señal es válida
         """
         try:
             # Validaciones básicas
-            if signal.confidence_score < self.min_confidence_threshold:
-                self.logger.info(f"❌ Low confidence: {signal.confidence_score:.1f}% < {self.min_confidence_threshold:.1f}%")
+            if not hasattr(signal, 'symbol') or not signal.symbol:
+                self.logger.warning("❌ Signal missing symbol")
+                return False
+                
+            if not hasattr(signal, 'signal_type') or not signal.signal_type:
+                self.logger.warning("❌ Signal missing signal_type")
+                return False
+                
+            if not hasattr(signal, 'price') or signal.price <= 0:
+                self.logger.warning("❌ Signal missing or invalid price")
+                return False
+                
+            if not hasattr(signal, 'confidence_score') or signal.confidence_score < self.min_confidence_threshold:
+                self.logger.warning(f"❌ Signal confidence too low: {signal.confidence_score} < {self.min_confidence_threshold}")
                 return False
             
-            if signal.price <= 0:
-                self.logger.error(f"❌ Invalid price: {signal.price}")
-                return False
-            
-            if signal.signal_type not in ["BUY", "SELL", "HOLD"]:
-                self.logger.error(f"❌ Invalid signal type: {signal.signal_type}")
-                return False
-            
-            # Asegurar que el portfolio está inicializado
-            self._ensure_portfolio_initialized()
-            
-            # Validaciones de portfolio
-            if signal.signal_type == "BUY":
-                # Verificar si tenemos USDT suficiente
-                usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * (self.max_position_size)  # porcentaje en decimal
-                
-                # Limitar por uso máximo de balance y por exposición total permitida
-                allowed_exposure = self._get_allowed_additional_exposure()
-                effective_max_trade_value = min(max_trade_value, usdt_balance * self.max_balance_usage, allowed_exposure)
-                
-                if usdt_balance < self.min_trade_value:
-                    self.logger.info(f"❌ Insufficient USDT balance: ${usdt_balance:.2f} < ${self.min_trade_value:.2f}")
-                    return False
-                    
-                if effective_max_trade_value < self.min_trade_value:
-                    self.logger.info(f"❌ Max trade value too low (after exposure limits): ${effective_max_trade_value:.2f} < ${self.min_trade_value:.2f}")
-                    return False
-            
-            elif signal.signal_type == "SELL":
-                # Verificar si tenemos el asset para vender
-                asset_symbol = (signal.symbol.split('/')[0] if '/' in signal.symbol else (signal.symbol[:-4] if signal.symbol.endswith(('USDT')) else signal.symbol))  # Normaliza base: BTC de BTC/USDT o BTCUSDT
-                asset_balance = self._get_asset_balance(asset_symbol)
-                
-                if asset_balance <= 0:
-                    self.logger.info(f"❌ No {asset_symbol} balance to sell: {asset_balance}")
-                    return False
-            
-            self.logger.info(f"✅ Signal validation passed: {signal.signal_type} {signal.symbol} @ ${signal.price:.2f} ({signal.confidence_score:.1f}%)")
             return True
             
         except Exception as e:
             self.logger.error(f"❌ Error validating signal: {e}")
             return False
     
-    def _execute_buy(self, signal: TradingSignal) -> TradeResult:
+    def _execute_buy(self, signal: 'TradingSignal') -> TradeResult:
         """
-        🟢 Ejecutar orden de compra
+        📈 Ejecutar una orden de compra (CFD - Posición Larga)
+        
+        En CFDs, BUY significa abrir una posición larga (apostar que el precio sube)
+        o cerrar una posición corta existente.
         
         Args:
             signal: Señal de compra
             
         Returns:
-            TradeResult: Resultado de la compra
+            TradeResult con el resultado de la operación
         """
         try:
-            with db_manager.get_db_session() as session:
-                # Calcular cantidad a comprar
-                usdt_balance = self._get_usdt_balance()
-                max_trade_value = usdt_balance * (self.max_position_size)  # Ya en decimal
+            symbol = signal.symbol
+            price = signal.price
+            
+            # En CFDs, verificar si ya tenemos una posición abierta
+            if symbol in self.portfolio:
+                position = self.portfolio[symbol]
+                current_quantity = position["quantity"]
                 
-                # Aplicar límites de uso de balance y de exposición total
-                allowed_exposure = self._get_allowed_additional_exposure()
-                trade_value_pre_fee = min(max_trade_value, usdt_balance * (self.max_balance_usage), allowed_exposure)  # Límite configurable y exposición
-                
-                if trade_value_pre_fee < self.min_trade_value:
-                    return TradeResult(
-                        success=False,
-                        trade_id=None,
-                        message=f"❌ Trade value too small: ${trade_value_pre_fee:.2f}",
-                        entry_price=signal.price,
-                        quantity=0.0,
-                        entry_value=0.0
-                    )
-                
-                # Ejecutar a precio de mercado (sin slippage) y aplicar fee
-                execution_price = float(signal.price)
-                trade_value = trade_value_pre_fee / (1.0 + FEE_RATE)
-                quantity = trade_value / execution_price
-                fee_usdt = trade_value * FEE_RATE
-                total_cost = trade_value + fee_usdt
-                
-                # Obtener TP/SL de la señal o calcularlos automáticamente
-                stop_loss_price = None
-                take_profit_price = None
-                
-                # Verificar si la señal incluye TP/SL
-                if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
-                    stop_loss_price = signal.stop_loss_price
-                if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
-                    take_profit_price = signal.take_profit_price
-                
-                # Si faltan TP/SL, calcularlos
-                if stop_loss_price is None or take_profit_price is None:
-                    if TradingBotConfig.is_simple_mode():
-                        # Modo simple: SL/TP basados en ATR con RR=1.5 y fallback porcentual
-                        try:
-                            from src.config.main_config import TradingProfiles, RiskManagerConfig
-                            profile = TradingProfiles.get_current_profile()
-                            min_atr_ratio = profile.get("min_atr_ratio", 0.8)
-                            risk_config = RiskManagerConfig()
-                            
-                            entry = execution_price
-                            RR = 1.5
-                            
-                            # Obtener ATR desde la señal si disponible
-                            indicators = getattr(signal, 'indicators_data', {}) or {}
-                            atr = indicators.get('atr', None)
-                            
-                            # Selección del multiplicador según régimen de mercado
-                            market_regime = getattr(signal, 'market_regime', 'NORMAL')
-                            if market_regime == "VOLATILE":
-                                m = risk_config.get_atr_volatile()
-                            elif market_regime == "RANGING":
-                                m = risk_config.get_atr_sideways()
-                            else:
-                                m = risk_config.get_atr_default()
-                            
-                            # Clamp a rango permitido
-                            m = max(risk_config.get_atr_multiplier_min(), min(m, risk_config.get_atr_multiplier_max()))
-                            
-                            use_atr = (atr is not None and atr > 0 and entry > 0 and (atr / entry) >= min_atr_ratio)
-                            
-                            if use_atr:
-                                if stop_loss_price is None:
-                                    stop_loss_price = round(entry - (m * atr), 4)
-                                if take_profit_price is None:
-                                    take_profit_price = round(entry + (RR * m * atr), 4)
-                                self.logger.info(f"🛡️ TP/SL (modo simple ATR): SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f} (m={m:.2f}, RR={RR:.2f})")
-                            else:
-                                # Fallback porcentual fijo
-                                sl_pct = 0.015
-                                tp_pct = 0.03
-                                if stop_loss_price is None:
-                                    stop_loss_price = round(entry * (1 - sl_pct), 4)
-                                if take_profit_price is None:
-                                    take_profit_price = round(entry * (1 + tp_pct), 4)
-                                self.logger.info(f"🛡️ TP/SL fallback (modo simple): SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f} (−1.5% / +3%)")
-                        except Exception as e:
-                            # Fallback duro si algo falla
-                            self.logger.warning(f"⚠️ Error en cálculo simple de TP/SL: {e}")
-                            sl_pct = 0.015
-                            tp_pct = 0.03
-                            if stop_loss_price is None:
-                                stop_loss_price = round(execution_price * (1 - sl_pct), 4)
-                            if take_profit_price is None:
-                                take_profit_price = round(execution_price * (1 + tp_pct), 4)
-                            self.logger.info(f"🛡️ TP/SL fallback (error modo simple): SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
-                    else:
-                        try:
-                            from .enhanced_risk_manager import EnhancedRiskManager
-                            risk_manager = EnhancedRiskManager()
-                            
-                            # Convertir TradingSignal a EnhancedSignal si es necesario
-                            if not hasattr(signal, 'market_regime'):
-                                # Crear EnhancedSignal temporal para el cálculo
-                                from .enhanced_strategies import EnhancedSignal
-                                enhanced_signal = EnhancedSignal(
-                                    symbol=signal.symbol,
-                                    signal_type=signal.signal_type,
-                                    price=signal.price,
-                                    confidence_score=signal.confidence_score,
-                                    strength=getattr(signal, 'strength', 'Moderate'),
-                                    strategy_name=signal.strategy_name,
-                                    timestamp=signal.timestamp,
-                                    indicators_data=getattr(signal, 'indicators_data', {}),
-                                    notes=f"{signal.notes or ''} | Fee: ${fee_usdt:.4f}",
-                                    stop_loss_price=getattr(signal, 'stop_loss_price', 0.0),
-                                    take_profit_price=getattr(signal, 'take_profit_price', 0.0),
-                                    market_regime='NORMAL',
-                                    timeframe=TradingBotConfig.get_primary_timeframe()
-                                )
-                            else:
-                                enhanced_signal = signal
-                            
-                            # Calcular evaluación de riesgo
-                            current_portfolio_value = self.get_portfolio_value()
-                            risk_assessment = risk_manager.assess_trade_risk(enhanced_signal, current_portfolio_value)
-                            
-                            # Usar TP/SL calculados si no están disponibles
-                            if stop_loss_price is None:
-                                stop_loss_price = risk_assessment.dynamic_stop_loss.stop_loss_price
-                            if take_profit_price is None:
-                                take_profit_price = risk_assessment.dynamic_take_profit.take_profit_price
-                            
-                            self.logger.info(f"🛡️ TP/SL calculados automáticamente: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ Error calculando TP/SL automáticos: {e}")
-                            # Fallback: usar porcentajes fijos desde config
-                            from src.config.main_config import RiskManagerConfig
-                            sl_pct = RiskManagerConfig.get_sl_min_percentage()
-                            tp_pct = RiskManagerConfig.get_tp_min_percentage()
-                            
-                            if stop_loss_price is None:
-                                stop_loss_price = signal.price * (1 - sl_pct)
-                            if take_profit_price is None:
-                                take_profit_price = signal.price * (1 + tp_pct)
-                            
-                            self.logger.info(f"🛡️ TP/SL fallback aplicados: SL=${stop_loss_price:.4f}, TP=${take_profit_price:.4f}")
-
-                # Crear trade en base de datos
-                normalized_symbol = self._normalize_to_usdt_ticker(signal.symbol)
-                new_trade = Trade(
-                    symbol=normalized_symbol,
-                    strategy_name=signal.strategy_name,
-                    trade_type="BUY",
-                    entry_price=execution_price,
-                    quantity=quantity,
-                    entry_value=total_cost,
-                    status="OPEN",
-                    is_paper_trade=True,
-                    timeframe=TradingBotConfig.get_primary_timeframe(),
-                    confidence_score=signal.confidence_score,
-                    notes=f"{signal.notes or ''} | Fee: ${fee_usdt:.4f}",
-                    stop_loss=stop_loss_price,
-                    take_profit=take_profit_price
-                )
-                
-                session.add(new_trade)
-                session.flush()  # Para obtener el ID
-                
-                # Actualizar portfolio - Reducir USDT (incluye fees)
-                self._update_usdt_balance(-total_cost, session)
-                
-                # Actualizar portfolio - Aumentar asset
-                asset_symbol = (signal.symbol.split('/')[0] if '/' in signal.symbol else (signal.symbol[:-4] if signal.symbol.endswith(('USDT')) else signal.symbol))
-                self._update_asset_balance(asset_symbol, quantity, execution_price, session)
-                
-                # Guardar señal en base de datos
-                self._save_signal_to_db(signal, new_trade.id, "EXECUTED", session)
-                
-                session.commit()
-                
-                # Obtener balance de USDT después de la compra
-                usdt_balance_after = self._get_usdt_balance()
-                
-                self.logger.info(f"✅ BUY executed: {quantity:.6f} {asset_symbol} @ ${execution_price:.2f}")
-                self.logger.info(f"💰 USDT Balance after purchase: ${usdt_balance_after:.2f}")
-                
-                return TradeResult(
-                    success=True,
-                    trade_id=new_trade.id,
-                    message=f"✅ Bought {quantity:.6f} {asset_symbol} for ${total_cost:.2f}",
-                    entry_price=execution_price,
-                    quantity=quantity,
-                    entry_value=total_cost
-                )
-                
+                # Si ya tenemos posición corta, cerrarla primero
+                if current_quantity < 0:
+                    return self._close_short_position(symbol, price)
+                # Si ya tenemos posición larga, aumentarla o cerrarla según la estrategia
+                elif current_quantity > 0:
+                    return self._increase_long_position(symbol, price)
+            
+            # Abrir nueva posición larga (CFD BUY)
+            return self._open_long_position(symbol, price)
+            
         except Exception as e:
             self.logger.error(f"❌ Error executing buy: {e}")
             return TradeResult(
                 success=False,
                 trade_id=None,
-                message=f"❌ Buy error: {str(e)}",
+                message=f"Error executing buy: {e}",
                 entry_price=signal.price,
                 quantity=0.0,
                 entry_value=0.0
             )
     
-    def _execute_sell(self, signal: TradingSignal) -> TradeResult:
+    def _close_short_position(self, symbol: str, price: float) -> TradeResult:
+        """🔄 Cerrar posición corta existente"""
+        position = self.portfolio[symbol]
+        quantity = abs(position["quantity"])  # Convertir a positivo
+        entry_price = position["avg_price"]
+        
+        # En posición corta, ganamos cuando el precio baja
+        # P&L = (precio_entrada - precio_salida) * cantidad
+        entry_value = quantity * entry_price
+        exit_value = quantity * price
+        gross_pnl = entry_value - exit_value  # Invertido para posición corta
+        fee = exit_value * FEE_RATE
+        net_pnl = gross_pnl - fee
+        
+        # Actualizar portfolio (liberar margen y agregar P&L)
+        margin_released = entry_value + (entry_value * FEE_RATE)  # Margen original
+        self._update_usd_balance(margin_released + net_pnl)
+        self._update_asset_balance(symbol, quantity, price)  # Eliminar posición (cantidad positiva para cancelar negativa)
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "BUY_CLOSE_SHORT",
+            "quantity": quantity,
+            "entry_price": entry_price,
+            "exit_price": price,
+            "exit_value": exit_value,
+            "fee": fee,
+            "pnl": net_pnl,
+            "status": "CLOSED",
+            "exit_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade CLOSE SHORT {symbol} | PnL: ${net_pnl:.2f}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        self.logger.info(f"✅ CLOSE SHORT: {quantity:.6f} {symbol} @ ${price:.2f} | PnL: {pnl_sign}${net_pnl:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"SHORT position closed | PnL: {pnl_sign}${net_pnl:.2f}",
+            entry_price=price,
+            quantity=quantity,
+            entry_value=exit_value
+        )
+    
+    def _open_long_position(self, symbol: str, price: float) -> TradeResult:
+        """📈 Abrir nueva posición larga (CFD BUY)"""
+        # Calcular cantidad basada en el tamaño máximo de posición
+        usd_balance = self.get_balance("USD")
+        max_trade_value = min(
+            usd_balance * self.max_balance_usage,
+            usd_balance * self.max_position_size  # Corregido: multiplicar por balance
+        )
+        
+        if max_trade_value < self.min_trade_value:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Calcular cantidad y fees
+        quantity = max_trade_value / price
+        fee = max_trade_value * FEE_RATE
+        margin_required = max_trade_value + fee  # Margen requerido para la posición
+        
+        if margin_required > usd_balance:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance: ${margin_required:,.2f} required, ${usd_balance:,.2f} available",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Actualizar portfolio (reservar margen)
+        self._update_usd_balance(-margin_required)
+        self._update_asset_balance(symbol, quantity, price)
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "BUY_OPEN_LONG",
+            "quantity": quantity,
+            "entry_price": price,
+            "entry_value": max_trade_value,
+            "fee": fee,
+            "status": "OPEN",
+            "entry_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade OPEN LONG {symbol}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        self.logger.info(f"✅ OPEN LONG: {quantity:.6f} {symbol} @ ${price:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"LONG position opened successfully",
+            entry_price=price,
+            quantity=quantity,
+            entry_value=max_trade_value
+        )
+    
+    def _increase_long_position(self, symbol: str, price: float) -> TradeResult:
+        """📈 Aumentar posición larga existente"""
+        # Por simplicidad, por ahora cerramos la posición existente y abrimos una nueva
+        # En el futuro se puede implementar lógica más sofisticada
+        return self._open_long_position(symbol, price)
+    
+    def _execute_sell(self, signal: 'TradingSignal') -> TradeResult:
         """
-        🔴 Ejecutar orden de venta
+        📉 Ejecutar una orden de venta (CFD - Posición Corta)
+        
+        En CFDs, SELL significa abrir una posición corta (apostar que el precio baja)
+        No necesitas tener el activo para vender.
         
         Args:
             signal: Señal de venta
             
         Returns:
-            TradeResult: Resultado de la venta
+            TradeResult con el resultado de la operación
         """
         try:
-            with db_manager.get_db_session() as session:
-                asset_symbol = (signal.symbol.split('/')[0] if '/' in signal.symbol else (signal.symbol[:-4] if signal.symbol.endswith('USDT') else signal.symbol))
-                asset_balance = self._get_asset_balance(asset_symbol)
+            symbol = signal.symbol
+            price = signal.price
+            
+            # En CFDs, verificar si ya tenemos una posición abierta
+            if symbol in self.portfolio:
+                position = self.portfolio[symbol]
+                current_quantity = position["quantity"]
                 
-                if asset_balance <= 0:
-                    return TradeResult(
-                        success=False,
-                        trade_id=None,
-                        message=f"❌ No {asset_symbol} balance to sell",
-                        entry_price=signal.price,
-                        quantity=0.0,
-                        entry_value=0.0
-                    )
-                
-                # Vender todo el balance del asset
-                quantity = asset_balance
-                
-                # Ejecutar a precio de mercado (sin slippage) y aplicar fee
-                execution_price = float(signal.price)
-                sale_value_gross = quantity * execution_price
-                fee_usdt_total = sale_value_gross * FEE_RATE
-
-                normalized_symbol = self._normalize_to_usdt_ticker(signal.symbol)
-                # Buscar trades abiertos para cerrar
-                open_trades = session.query(Trade).filter(
-                    Trade.symbol == normalized_symbol,
-                    Trade.status == "OPEN",
-                    Trade.is_paper_trade == True
-                ).all()
-                
-                total_pnl = 0.0
-                
-                # Cerrar trades abiertos
-                for trade in open_trades:
-                    trade.exit_price = execution_price
-                    exit_value_gross = trade.quantity * execution_price
-                    fee_usdt_trade = exit_value_gross * FEE_RATE
-                    trade.exit_value = exit_value_gross - fee_usdt_trade
-                    trade.pnl = trade.exit_value - trade.entry_value
-                    trade.pnl_percentage = (trade.pnl / trade.entry_value) * 100
-                    trade.status = "CLOSED"
-                    trade.exit_time = datetime.now()
-                    total_pnl += trade.pnl
-                
-                # Crear nuevo trade de venta
-                new_trade = Trade(
-                    symbol=normalized_symbol,
-                    strategy_name=signal.strategy_name,
-                    trade_type="SELL",
-                    entry_price=execution_price,
-                    exit_price=execution_price,
-                    quantity=quantity,
-                    entry_value=sale_value_gross,
-                    exit_value=sale_value_gross - fee_usdt_total,
-                    pnl=0.0,  # Para trades de venta directa
-                    status="CLOSED",
-                    is_paper_trade=True,
-                    timeframe=TradingBotConfig.get_primary_timeframe(),
-                    confidence_score=signal.confidence_score,
-                    notes=f"{signal.notes or ''} | Fee: ${fee_usdt_total:.4f}",
-                    exit_time=datetime.now()
-                )
-                
-                session.add(new_trade)
-                session.flush()
-                
-                # Actualizar portfolio - Aumentar USDT (neto de fees)
-                self._update_usdt_balance(sale_value_gross - fee_usdt_total, session)
-                
-                # Actualizar portfolio - Reducir asset a 0
-                self._update_asset_balance(asset_symbol, -asset_balance, execution_price, session)
-                
-                # Guardar señal en base de datos
-                self._save_signal_to_db(signal, new_trade.id, "EXECUTED", session)
-                
-                session.commit()
-                
-                # Obtener balance de USDT después de la venta
-                usdt_balance_after = self._get_usdt_balance()
-                
-                self.logger.info(f"✅ SELL executed: {quantity:.6f} {asset_symbol} @ ${execution_price:.2f} (PnL: ${total_pnl:.2f})")
-                self.logger.info(f"💰 USDT Balance after sale: ${usdt_balance_after:.2f}")
-                
-                return TradeResult(
-                    success=True,
-                    trade_id=new_trade.id,
-                    message=f"✅ Sold {quantity:.6f} {asset_symbol} for ${sale_value_gross - fee_usdt_total:.2f} (PnL: ${total_pnl:.2f})",
-                    entry_price=execution_price,
-                    quantity=quantity,
-                    entry_value=sale_value_gross - fee_usdt_total
-                )
-                
+                # Si ya tenemos posición larga, cerrarla primero
+                if current_quantity > 0:
+                    return self._close_long_position(symbol, price)
+                # Si ya tenemos posición corta, aumentarla o cerrarla según la estrategia
+                elif current_quantity < 0:
+                    return self._increase_short_position(symbol, price)
+            
+            # Abrir nueva posición corta (CFD SELL)
+            return self._open_short_position(symbol, price)
+            
         except Exception as e:
             self.logger.error(f"❌ Error executing sell: {e}")
             return TradeResult(
                 success=False,
                 trade_id=None,
-                message=f"❌ Sell error: {str(e)}",
+                message=f"Error executing sell: {e}",
                 entry_price=signal.price,
                 quantity=0.0,
                 entry_value=0.0
             )
     
+    def _close_long_position(self, symbol: str, price: float) -> TradeResult:
+        """🔄 Cerrar posición larga existente"""
+        position = self.portfolio[symbol]
+        quantity = position["quantity"]
+        entry_price = position["avg_price"]
+        
+        # Calcular P&L
+        sale_value = quantity * price
+        entry_value = quantity * entry_price
+        gross_pnl = sale_value - entry_value
+        fee = sale_value * FEE_RATE
+        net_pnl = gross_pnl - fee
+        
+        # Actualizar portfolio
+        self._update_usd_balance(sale_value - fee)  # Recibir dinero de la venta
+        self._update_asset_balance(symbol, -quantity, price)  # Eliminar posición
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "SELL_CLOSE_LONG",
+            "quantity": quantity,
+            "entry_price": entry_price,
+            "exit_price": price,
+            "exit_value": sale_value,
+            "fee": fee,
+            "pnl": net_pnl,
+            "status": "CLOSED",
+            "exit_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade CLOSE LONG {symbol} | PnL: ${net_pnl:.2f}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        self.logger.info(f"✅ CLOSE LONG: {quantity:.6f} {symbol} @ ${price:.2f} | PnL: {pnl_sign}${net_pnl:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"LONG position closed | PnL: {pnl_sign}${net_pnl:.2f}",
+            entry_price=price,
+            quantity=quantity,
+            entry_value=sale_value
+        )
+    
+    def _open_short_position(self, symbol: str, price: float) -> TradeResult:
+        """📉 Abrir nueva posición corta (CFD SELL)"""
+        # Calcular cantidad basada en el tamaño máximo de posición
+        usd_balance = self.get_balance("USD")
+        max_trade_value = min(
+            usd_balance * self.max_balance_usage,
+            usd_balance * self.max_position_size  # Corregido: multiplicar por balance
+        )
+        
+        if max_trade_value < self.min_trade_value:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # En posición corta, la cantidad es negativa
+        quantity = -(max_trade_value / price)  # Negativo para indicar posición corta
+        fee = max_trade_value * FEE_RATE
+        margin_required = max_trade_value + fee  # Margen requerido para la posición
+        
+        if margin_required > usd_balance:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Insufficient balance: ${margin_required:,.2f} required, ${usd_balance:,.2f} available",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Actualizar portfolio (reservar margen)
+        self._update_usd_balance(-margin_required)
+        self._update_asset_balance(symbol, quantity, price)  # Cantidad negativa
+        
+        # Crear registro de trade
+        trade_id = self.trade_counter
+        self.trade_counter += 1
+        
+        trade_record = {
+            "id": trade_id,
+            "symbol": symbol,
+            "trade_type": "SELL_OPEN_SHORT",
+            "quantity": abs(quantity),  # Guardar como positivo en el registro
+            "entry_price": price,
+            "entry_value": max_trade_value,
+            "fee": fee,
+            "status": "OPEN",
+            "entry_time": datetime.now(),
+            "is_paper_trade": True,
+            "notes": f"Paper trade OPEN SHORT {symbol}"
+        }
+        
+        self.trades.append(trade_record)
+        
+        self.logger.info(f"✅ OPEN SHORT: {abs(quantity):.6f} {symbol} @ ${price:.2f} (Trade #{trade_id})")
+        
+        return TradeResult(
+            success=True,
+            trade_id=trade_id,
+            message=f"SHORT position opened successfully",
+            entry_price=price,
+            quantity=abs(quantity),
+            entry_value=max_trade_value
+        )
+    
+    def _increase_short_position(self, symbol: str, price: float) -> TradeResult:
+        """📉 Aumentar posición corta existente"""
+        # Por simplicidad, por ahora cerramos la posición existente y abrimos una nueva
+        # En el futuro se puede implementar lógica más sofisticada
+        return self._open_short_position(symbol, price)
+    
     def get_portfolio_summary(self) -> Dict:
         """
-        📊 Obtener resumen del portfolio (método público)
+        📊 Obtener resumen del portfolio
+        
+        Returns:
+            Dict con el resumen del portfolio
         """
-        return self._get_portfolio_summary()
+        try:
+            total_value = sum(pos["current_value"] for pos in self.portfolio.values())
+            total_pnl = sum(pos["unrealized_pnl"] for pos in self.portfolio.values())
+            
+            return {
+                "total_value": total_value,
+                "initial_balance": self.initial_balance,
+                "total_pnl": total_pnl,
+                "total_pnl_percentage": (total_pnl / self.initial_balance) * 100 if self.initial_balance > 0 else 0.0,
+                "positions": len([pos for pos in self.portfolio.values() if pos["quantity"] > 0]),
+                "last_updated": datetime.now()
+            }
+        except Exception as e:
+            self.logger.error(f"❌ Error getting portfolio summary: {e}")
+            return {
+                "total_value": self.initial_balance,
+                "initial_balance": self.initial_balance,
+                "total_pnl": 0.0,
+                "total_pnl_percentage": 0.0,
+                "positions": 0,
+                "last_updated": datetime.now()
+            }
     
-    def get_balance(self, symbol: str = "USDT") -> float:
+    def get_balance(self, symbol: str = "USD") -> float:
         """
         💰 Obtener balance de un símbolo específico
         
         Args:
-            symbol: Símbolo del asset (por defecto USDT)
+            symbol: Símbolo del asset (default: USD)
             
         Returns:
-            float: Balance del símbolo
-        """
-        if symbol == "USDT":
-            return self._get_usdt_balance()
-        else:
-            return self._get_asset_balance(symbol)
-    
-    def _get_portfolio_summary(self) -> Dict:
-        """
-        📊 Obtener resumen del portfolio
-        """
-        return db_manager.get_portfolio_summary(is_paper=True)
-    
-    def _get_total_exposure_value(self) -> float:
-        """
-        📈 Valor total expuesto en activos (excluye USDT disponible)
+            float: Balance disponible
         """
         try:
-            summary = self._get_portfolio_summary()
-            total_value = float(summary.get("total_value", 0.0))
-            available_balance = float(summary.get("available_balance", 0.0))
-            exposed_value = max(total_value - available_balance, 0.0)
-            return exposed_value
+            if symbol in self.portfolio:
+                return self.portfolio[symbol]["quantity"]
+            return 0.0
         except Exception as e:
-            self.logger.error(f"❌ Error calculating total exposure: {e}")
+            self.logger.error(f"❌ Error getting balance for {symbol}: {e}")
             return 0.0
     
-    def _get_allowed_additional_exposure(self) -> float:
+    def _update_usd_balance(self, amount: float):
         """
-        ✅ Exposición adicional permitida según max_total_exposure del perfil
-        """
-        try:
-            portfolio_value = float(self.get_portfolio_value())
-            max_allowed_exposure = portfolio_value * float(self.max_total_exposure)
-            current_exposure = self._get_total_exposure_value()
-            remaining = max(max_allowed_exposure - current_exposure, 0.0)
-            return remaining
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating allowed exposure: {e}")
-            return 0.0
-    
-    def _ensure_portfolio_initialized(self):
-        """
-        🔧 Asegurar que el portfolio está inicializado correctamente
-        """
-        try:
-            with db_manager.get_db_session() as session:
-                usdt_portfolio = session.query(Portfolio).filter(
-                    Portfolio.symbol == "USDT",
-                    Portfolio.is_paper == True
-                ).first()
-                
-                if not usdt_portfolio:
-                    # Crear portfolio inicial con balance configurado
-                    initial_portfolio = Portfolio(
-                        symbol="USDT",
-                        quantity=self.initial_balance,
-                        avg_price=USDT_BASE_PRICE,
-                    current_price=USDT_BASE_PRICE,
-                        current_value=self.initial_balance,
-                        unrealized_pnl=0.0,
-                        unrealized_pnl_percentage=0.0,
-                        is_paper=True
-                    )
-                    
-                    session.add(initial_portfolio)
-                    session.commit()
-                    self.logger.info(f"💰 Initialized paper trading portfolio with ${self.initial_balance:,.2f} USDT")
-                    
-        except Exception as e:
-            self.logger.error(f"❌ Error initializing portfolio: {e}")
-    
-    def _get_usdt_balance(self) -> float:
-        """
-        💰 Obtener balance de USDT
-        """
-        try:
-            with db_manager.get_db_session() as session:
-                usdt_portfolio = session.query(Portfolio).filter(
-                    Portfolio.symbol == "USDT",
-                    Portfolio.is_paper == True
-                ).first()
-                
-                balance = usdt_portfolio.quantity if usdt_portfolio else 0.0
-                self.logger.debug(f"💰 Current USDT balance: ${balance:.2f}")
-                return balance
-        except Exception as e:
-            self.logger.error(f"❌ Error getting USDT balance: {e}")
-            return 0.0
-    
-    def _get_asset_balance(self, asset_symbol: str) -> float:
-        """
-        🪙 Obtener balance de un asset específico
-        """
-        try:
-            with db_manager.get_db_session() as session:
-                asset_portfolio = session.query(Portfolio).filter(
-                    Portfolio.symbol == asset_symbol,
-                    Portfolio.is_paper == True
-                ).first()
-                
-                return asset_portfolio.quantity if asset_portfolio else 0.0
-        except Exception as e:
-            self.logger.error(f"❌ Error getting {asset_symbol} balance: {e}")
-            return 0.0
-
-    def _normalize_to_usdt_ticker(self, symbol: str) -> str:
-        """
-        Normaliza cualquier símbolo de entrada al ticker USDT (BASEUSDT) en mayúsculas.
-        Acepta formatos como "BTCUSDT", "BTC/USDT", "BTCUSDC", "BTC/BUSD" o "BTC" y devuelve "BTCUSDT".
-        """
-        try:
-            if not symbol:
-                return ""
-            s = symbol.upper()
-            if s == "USDT":
-                return "USDT"
-            if '/' in s:
-                base, _quote = s.split('/')
-                return f"{base}USDT"
-            if s.endswith(("USDT")):
-                base = s[:-4]
-                return f"{base}USDT"
-            # Caso sin sufijo
-            return f"{s}USDT"
-        except Exception:
-            return symbol
-    
-    def _update_usdt_balance(self, amount: float, session: Session):
-        """
-        💰 Actualizar balance de USDT
-        """
-        usdt_portfolio = session.query(Portfolio).filter(
-            Portfolio.symbol == "USDT",
-            Portfolio.is_paper == True
-        ).first()
+        💵 Actualizar balance de USD
         
-        if usdt_portfolio:
-            usdt_portfolio.quantity += amount
-            usdt_portfolio.current_value = usdt_portfolio.quantity * USDT_BASE_PRICE
-            usdt_portfolio.last_updated = datetime.now()
-        else:
-            # Crear entrada USDT si no existe
-            new_usdt = Portfolio(
-                symbol="USDT",
-                quantity=max(0, amount),
-                avg_price=USDT_BASE_PRICE,
-                current_price=USDT_BASE_PRICE,
-                current_value=max(0, amount),
-                is_paper=True
-            )
-            session.add(new_usdt)
+        Args:
+            amount: Cantidad a agregar/quitar (puede ser negativa)
+        """
+        try:
+            if "USD" not in self.portfolio:
+                self.portfolio["USD"] = {
+                    "quantity": self.initial_balance,
+                    "avg_price": 1.0,
+                    "current_price": 1.0,
+                    "current_value": self.initial_balance,
+                    "unrealized_pnl": 0.0,
+                    "unrealized_pnl_percentage": 0.0,
+                    "last_updated": datetime.now()
+                }
+            
+            self.portfolio["USD"]["quantity"] += amount
+            self.portfolio["USD"]["current_value"] = self.portfolio["USD"]["quantity"]
+            self.portfolio["USD"]["last_updated"] = datetime.now()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error updating USD balance: {e}")
     
-    def _update_asset_balance(self, asset_symbol: str, quantity_change: float, price: float, session: Session):
+    def _update_asset_balance(self, asset_symbol: str, quantity_change: float, price: float):
         """
-        🪙 Actualizar balance de un asset
-        """
-        asset_portfolio = session.query(Portfolio).filter(
-            Portfolio.symbol == asset_symbol,
-            Portfolio.is_paper == True
-        ).first()
+        📈 Actualizar balance de un asset
         
-        if asset_portfolio:
-            # Actualizar balance existente
-            if quantity_change > 0:  # Compra
-                total_cost = (asset_portfolio.quantity * asset_portfolio.avg_price) + (quantity_change * price)
-                asset_portfolio.quantity += quantity_change
-                asset_portfolio.avg_price = total_cost / asset_portfolio.quantity if asset_portfolio.quantity > 0 else price
-            else:  # Venta
-                asset_portfolio.quantity += quantity_change  # quantity_change es negativo
-                
-            asset_portfolio.current_price = price
-            asset_portfolio.current_value = asset_portfolio.quantity * price
-            asset_portfolio.last_updated = datetime.now()
+        Args:
+            asset_symbol: Símbolo del asset
+            quantity_change: Cambio en cantidad (puede ser negativo)
+            price: Precio actual
+        """
+        try:
+            if asset_symbol not in self.portfolio:
+                self.portfolio[asset_symbol] = {
+                    "quantity": 0.0,
+                    "avg_price": price,
+                    "current_price": price,
+                    "current_value": 0.0,
+                    "unrealized_pnl": 0.0,
+                    "unrealized_pnl_percentage": 0.0,
+                    "last_updated": datetime.now()
+                }
+            
+            position = self.portfolio[asset_symbol]
+            old_quantity = position["quantity"]
+            new_quantity = old_quantity + quantity_change
+            
+            # Actualizar precio promedio si es una compra
+            if quantity_change > 0:
+                if old_quantity > 0:
+                    total_cost = (old_quantity * position["avg_price"]) + (quantity_change * price)
+                    position["avg_price"] = total_cost / new_quantity
+                else:
+                    position["avg_price"] = price
+            
+            position["quantity"] = new_quantity
+            position["current_price"] = price
+            position["current_value"] = new_quantity * price
             
             # Calcular PnL no realizado
-            if asset_portfolio.quantity > 0:
-                cost_basis = asset_portfolio.quantity * asset_portfolio.avg_price
-                current_value = asset_portfolio.quantity * price
-                asset_portfolio.unrealized_pnl = current_value - cost_basis
-                asset_portfolio.unrealized_pnl_percentage = (asset_portfolio.unrealized_pnl / cost_basis) * 100
-        
-        else:
-            # Crear nueva entrada de asset
-            if quantity_change > 0:
-                new_asset = Portfolio(
-                    symbol=asset_symbol,
-                    quantity=quantity_change,
-                    avg_price=price,
-                    current_price=price,
-                    current_value=quantity_change * price,
-                    unrealized_pnl=0.0,
-                    unrealized_pnl_percentage=0.0,
-                    is_paper=True
-                )
-                session.add(new_asset)
-    
-    def _save_signal_to_db(self, signal: TradingSignal, trade_id: Optional[int], action: str, session: Session):
-        """
-        💾 Guardar señal en base de datos
-        """
-        try:
-            db_signal = DBTradingSignal(
-                symbol=signal.symbol,
-                strategy_name=signal.strategy_name,
-                signal_type=signal.signal_type,
-                timeframe=TradingBotConfig.get_primary_timeframe(),
-                price=signal.price,
-                confidence_score=signal.confidence_score,
-                strength=signal.strength,
-                indicators_data=str(signal.indicators_data),  # Convertir a string
-                action_taken=action,
-                trade_id=trade_id,
-                generated_at=signal.timestamp
-            )
+            if new_quantity > 0:
+                position["unrealized_pnl"] = (price - position["avg_price"]) * new_quantity
+                position["unrealized_pnl_percentage"] = ((price - position["avg_price"]) / position["avg_price"]) * 100
+            else:
+                position["unrealized_pnl"] = 0.0
+                position["unrealized_pnl_percentage"] = 0.0
             
-            session.add(db_signal)
+            position["last_updated"] = datetime.now()
+            
+            # Eliminar posición si la cantidad es 0
+            if new_quantity <= 0:
+                del self.portfolio[asset_symbol]
             
         except Exception as e:
-            self.logger.error(f"❌ Error saving signal to DB: {e}")
+            self.logger.error(f"❌ Error updating {asset_symbol} balance: {e}")
     
     def get_open_positions(self) -> List[Dict]:
         """
         📊 Obtener posiciones abiertas
+        
+        Returns:
+            List[Dict]: Lista de posiciones abiertas
         """
         try:
-            with db_manager.get_db_session() as session:
-                open_trades = session.query(Trade).filter(
-                    Trade.status == "OPEN",
-                    Trade.is_paper_trade == True
-                ).all()
-                
-                return [
-                    {
-                        "id": trade.id,
-                        "symbol": trade.symbol,
-                        "strategy": trade.strategy_name,
-                        "entry_price": trade.entry_price,
-                        "quantity": trade.quantity,
-                        "entry_value": trade.entry_value,
-                        "entry_time": trade.entry_time.isoformat(),
-                        "confidence_score": trade.confidence_score
-                    }
-                    for trade in open_trades
-                ]
+            positions = []
+            for symbol, position in self.portfolio.items():
+                if symbol != "USD" and position["quantity"] > 0:
+                    positions.append({
+                        "symbol": symbol,
+                        "quantity": position["quantity"],
+                        "avg_price": position["avg_price"],
+                        "current_price": position["current_price"],
+                        "current_value": position["current_value"],
+                        "unrealized_pnl": position["unrealized_pnl"],
+                        "unrealized_pnl_percentage": position["unrealized_pnl_percentage"],
+                        "last_updated": position["last_updated"]
+                    })
+            return positions
         except Exception as e:
             self.logger.error(f"❌ Error getting open positions: {e}")
             return []
     
-    def calculate_portfolio_performance(self) -> Dict:
-        """
-        📈 Calcular performance del portfolio
-        """
-        try:
-            portfolio_summary = self._get_portfolio_summary()
-            total_value = portfolio_summary.get("total_value", 0)
-            total_pnl = portfolio_summary.get("total_pnl", 0)
-            
-            with db_manager.get_db_session() as session:
-                # Contar trades
-                total_trades = session.query(Trade).filter(Trade.is_paper_trade == True).count()
-                winning_trades = session.query(Trade).filter(
-                    Trade.is_paper_trade == True,
-                    Trade.pnl > 0
-                ).count()
-                
-                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-                
-                return {
-                    "total_value": total_value,
-                    "total_pnl": total_pnl,
-                    "total_return_percentage": ((total_value - self.initial_balance) / self.initial_balance) * 100 if self.initial_balance > 0 else 0.0,
-                    "total_trades": total_trades,
-                    "winning_trades": winning_trades,
-                    "win_rate": round(win_rate, 2),
-                    "initial_balance": self.initial_balance,
-                    "cash_balance": self._get_usdt_balance()  # Añadir balance de USDT para compatibilidad
-                }
-                
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating performance: {e}")
-            return {}
-    
-    # Métodos adicionales para compatibilidad con tests
-    def buy(self, symbol: str, quantity: float, price: float) -> Dict:
-        """
-        💰 Método de compra simplificado para compatibilidad con tests
-        """
-        try:
-            # Crear señal de compra
-            from .enhanced_strategies import TradingSignal
-            signal = TradingSignal(
-                symbol=symbol,
-                signal_type="BUY",
-                price=price,
-                confidence_score=self.min_confidence_threshold,
-                strength="Strong",
-                strategy_name="test_strategy",
-                indicators_data={"test_buy": True},
-                timestamp=datetime.now()
-            )
-            
-            result = self.execute_signal(signal)
-            return {
-                "success": result.success,
-                "message": result.message,
-                "trade_id": result.trade_id,
-                "quantity": quantity,
-                "price": price
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Buy error: {str(e)}",
-                "trade_id": None
-            }
-    
-    def sell(self, symbol: str, quantity: float, price: float) -> Dict:
-        """
-        💸 Método de venta simplificado para compatibilidad con tests
-        """
-        try:
-            # Crear señal de venta
-            from .enhanced_strategies import TradingSignal
-            signal = TradingSignal(
-                symbol=symbol,
-                signal_type="SELL",
-                price=price,
-                confidence_score=self.min_confidence_threshold,
-                strength="Strong",
-                strategy_name="test_strategy",
-                indicators_data={"test_sell": True},
-                timestamp=datetime.now()
-            )
-            
-            result = self.execute_signal(signal)
-            return {
-                "success": result.success,
-                "message": result.message,
-                "trade_id": result.trade_id,
-                "quantity": quantity,
-                "price": price
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Sell error: {str(e)}",
-                "trade_id": None
-            }
-    
-    def get_portfolio_value(self) -> float:
-        """
-        💼 Obtener valor total del portfolio
-        """
-        try:
-            portfolio_summary = self._get_portfolio_summary()
-            return portfolio_summary.get("total_value", 0.0)
-        except Exception as e:
-            self.logger.error(f"❌ Error getting portfolio value: {e}")
-            return 0.0
-    
-    def get_positions(self) -> Dict:
-        """
-        📊 Obtener todas las posiciones actuales
-        """
-        try:
-            with db_manager.get_db_session() as session:
-                portfolios = session.query(Portfolio).filter(
-                    Portfolio.is_paper == True,
-                    Portfolio.quantity > 0
-                ).all()
-                
-                positions = {}
-                for portfolio in portfolios:
-                    if portfolio.symbol != "USDT":  # Excluir USDT del listado de posiciones
-                        positions[portfolio.symbol] = {
-                            "quantity": portfolio.quantity,
-                            "avg_price": portfolio.avg_price,
-                            "current_price": portfolio.current_price,
-                            "current_value": portfolio.current_value,
-                            "unrealized_pnl": portfolio.unrealized_pnl,
-                            "unrealized_pnl_percentage": portfolio.unrealized_pnl_percentage
-                        }
-                
-                return positions
-        except Exception as e:
-            self.logger.error(f"❌ Error getting positions: {e}")
-            return {}
-    
     def get_trade_history(self) -> List[Dict]:
         """
         📈 Obtener historial de trades
+        
+        Returns:
+            List[Dict]: Lista de trades realizados
         """
         try:
-            with db_manager.get_db_session() as session:
-                trades = session.query(Trade).filter(
-                    Trade.is_paper_trade == True
-                ).order_by(Trade.entry_time.desc()).all()
-                
-                return [
-                    {
-                        "id": trade.id,
-                        "symbol": trade.symbol,
-                        "side": trade.trade_type,  # Usar trade_type en lugar de side
-                        "quantity": trade.quantity,
-                        "entry_price": trade.entry_price,
-                        "exit_price": trade.exit_price,
-                        "entry_time": trade.entry_time.isoformat() if trade.entry_time else None,
-                        "exit_time": trade.exit_time.isoformat() if trade.exit_time else None,
-                        "pnl": trade.pnl,
-                        "status": trade.status,
-                        "strategy_name": trade.strategy_name
-                    }
-                    for trade in trades
-                ]
+            return self.trades.copy()
         except Exception as e:
             self.logger.error(f"❌ Error getting trade history: {e}")
             return []
     
+    def calculate_portfolio_performance(self) -> Dict:
+        """
+        📊 Calcular rendimiento del portfolio usando valores reales de Capital.com
+        
+        Returns:
+            Dict: Métricas de rendimiento del portfolio
+        """
+        try:
+            # Si tenemos valores reales de Capital.com, usarlos
+            if hasattr(self, '_real_equity') and hasattr(self, '_real_pnl'):
+                total_value = self._real_equity
+                total_pnl = self._real_pnl
+                balance_usd = self.portfolio["USD"]["current_value"]
+                
+                # Calcular total invertido basado en equity - pnl
+                total_invested = total_value - total_pnl
+                
+                # Calcular porcentaje de rendimiento
+                total_return_percentage = (total_pnl / total_invested * 100) if total_invested > 0 else 0.0
+                
+                return {
+                    "total_value": total_value,
+                    "total_pnl": total_pnl,
+                    "total_return_percentage": total_return_percentage,
+                    "initial_balance": self.initial_balance,
+                    "usd_balance": balance_usd,
+                    "open_positions": len([pos for symbol, pos in self.portfolio.items() 
+                                         if symbol != "USD" and pos.get("quantity", 0) != 0])
+                }
+            
+            # Fallback: calcular usando posiciones del paper trader
+            total_value = 0.0
+            total_pnl = 0.0
+            
+            for symbol, position in self.portfolio.items():
+                current_value = position.get("current_value", 0.0)
+                unrealized_pnl = position.get("unrealized_pnl", 0.0)
+                
+                total_value += current_value
+                total_pnl += unrealized_pnl
+            
+            # Calcular porcentaje de retorno
+            total_return_percentage = 0.0
+            if self.initial_balance > 0:
+                total_return_percentage = (total_pnl / self.initial_balance) * 100
+            
+            return {
+                "total_value": total_value,
+                "total_pnl": total_pnl,
+                "total_return_percentage": total_return_percentage,
+                "initial_balance": self.initial_balance,
+                "usd_balance": self.get_balance("USD"),
+                "open_positions": len([pos for symbol, pos in self.portfolio.items() 
+                                     if symbol != "USD" and pos.get("quantity", 0) != 0])
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating portfolio performance: {e}")
+            return {
+                "total_value": self.initial_balance,
+                "total_pnl": 0.0,
+                "total_return_percentage": 0.0,
+                "initial_balance": self.initial_balance,
+                "usd_balance": self.initial_balance,
+                "open_positions": 0
+            }
+
     def get_statistics(self) -> Dict:
         """
         📊 Obtener estadísticas del trading
+        
+        Returns:
+            Dict: Estadísticas básicas
         """
-        return self.calculate_portfolio_performance()
+        try:
+            total_trades = len(self.trades)
+            buy_trades = len([t for t in self.trades if t["trade_type"] == "BUY"])
+            sell_trades = len([t for t in self.trades if t["trade_type"] == "SELL"])
+            
+            portfolio_performance = self.calculate_portfolio_performance()
+            
+            return {
+                "total_trades": total_trades,
+                "buy_trades": buy_trades,
+                "sell_trades": sell_trades,
+                "current_balance": self.get_balance("USD"),
+                "total_portfolio_value": portfolio_performance["total_value"],
+                "total_pnl": portfolio_performance["total_pnl"],
+                "total_pnl_percentage": portfolio_performance["total_return_percentage"],
+                "open_positions": portfolio_performance["open_positions"]
+            }
+        except Exception as e:
+            self.logger.error(f"❌ Error getting statistics: {e}")
+            return {
+                "total_trades": 0,
+                "buy_trades": 0,
+                "sell_trades": 0,
+                "current_balance": self.initial_balance,
+                "total_portfolio_value": self.initial_balance,
+                "total_pnl": 0.0,
+                "total_pnl_percentage": 0.0,
+                "open_positions": 0
+            }
     
     def validate_trade(self, trade_data: Dict) -> bool:
         """
-        ✅ Validar si un trade es ejecutable
+        ✅ Validar datos de trade
+        
+        Args:
+            trade_data: Datos del trade a validar
+            
+        Returns:
+            bool: True si el trade es válido
         """
         try:
-            symbol = trade_data.get("symbol")
-            quantity = trade_data.get("quantity", 0)
-            price = trade_data.get("price", 0)
-            side = trade_data.get("side")
+            required_fields = ["symbol", "action", "price"]
+            for field in required_fields:
+                if field not in trade_data:
+                    self.logger.warning(f"❌ Missing required field: {field}")
+                    return False
             
-            # Validaciones básicas
-            if not symbol or not side:
+            if trade_data["price"] <= 0:
+                self.logger.warning("❌ Invalid price")
                 return False
             
-            if quantity <= 0 or price <= 0:
+            if trade_data["action"].upper() not in ["BUY", "SELL"]:
+                self.logger.warning(f"❌ Invalid action: {trade_data['action']}")
                 return False
-            
-            if side not in ["BUY", "SELL"]:
-                return False
-            
-            # Validar valor mínimo del trade
-            trade_value = quantity * price
-            if trade_value < self.min_trade_value:
-                return False
-            
-            # Calcular límites efectivos para el tamaño de trade según perfil
-            current_usdt = self.get_balance("USDT")
-            max_allowed_by_position = current_usdt * float(self.max_position_size)
-            max_allowed_by_balance_usage = current_usdt * float(self.max_balance_usage)
-            allowed_exposure = self._get_allowed_additional_exposure()
-            effective_allowed = min(max_allowed_by_position, max_allowed_by_balance_usage, allowed_exposure)
-            
-            # Para compras, verificar balance y límites
-            if side == "BUY":
-                if trade_value > current_usdt:
-                    return False
-                if effective_allowed < self.min_trade_value:
-                    return False
-                if trade_value > effective_allowed:
-                    return False
-            else:  # SELL
-                asset_symbol = (symbol.split('/')[0] if '/' in symbol else (symbol[:-4] if symbol.endswith(('USDT')) else symbol))
-                asset_qty = self.get_balance(asset_symbol)
-                if quantity > asset_qty:
-                    return False
             
             return True
             
