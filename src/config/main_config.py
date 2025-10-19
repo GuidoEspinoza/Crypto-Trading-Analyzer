@@ -57,7 +57,7 @@ def _get_env_bool(var_name: str, default: bool) -> bool:
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "RAPIDO"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
+TRADING_PROFILE = "ELITE"  # Opciones: "RAPIDO", "ELITE", "CONSERVADOR"
 
 # ============================================================================
 # 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
@@ -194,7 +194,7 @@ class TradingProfiles:
             "name": "Rápido",
             "description": "Timeframes 1m-15m, máxima frecuencia optimizada institucional",
             "timeframes": ["1m", "5m", "15m"],
-            "analysis_interval": 5,  # Intervalo de análisis (minutos)
+            "analysis_interval": 15,  # Intervalo de análisis (minutos)
             "min_confidence": 75.0,  # ↑ OPTIMIZADO: de 65% - Menos ruido, mejor calidad
             "max_daily_trades": 15,  # ↑ OPTIMIZADO: de 12 - Más oportunidades controladas
             "max_positions": 6,  # ↑ OPTIMIZADO: de 5 - Mejor diversificación
