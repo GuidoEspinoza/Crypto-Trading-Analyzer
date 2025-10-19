@@ -29,7 +29,10 @@ try:
     from zoneinfo import ZoneInfo
 except Exception:
     ZoneInfo = None
-from .enhanced_strategies import TradingSignal, ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
+from .enhanced_strategies import TradingSignal
+from .professional_adapter import ProfessionalStrategyAdapter
+from .mean_reversion_adapter import MeanReversionAdapter
+from .breakout_adapter import BreakoutAdapter
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
@@ -208,18 +211,37 @@ class TradingBot:
         """💰 Obtener balance real de Capital.com"""
         try:
             if self.capital_client and hasattr(self.capital_client, 'get_accounts'):
-                accounts = self.capital_client.get_accounts()
-                if accounts and len(accounts) > 0:
-                    # Usar el primer account disponible
-                    balance = float(accounts[0].get('balance', {}).get('available', 0.0))
-                    self.logger.info(f"💰 Balance real obtenido de Capital.com: ${balance:.2f}")
-                    return balance
+                accounts_response = self.capital_client.get_accounts()
+                self.logger.debug(f"🔍 Accounts response: {accounts_response}")
+                
+                # Manejar la estructura correcta de la respuesta
+                if accounts_response and accounts_response.get('success'):
+                    accounts_data = accounts_response.get('accounts', {})
+                    accounts_list = accounts_data.get('accounts', [])
+                    
+                    if accounts_list and len(accounts_list) > 0:
+                        # Usar el primer account disponible
+                        account = accounts_list[0]
+                        self.logger.debug(f"🔍 First account structure: {account}")
+                        balance_info = account.get('balance', {})
+                        self.logger.debug(f"🔍 Balance info: {balance_info}")
+                        available_balance = balance_info.get('available', 0.0)
+                        balance = float(available_balance)
+                        self.logger.info(f"💰 Balance real obtenido de Capital.com: ${balance:.2f}")
+                        return balance
+                    else:
+                        self.logger.warning("⚠️ No se encontraron cuentas en la respuesta de Capital.com")
+                        self.logger.debug(f"🔍 Accounts list was: {accounts_list}")
                 else:
-                    self.logger.warning("⚠️ No se encontraron cuentas en Capital.com")
+                    self.logger.warning("⚠️ Respuesta de cuentas no exitosa o vacía")
+                    self.logger.debug(f"🔍 Full response was: {accounts_response}")
             else:
                 self.logger.warning("⚠️ Cliente de Capital.com no disponible para obtener balance")
+                self.logger.debug(f"🔍 capital_client: {self.capital_client}, has get_accounts: {hasattr(self.capital_client, 'get_accounts') if self.capital_client else 'N/A'}")
         except Exception as e:
-            self.logger.error(f"❌ Error obteniendo balance real: {e}")
+            self.logger.error(f"❌ Error obteniendo balance real: {type(e).__name__}: {str(e)}")
+            import traceback
+            self.logger.debug(f"🔍 Traceback completo: {traceback.format_exc()}")
         
         # Fallback: usar balance por defecto de configuración
         default_balance = 1000.0  # Balance por defecto
@@ -331,10 +353,11 @@ class TradingBot:
     def _initialize_strategies(self):
         """🔧 Inicializar estrategias de trading"""
         try:
+            # Solo estrategias profesionales avanzadas
             self.strategies = {
-                "ProfessionalRSI": ProfessionalRSIStrategy(),
-                "MultiTimeframe": MultiTimeframeStrategy(),
-                "Ensemble": EnsembleStrategy()
+                "TrendFollowingProfessional": ProfessionalStrategyAdapter(self.capital_client),
+                "MeanReversionProfessional": MeanReversionAdapter(self.capital_client),
+                "BreakoutProfessional": BreakoutAdapter(self.capital_client)
             }
             # Inyectar referencia del bot en las estrategias para delegar operaciones comunes
             for s in self.strategies.values():

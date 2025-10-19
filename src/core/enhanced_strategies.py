@@ -1246,6 +1246,8 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             confluence_score = 0
             
             # Procesar señales de estrategias principales
+            hold_weight = 0.0  # Peso acumulado de señales HOLD
+            
             for strategy_name, signal in strategy_signals.items():
                 if signal is None:
                     continue
@@ -1263,7 +1265,9 @@ class EnsembleStrategy(EnhancedTradingStrategy):
                     confluence_score += 1
                     notes.append(f"{strategy_name}: SELL ({signal.confidence_score:.1f}%)")
                 else:
-                    notes.append(f"{strategy_name}: HOLD")
+                    # Las señales HOLD actúan como "veto" - reducen la confianza de señales opuestas
+                    hold_weight += weight * confidence_factor
+                    notes.append(f"{strategy_name}: HOLD ({signal.confidence_score:.1f}%)")
                 
                 total_weight += weight
             
@@ -1314,6 +1318,16 @@ class EnsembleStrategy(EnhancedTradingStrategy):
                 sell_score *= 1.1
                 notes.append("Range-bound market boost")
             
+            # Aplicar efecto de señales HOLD (veto)
+            hold_veto_threshold = 0.3  # Si las señales HOLD tienen peso >= 30%, fuerzan cautela
+            
+            if hold_weight >= hold_veto_threshold:
+                # Las señales HOLD significativas reducen la confianza de señales direccionales
+                hold_penalty = min(0.7, hold_weight)  # Máximo 70% de penalización
+                buy_score *= (1 - hold_penalty)
+                sell_score *= (1 - hold_penalty)
+                notes.append(f"HOLD veto applied ({hold_penalty:.1%} penalty)")
+            
             # Determinar señal final
             total_score = buy_score + sell_score
             if total_score == 0:
@@ -1323,16 +1337,22 @@ class EnsembleStrategy(EnhancedTradingStrategy):
             else:
                 consensus = max(buy_score, sell_score) / total_score
                 
-                if buy_score > sell_score and consensus >= self.min_consensus_threshold:
+                # Aumentar umbral de consenso si hay señales HOLD significativas
+                adjusted_threshold = self.min_consensus_threshold
+                if hold_weight >= hold_veto_threshold:
+                    adjusted_threshold = min(0.8, self.min_consensus_threshold + hold_weight)
+                    notes.append(f"Consensus threshold raised to {adjusted_threshold:.1%} due to HOLD signals")
+                
+                if buy_score > sell_score and consensus >= adjusted_threshold:
                     signal_type = "BUY"
                     confidence = min(95, self.config.BASE_CONFIDENCE + (buy_score * 40))
-                elif sell_score > buy_score and consensus >= self.min_consensus_threshold:
+                elif sell_score > buy_score and consensus >= adjusted_threshold:
                     signal_type = "SELL"
                     confidence = min(95, self.config.BASE_CONFIDENCE + (sell_score * 40))
                 else:
                     signal_type = "HOLD"
                     confidence = StrategyConfig.Base.HOLD_CONFIDENCE
-                    notes.append(f"Insufficient consensus ({consensus:.1%})")
+                    notes.append(f"Insufficient consensus ({consensus:.1%} vs {adjusted_threshold:.1%})")
             
             # Boost de confianza por consenso alto
             if consensus >= 0.8:

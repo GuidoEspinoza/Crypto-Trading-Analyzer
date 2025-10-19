@@ -14,7 +14,8 @@ from dotenv import load_dotenv
 # 🤖 Importar Trading Engine
 from src.core.trading_bot import TradingBot
 # Estrategias mejoradas
-from src.core.enhanced_strategies import ProfessionalRSIStrategy, MultiTimeframeStrategy, EnsembleStrategy
+# Estrategias originales removidas - solo se usan las profesionales avanzadas
+from src.core.professional_adapter import ProfessionalStrategyAdapter
 from src.core.paper_trader import PaperTrader
 from src.core.enhanced_risk_manager import EnhancedRiskManager
 # Capital.com API Client
@@ -934,23 +935,26 @@ async def get_enhanced_strategies():
         return {
             "enhanced_strategies": [
                 {
-                    "name": "ProfessionalRSI",
-                    "description": "RSI profesional con análisis de volumen y tendencia",
-                    "features": ["Volume confirmation", "Trend analysis", "Risk management"]
+                    "name": "TrendFollowingProfessional",
+                    "description": "🎯 Estrategia profesional de seguimiento de tendencia con filtros institucionales",
+                    "features": ["Institutional filters", "Trend confirmation", "Professional risk management"]
                 },
                 {
-                    "name": "MultiTimeframe", 
-                    "description": "Análisis multi-timeframe con votación ponderada",
-                    "features": ["1h, 4h, 1d analysis", "Weighted voting", "Confluence scoring"]
+                    "name": "MeanReversionProfessional",
+                    "description": "🔄 Estrategia profesional de reversión a la media con análisis de divergencias",
+                    "features": ["RSI & Stochastic analysis", "Bollinger & Keltner Channels", "Divergence detection", "Support/Resistance levels"]
                 },
                 {
-                    "name": "Ensemble",
-                    "description": "Estrategia ensemble que combina múltiples señales",
-                    "features": ["Multiple strategies", "Intelligent voting", "Advanced risk management"]
+                    "name": "BreakoutProfessional", 
+                    "description": "💥 Estrategia profesional de breakout con detección de patrones de consolidación",
+                    "features": ["Consolidation pattern detection", "Volume breakout analysis", "False breakout filtering", "Momentum confirmation"]
                 }
             ],
             "timestamp": datetime.now().isoformat()
         }
+    except HTTPException:
+        # Re-lanzar HTTPException para que mantenga su código de estado
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -958,15 +962,25 @@ async def get_enhanced_strategies():
 async def analyze_with_enhanced_strategy(strategy_name: str, symbol: str, timeframe: str = "1h"):
     """🔍 Analizar símbolo con estrategia mejorada"""
     try:
-        # Crear instancia de la estrategia
-        if strategy_name.lower() == "professionalrsi":
-            strategy = ProfessionalRSIStrategy()
-        elif strategy_name.lower() == "multitimeframe":
-            strategy = MultiTimeframeStrategy()
-        elif strategy_name.lower() == "ensemble":
-            strategy = EnsembleStrategy()
+        # Obtener el TradingBot existente
+        bot = get_trading_bot()
+        
+        # Usar las estrategias del TradingBot que ya tienen la referencia asignada
+        strategy_key = None
+        if strategy_name.lower() == "trendfollowingprofessional":
+            strategy_key = "TrendFollowingProfessional"
+        elif strategy_name.lower() == "meanreversionprofessional":
+            strategy_key = "MeanReversionProfessional"
+        elif strategy_name.lower() == "breakoutprofessional":
+            strategy_key = "BreakoutProfessional"
         else:
             raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_name}' no encontrada")
+        
+        # Verificar que la estrategia existe en el bot
+        if strategy_key not in bot.strategies:
+            raise HTTPException(status_code=400, detail=f"Estrategia '{strategy_key}' no está disponible. Estrategias disponibles: {list(bot.strategies.keys())}")
+        
+        strategy = bot.strategies[strategy_key]
         
         # Analizar
         signal = strategy.analyze(symbol, timeframe)

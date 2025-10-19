@@ -260,9 +260,7 @@ class TradingProfiles:
             "mtf_min_timeframe_consensus": 2,
             "mtf_trend_alignment_required": False,
             "volume_timeframe": "5m",  # Nuevo timeframe para volumen
-            # Ensemble Config - OPTIMIZADO INSTITUCIONAL
-            "ensemble_min_consensus_threshold": 0.70,  # ↑ OPTIMIZADO: de 0.58 a 0.70 - Mejor consenso
-            "ensemble_confidence_boost_factor": 1.3,  # Optimizado
+            # Configuraciones de Ensemble eliminadas - Solo estrategias profesionales
             # Live Trading Config - Optimizado
             "trading_fees": 0.001,
             "order_timeout": 25,  # Optimizado más rápido
@@ -387,9 +385,7 @@ class TradingProfiles:
             "mtf_min_timeframe_consensus": 3,
             "mtf_trend_alignment_required": True,
             "volume_timeframe": "2h",
-            # Ensemble Config - OPTIMIZADO INSTITUCIONAL ELITE
-            "ensemble_min_consensus_threshold": 0.75,
-            "ensemble_confidence_boost_factor": 1.20,
+            # Configuraciones de Ensemble eliminadas - Solo estrategias profesionales
             # Live Trading Config
             "trading_fees": 0.001,
             "order_timeout": 55,
@@ -511,9 +507,7 @@ class TradingProfiles:
             "mtf_min_timeframe_consensus": 3,
             "mtf_trend_alignment_required": True,
             "volume_timeframe": "4h",  # Timeframe más largo
-            # Ensemble Config - Ultra conservador
-            "ensemble_min_consensus_threshold": 0.85,  # ↑ OPTIMIZADO: de 80% a 85% - Consenso máximo
-            "ensemble_confidence_boost_factor": 1.1,  # Conservador
+            # Configuraciones de Ensemble eliminadas - Solo estrategias profesionales
             # Live Trading Config - Conservador
             "trading_fees": 0.001,
             "order_timeout": 90,  # Más tiempo
@@ -959,177 +953,14 @@ class StrategyConfig:
         DEFAULT_MIN_CONFIDENCE: float = 55.0  # Fallback
         DEFAULT_ATR_PERIOD: int = 10  # Fallback
     
-    # ---- Estrategia RSI Profesional ----
-    class ProfessionalRSI:
-        """Parámetros para la estrategia RSI profesional."""
-        
-        @classmethod
-        def get_min_confidence(cls) -> float:
-            """Confianza mínima según perfil activo."""
-            return TradingProfiles.get_current_profile().get("rsi_min_confidence", 65.0)
-        
-        @classmethod
-        def get_rsi_oversold(cls) -> int:
-            """Nivel RSI sobreventa según perfil activo."""
-            return TradingProfiles.get_current_profile().get("rsi_oversold", 35)
-        
-        @classmethod
-        def get_rsi_overbought(cls) -> int:
-            """Nivel RSI sobrecompra según perfil activo."""
-            return TradingProfiles.get_current_profile().get("rsi_overbought", 65)
-        
-        @classmethod
-        def get_rsi_period(cls) -> int:
-            """Período RSI según perfil activo."""
-            return TradingProfiles.get_current_profile().get("rsi_period", 10)
-        
-        @classmethod
-        def get_min_volume_ratio(cls) -> float:
-            """Ratio mínimo de volumen según perfil activo."""
-            return TradingProfiles.get_current_profile().get("min_volume_ratio", 1.2)
-        
-        @classmethod
-        def get_min_confluence(cls) -> int:
-            """Confluencia mínima según perfil activo."""
-            return TradingProfiles.get_current_profile().get("min_confluence", 2)
-        
-        @classmethod
-        def get_trend_strength_threshold(cls) -> float:
-            """Umbral fuerza tendencia según perfil activo."""
-            return TradingProfiles.get_current_profile().get("trend_strength_threshold", 25)
-        
-        # Valores estáticos
-        BASE_CONFIDENCE: float = 50.0
-        HOLD_CONFIDENCE: float = 45.0
-        
-        # Compatibilidad con código existente (fallbacks)
-        MIN_CONFIDENCE: float = 65.0
-        RSI_OVERSOLD: int = 35
-        RSI_OVERBOUGHT: int = 65
-        RSI_PERIOD: int = 10
-        MIN_VOLUME_RATIO: float = 1.2
-        MIN_CONFLUENCE: int = 2
-        TREND_STRENGTH_THRESHOLD: float = 25.0
-        
-        # Ratio ATR mínimo por perfil (Rápido: 0.8 - Elite: 1.0 - Conservador: 1.2)
-        MIN_ATR_RATIO: float = 0.8  # Estrategia rápida
-        
-        # Spread máximo permitido en % por perfil (Rápido: 0.0025 - Elite: 0.0015 - Conservador: 0.0010)
-        MAX_SPREAD_THRESHOLD: float = 0.0025  # Estrategia rápida
+    # ---- Estrategia RSI Profesional - ELIMINADA ----
+    # La clase ProfessionalRSI ha sido removida
     
-    # ---- Estrategia Multi-Timeframe ----
-    class MultiTimeframe:
-        """Parámetros para la estrategia multi-timeframe."""
-        
-        @classmethod
-        def get_enhanced_confidence(cls) -> float:
-            """Confianza mejorada según perfil activo."""
-            return TradingProfiles.get_current_profile().get("mtf_enhanced_confidence", 60.0)
-        
-        @classmethod
-        def get_min_confidence(cls) -> float:
-            """Confianza mínima según perfil activo."""
-            return TradingProfiles.get_current_profile().get("mtf_min_confidence", 62.0)
-        
-        @classmethod
-        def get_min_consensus(cls) -> float:
-            """Consenso mínimo según perfil activo."""
-            return TradingProfiles.get_current_profile().get("mtf_min_consensus", 0.6)
-        
-        @classmethod
-        def get_timeframes(cls) -> List[str]:
-            """Timeframes dinámicos según el perfil activo."""
-            return TradingProfiles.get_current_profile().get("timeframes", ["1m", "5m", "15m"])
-        
-        @classmethod
-        def get_min_timeframe_consensus(cls) -> int:
-            """Consenso mínimo de timeframes requerido según perfil activo."""
-            return TradingProfiles.get_current_profile().get("mtf_min_timeframe_consensus", 1)
-        
-        @classmethod
-        def get_trend_alignment_required(cls) -> bool:
-            """Requisito de alineación de tendencia entre timeframes según perfil activo."""
-            return TradingProfiles.get_current_profile().get("mtf_trend_alignment_required", False)
-        
-        @classmethod
-        def get_timeframe_weights(cls) -> Dict[str, float]:
-            """Pesos por timeframe derivados dinámicamente del perfil activo (normalizados a 1.0)."""
-            tfs = TradingProfiles.get_current_profile().get("timeframes", ["1m", "5m", "15m"])
-            if not tfs:
-                return {}
-            # Asignar pesos crecientes del corto al largo y normalizar
-            raw = {tf: (i + 1) for i, tf in enumerate(tfs)}
-            total = sum(raw.values())
-            return {tf: (w / total) for tf, w in raw.items()}
-         
-        # Valores estáticos
-        BASE_CONFIDENCE: float = 50.0
-        HOLD_CONFIDENCE: float = 45.0
-        
-        # Compatibilidad con código existente (fallbacks)
-        ENHANCED_CONFIDENCE: float = 60.0
-        MIN_CONFIDENCE: float = 62.0
-        
-        # Timeframes utilizados por perfil (Rápido: ["1m", "5m", "15m"] - Elite: ["15m", "30m", "1h"] - Conservador: ["1h", "4h", "1d"])
-        TIMEFRAMES: List[str] = ["1m", "5m", "15m"]  # Estrategia rápida
-        
-        # Configuración RSI por timeframe - niveles de sobreventa/sobrecompra (rápido)
-        RSI_CONFIG: Dict[str, Dict[str, int]] = {
-            "1m": {"oversold": 35, "overbought": 65},    # Timeframe corto - rápido
-            "5m": {"oversold": 35, "overbought": 65},    # Timeframe medio - rápido
-            "15m": {"oversold": 35, "overbought": 65}    # Timeframe largo - rápido
-        }
-        
-
-        
-        # Pesos por timeframe - balance entre corto y medio plazo (rápido: suma = 1.0)
-        TIMEFRAME_WEIGHTS: Dict[str, float] = {
-            "1m": 0.5,    # Peso principal para oportunidades ultra-cortas
-            "5m": 0.3,    # Peso medio para confirmación
-            "15m": 0.2    # Peso menor para tendencia general
-        }
-        
-
-        
-        # Consenso mínimo de timeframes requerido (Rápido: 1 - Elite: 2 - Conservador: 3)
-        MIN_CONSENSUS: int = 1  # Estrategia rápida
-        
-        # Requiere alineación de tendencias entre timeframes (Rápido: False - Elite: True - Conservador: True)
-        REQUIRE_TREND_ALIGNMENT: bool = False  # Estrategia rápida
-        
-        # Consenso mínimo de timeframes para señal válida (Rápido: 1 - Elite: 2 - Conservador: 3)
-        MIN_TIMEFRAME_CONSENSUS: int = 1  # Estrategia rápida
-        
-        # Requiere alineación de tendencias entre timeframes (Rápido: False - Elite: True - Conservador: True)
-        TREND_ALIGNMENT_REQUIRED: bool = False  # Estrategia rápida
+    # ---- Estrategia Multi-Timeframe - ELIMINADA ----
+    # La clase MultiTimeframe ha sido removida
     
-    # ---- Estrategia Ensemble ----
-    class Ensemble:
-        """Parámetros para la estrategia ensemble (combinación de estrategias)."""
-        
-        @classmethod
-        def get_min_consensus_threshold(cls) -> float:
-            """Umbral consenso mínimo según perfil activo."""
-            return TradingProfiles.get_current_profile().get("ensemble_min_consensus_threshold", 0.55)
-        
-        @classmethod
-        def get_confidence_boost_factor(cls) -> float:
-            """Factor boost confianza según perfil activo."""
-            return TradingProfiles.get_current_profile().get("ensemble_confidence_boost_factor", 1.25)
-        
-        # Valores estáticos
-        BASE_CONFIDENCE: float = 50.0
-        HOLD_CONFIDENCE: float = 45.0
-        
-        # Pesos de cada estrategia en el ensemble
-        STRATEGY_WEIGHTS: Dict[str, float] = {
-            "Professional_RSI": 0.4,
-            "Multi_Timeframe": 0.6
-        }
-        
-        # Compatibilidad con código existente (fallbacks)
-        MIN_CONSENSUS_THRESHOLD: float = 0.55
-        CONFIDENCE_BOOST_FACTOR: float = 1.25
+    # ---- Estrategia Ensemble - ELIMINADA ----
+    # La clase Ensemble ha sido removida
 
 
 # ============================================================================
