@@ -162,7 +162,7 @@ class BreakoutAdapter(TradingStrategy):
                     },
                     "breakout": {
                         "direction": breakout_signal.breakout.direction.value,
-                        "strength": breakout_signal.breakout.strength,
+                        "strength": breakout_signal.breakout.momentum_strength,
                         "retest_confirmed": breakout_signal.breakout.retest_confirmed,
                         "false_breakout_risk": breakout_signal.breakout.false_breakout_risk
                     }
