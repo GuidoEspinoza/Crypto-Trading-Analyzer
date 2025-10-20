@@ -332,8 +332,8 @@ class TradingProfiles:
             "timeframes": ["15m", "30m", "1h"],
             "analysis_interval": 5,  # Análisis cada 5 minutos - balanceado intraday
             "min_confidence": 78.0,  # Confianza alta para mejor calidad
-            "max_daily_trades": 12,  # Operaciones moderadas diarias
-            "max_positions": 5,  # Posiciones controladas
+            "max_daily_trades": 10,  # Operaciones moderadas diarias - OPTIMIZADO
+            "max_positions": 4,  # Posiciones controladas - OPTIMIZADO (reduce riesgo teórico)
 
             # Paper Trader Config - INTRADAY CFD OPTIMIZADO
             "max_position_size": 0.12,  # 12% por posición - tamaño moderado-alto
@@ -366,7 +366,7 @@ class TradingProfiles:
             "use_trailing_stop": True,  # Activado por defecto para intraday
             
             # Take Profit y Stop Loss Config - INTRADAY R:R 3:1 OPTIMIZADO
-            "tp_min_percentage": 0.030,  # TP mínimo 3.0% - ganancias ambiciosas
+            "tp_min_percentage": 0.0361,  # TP mínimo 3.61% - OPTIMIZADO (ratio R:R > 1.5)
             "tp_max_percentage": 0.070,  # TP máximo 7.0% - ganancias excelentes
             "sl_min_percentage": 0.010,  # SL mínimo 1% - protección sólida
             "sl_max_percentage": 0.024,  # SL máximo 2.4% - control pérdidas
