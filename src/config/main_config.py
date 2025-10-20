@@ -55,7 +55,7 @@ def _get_env_bool(var_name: str, default: bool) -> bool:
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
-TRADING_PROFILE = "SCALPING"  # Opciones: "SCALPING", "INTRADAY"
+TRADING_PROFILE = "INTRADAY"  # Opciones: "SCALPING", "INTRADAY"
 
 # ============================================================================
 # 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
@@ -152,9 +152,7 @@ GLOBAL_SYMBOLS: List[str] = [
     # === Metales Preciosos ===
     "GOLD", "SILVER",
     # === Criptomonedas ===
-    "BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD", "XRPUSD",
-    # === INDICES ===
-    "US100", "US500", "DE40"
+    "BTCUSD", "ETHUSD"
 ]
 
 # ============================================================================
@@ -192,11 +190,11 @@ class TradingProfiles:
     PROFILES = {
         "SCALPING": {
             "name": "Scalping",
-            "description": "Timeframes 3m-15m, controlado, ganancias consistentes CFD",
-            "timeframes": ["3m", "5m", "15m"],  # Eliminamos 1m por ruido excesivo
-            "analysis_interval": 3,  # Análisis cada 3 minutos - más controlado
+            "description": "Timeframes 1m-5m ultra-rápidos, TP/SL basado en ROI del balance, scalping optimizado",
+            "timeframes": ["1m", "3m", "5m"],  # OPTIMIZADO: Timeframes ultra-rápidos para scalping
+            "analysis_interval": 1,  # OPTIMIZADO: Análisis cada minuto para trades rápidos
             "min_confidence": 75.0,  # CRÍTICO: Confianza alta para reducir señales falsas
-            "max_daily_trades": 12,  # CRÍTICO: Reducir trades para mejor gestión
+            "max_daily_trades": 20,  # CRÍTICO: Reducir trades para mejor gestión
             "max_positions": 4,  # CRÍTICO: Máximo 4 posiciones simultáneas
 
             # Paper Trader Config - SCALPING CFD CONSERVADOR
@@ -215,34 +213,32 @@ class TradingProfiles:
             "min_position_size": 10.0,  # Posición mínima más alta
             "risk_max_position_size": 0.06,  # Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly más conservador
-            "volatility_adjustment": 1.2,  # Ajuste moderado por volatilidad
+
             "atr_multiplier_min": 1.5,  # CRÍTICO: Stops más amplios para scalping
             "atr_multiplier_max": 2.5,  # CRÍTICO: Stops más amplios optimizados
             "atr_default": 1.8,  # Stop loss por defecto más amplio
             "atr_volatile": 2.5,  # Stops amplios en alta volatilidad
             "atr_sideways": 1.5,  # Stops moderados en laterales
-            "trailing_stop_activation": 0.015,  # Trailing al 1.5% - más controlado
-            "breakeven_threshold": 0.008,  # Breakeven al 0.8% - más realista
+            "trailing_stop_activation": 0.006,  # OPTIMIZADO: Trailing al 0.6% para scalping
+            "breakeven_threshold": 0.004,  # OPTIMIZADO: Breakeven al 0.4% para protección rápida
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
             
             # Capital.com Trailing Stop Config - SCALPING
             "use_trailing_stop": True,  # Activado por defecto para scalping (mayor dinamismo)
             
-            # Take Profit y Stop Loss Config - SCALPING R:R 2:1 REALISTA
-            "tp_min_percentage": 0.015,  # CRÍTICO: TP mínimo 1.5% - más realista
-            "tp_max_percentage": 0.035,  # TP máximo 3.5% - objetivos alcanzables
-            "sl_min_percentage": 0.012,  # CRÍTICO: SL mínimo 1.2% - protección adecuada
-            "sl_max_percentage": 0.025,  # CRÍTICO: SL máximo 2.5% - control pérdidas mejorado
+            # Take Profit y Stop Loss Config - SCALPING ROI-BASED (% del balance invertido)
+            "tp_min_percentage": 0.005,  # ROI: TP mínimo 0.5% del balance para trades ultra-rápidos
+            "tp_max_percentage": 0.015,  # ROI: TP máximo 1.5% del balance para cierre rápido
+            "sl_min_percentage": 0.003,  # ROI: SL mínimo 0.3% del balance para scalping
+            "sl_max_percentage": 0.008,  # ROI: SL máximo 0.8% del balance para control estricto
             "tp_increment_percentage": 1.2,  # Factor TP agresivo
-            "max_tp_adjustments": 3,  # Pocos ajustes para scalping
             "tp_confidence_threshold": 0.65,  # Umbral bajo para ajustar TP
             
             # Umbrales y Límites Adicionales
             "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria alta
             "min_confidence_threshold": 0.50,  # Confianza mínima más flexible
             "position_size_multiplier": 1.2,  # Multiplicador agresivo
-            "volatility_adjustment_factor": 1.4,  # Factor alto por volatilidad
             
             # Strategy Config - SCALPING CONTROLADO Y SELECTIVO
             "default_min_confidence": 70.0,  # CRÍTICO: Confianza alta para señales de calidad
@@ -275,15 +271,16 @@ class TradingProfiles:
             "order_check_interval": 1.0,  # Verificación muy frecuente
             "live_first_analysis_delay": 5,  # Delay inicial muy corto
             
-            # Position Adjuster Config - SCALPING
-            "position_monitoring_interval": 15,  # Monitoreo muy frecuente
-            "price_cache_duration": 15,  # Cache muy corto
+            # Position Adjuster Config - SCALPING ULTRA-RÁPIDO
+            "enable_position_monitoring": False,  # DESACTIVADO: Solo abrir posiciones con TP/SL, no cerrar automáticamente
+            "position_monitoring_interval": 5,  # OPTIMIZADO: Monitoreo cada 5 segundos
+            "price_cache_duration": 5,  # OPTIMIZADO: Cache ultra-corto
             "max_close_attempts": 2,  # Pocos intentos de cierre
-            "profit_scaling_threshold": 0.015,  # Escalado al 1.5%
-            "trailing_stop_sl_pct": 0.012,  # SL trailing 1.2%
-            "trailing_stop_tp_pct": 0.025,  # TP trailing 2.5%
-            "profit_protection_sl_pct": 0.008,  # Protección ganancias 0.8%
-            "profit_protection_tp_pct": 0.02,  # TP protección 2%
+            "profit_scaling_threshold": 0.008,  # OPTIMIZADO: Escalado al 0.8%
+            "trailing_stop_sl_pct": 0.006,  # OPTIMIZADO: SL trailing 0.6%
+            "trailing_stop_tp_pct": 0.012,  # OPTIMIZADO: TP trailing 1.2%
+            "profit_protection_sl_pct": 0.004,  # OPTIMIZADO: Protección ganancias 0.4%
+            "profit_protection_tp_pct": 0.010,  # OPTIMIZADO: TP protección 1.0%
             "risk_management_threshold": -0.008,  # Umbral riesgo -0.8%
             "risk_management_sl_pct": 0.012,  # SL riesgo 1.2%
             "risk_management_tp_pct": 0.015,  # TP riesgo 1.5%
@@ -328,16 +325,16 @@ class TradingProfiles:
         },
         "INTRADAY": {
             "name": "Intraday",
-            "description": "Timeframes 15m-1h, operaciones diarias balanceadas CFD",
+            "description": "Timeframes 15m-1h, operaciones diarias balanceadas CFD con TP/SL basado en ROI del balance",
             "timeframes": ["15m", "30m", "1h"],
             "analysis_interval": 5,  # Análisis cada 5 minutos - balanceado intraday
-            "min_confidence": 78.0,  # Confianza alta para mejor calidad
-            "max_daily_trades": 10,  # Operaciones moderadas diarias - OPTIMIZADO
-            "max_positions": 4,  # Posiciones controladas - OPTIMIZADO (reduce riesgo teórico)
+            "min_confidence": 65.0,  # OPTIMIZADO: Confianza más realista para más señales
+            "max_daily_trades": 15,  # Operaciones moderadas diarias - OPTIMIZADO
+            "max_positions": 6,  # Posiciones controladas - OPTIMIZADO (reduce riesgo teórico)
 
             # Paper Trader Config - INTRADAY CFD OPTIMIZADO
-            "max_position_size": 0.12,  # 12% por posición - tamaño moderado-alto
-            "max_total_exposure": 0.45,  # 45% exposición total - balanceado
+            "max_position_size": 0.08,  # OPTIMIZADO: 8% por posición - más balanceado
+            "max_total_exposure": 0.35,  # OPTIMIZADO: 35% exposición total - más conservador
             "min_trade_value": 8.0,  # Valor mínimo moderado
             "paper_min_confidence": 75.0,  # Confianza alta para filtrado
             "max_slippage": 0.05,  # Slippage moderado
@@ -349,9 +346,9 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.08,  # 8% drawdown máximo
             "correlation_threshold": 0.65,  # Correlación moderada
             "min_position_size": 15.0,  # Posición mínima moderada
-            "risk_max_position_size": 0.12,  # Consistente con max_position_size
+            "risk_max_position_size": 0.08,  # OPTIMIZADO: Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly moderado
-            "volatility_adjustment": 1.1,  # Ajuste moderado por volatilidad
+
             "atr_multiplier_min": 2.0,  # Stops amplios para intraday
             "atr_multiplier_max": 3.0,  # Stops amplios optimizados
             "atr_default": 2.2,
@@ -365,40 +362,38 @@ class TradingProfiles:
             # Capital.com Trailing Stop Config - INTRADAY
             "use_trailing_stop": True,  # Activado por defecto para intraday
             
-            # Take Profit y Stop Loss Config - INTRADAY R:R 3:1 OPTIMIZADO
-            "tp_min_percentage": 0.0361,  # TP mínimo 3.61% - OPTIMIZADO (ratio R:R > 1.5)
-            "tp_max_percentage": 0.070,  # TP máximo 7.0% - ganancias excelentes
-            "sl_min_percentage": 0.010,  # SL mínimo 1% - protección sólida
-            "sl_max_percentage": 0.024,  # SL máximo 2.4% - control pérdidas
+            # Take Profit y Stop Loss Config - INTRADAY ROI-based R:R 2:1 OPTIMIZADO
+            "tp_min_percentage": 0.012,  # OPTIMIZADO: TP mínimo 1.2% ROI - más dinámico
+            "tp_max_percentage": 0.025,  # OPTIMIZADO: TP máximo 2.5% ROI - más realista
+            "sl_min_percentage": 0.006,  # OPTIMIZADO: SL mínimo 0.6% ROI - más dinámico
+            "sl_max_percentage": 0.015,  # OPTIMIZADO: SL máximo 1.5% ROI - mejor control
             "tp_increment_percentage": 1.0,  # Factor TP balanceado
-            "max_tp_adjustments": 4,  # Ajustes moderados
             "tp_confidence_threshold": 0.72,  # Umbral moderado para ajustar TP
             
             # Umbrales y Límites Adicionales
             "max_daily_loss_percent": 4.0,  # Pérdida máxima diaria moderada
-            "min_confidence_threshold": 0.75,  # Confianza mínima alta - más selectivo
+            "min_confidence_threshold": 0.65,  # OPTIMIZADO: Confianza mínima más realista
             "position_size_multiplier": 1.0,  # Multiplicador estándar
-            "volatility_adjustment_factor": 1.1,  # Factor moderado por volatilidad
             
             # Strategy Config - INTRADAY ULTRA-OPTIMIZADO
-            "default_min_confidence": 70.0,  # Confianza alta - más selectivo
+            "default_min_confidence": 65.0,  # OPTIMIZADO: Confianza más balanceada
             "default_atr_period": 12,  # Período moderado
-            "rsi_min_confidence": 82.0,  # RSI confianza alta
+            "rsi_min_confidence": 70.0,  # OPTIMIZADO: RSI confianza más realista
             "rsi_oversold": 25,  # RSI oversold moderado
             "rsi_overbought": 75,  # RSI overbought moderado
             "rsi_period": 12,  # Período RSI moderado
             "min_volume_ratio": 1.8,  # Volumen mínimo moderado-alto
-            "min_confluence": 4,  # Confluencia moderada
+            "min_confluence": 3,  # OPTIMIZADO: Confluencia más permisiva
             "trend_strength_threshold": 38,  # Fuerza tendencia moderada
             "min_atr_ratio": 1.1,  # ATR ratio moderado
             "max_spread_threshold": 0.0015,  # Spread máximo estricto
             "volume_weight": 0.22,  # Peso volumen moderado
-            "confluence_threshold": 0.70,  # Umbral confluencia moderado-alto
+            "confluence_threshold": 0.60,  # OPTIMIZADO: Umbral confluencia más balanceado
             
             # Multi-Timeframe Config - INTRADAY
-            "mtf_enhanced_confidence": 72.0,  # Confianza MTF moderada-alta
-            "mtf_min_confidence": 78.0,  # Confianza mínima MTF alta
-            "mtf_min_consensus": 0.70,  # Consenso moderado-alto MTF
+            "mtf_enhanced_confidence": 68.0,  # OPTIMIZADO: Confianza MTF más realista
+            "mtf_min_confidence": 68.0,  # OPTIMIZADO: Confianza mínima MTF balanceada
+            "mtf_min_consensus": 0.60,  # OPTIMIZADO: Consenso más permisivo MTF
             "mtf_require_trend_alignment": True,  # Requiere alineación
             "mtf_min_timeframe_consensus": 2,  # Consenso en 2 timeframes
             "mtf_trend_alignment_required": True,
@@ -412,6 +407,7 @@ class TradingProfiles:
             "live_first_analysis_delay": 15,  # Delay inicial moderado
             
             # Position Adjuster Config - INTRADAY
+            "enable_position_monitoring": False,  # DESACTIVADO: Solo abrir posiciones con TP/SL, no cerrar automáticamente
             "position_monitoring_interval": 35,  # Monitoreo moderado
             "price_cache_duration": 25,  # Cache moderado
             "max_close_attempts": 3,  # Intentos estándar
@@ -565,6 +561,11 @@ class TradingBotConfig:
         return TradingProfiles.get_current_profile().get("position_monitoring_interval", 30)
     
     @classmethod
+    def get_position_monitoring_enabled(cls) -> bool:
+        """Indica si el monitoreo automático de posiciones está habilitado según perfil."""
+        return TradingProfiles.get_current_profile().get("enable_position_monitoring", False)
+    
+    @classmethod
     def get_cleanup_interval(cls) -> int:
         """Intervalo de limpieza según perfil."""
         return TradingProfiles.get_current_profile().get("cleanup_interval", 10)
@@ -696,10 +697,7 @@ class RiskManagerConfig:
         """Obtiene la fracción Kelly según perfil activo."""
         return TradingProfiles.get_current_profile()["kelly_fraction"]
     
-    @classmethod
-    def get_volatility_adjustment(cls) -> float:
-        """Obtiene el factor de ajuste por volatilidad según perfil activo."""
-        return TradingProfiles.get_current_profile()["volatility_adjustment"]
+
     
     @classmethod
     def get_atr_multiplier_min(cls) -> float:
@@ -761,10 +759,7 @@ class RiskManagerConfig:
         """Obtiene el porcentaje de incremento de TP según perfil activo."""
         return TradingProfiles.get_current_profile()["tp_increment_percentage"]
     
-    @classmethod
-    def get_max_tp_adjustments(cls) -> int:
-        """Obtiene el máximo número de ajustes de TP según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_tp_adjustments"]
+
     
     @classmethod
     def get_tp_confidence_threshold(cls) -> float:
@@ -791,10 +786,7 @@ class RiskManagerConfig:
         """Obtiene el multiplicador de tamaño de posición según perfil activo."""
         return TradingProfiles.get_current_profile()["position_size_multiplier"]
     
-    @classmethod
-    def get_volatility_adjustment_factor(cls) -> float:
-        """Obtiene el factor de ajuste por volatilidad según perfil activo."""
-        return TradingProfiles.get_current_profile()["volatility_adjustment_factor"]
+
     
     # Propiedades dinámicas para compatibilidad con código existente
     MAX_RISK_PER_TRADE: float = property(lambda self: TradingProfiles.get_current_profile()["max_risk_per_trade"])
@@ -804,7 +796,7 @@ class RiskManagerConfig:
     MIN_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["min_position_size"])
     MAX_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["risk_max_position_size"])
     KELLY_FRACTION: float = property(lambda self: TradingProfiles.get_current_profile()["kelly_fraction"])
-    VOLATILITY_ADJUSTMENT: float = property(lambda self: TradingProfiles.get_current_profile()["volatility_adjustment"])
+
     ATR_MULTIPLIER_MIN: float = property(lambda self: TradingProfiles.get_current_profile()["atr_multiplier_min"])
     ATR_MULTIPLIER_MAX: float = property(lambda self: TradingProfiles.get_current_profile()["atr_multiplier_max"])
     ATR_DEFAULT: float = property(lambda self: TradingProfiles.get_current_profile()["atr_default"])
@@ -1432,10 +1424,10 @@ class ConfigValidator:
         'max_slippage': (0.001, 0.1),
         'stop_loss_percentage': (0.01, 0.5),
         'take_profit_percentage': (0.01, 1.0),
-        'trailing_stop_activation': (0.01, 0.5),
+        'trailing_stop_activation': (0.006, 0.5),
         'trailing_stop_distance': (0.005, 0.2),
         'max_drawdown_threshold': (0.05, 0.5),
-        'volatility_adjustment_factor': (0.5, 3.0),
+
         'min_confidence_score': (30, 95),
         'analysis_interval': (1, 3600),
         'position_check_interval': (10, 300),

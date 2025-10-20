@@ -36,7 +36,7 @@ from .breakout_adapter import BreakoutAdapter
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
-from .position_adjuster import PositionAdjuster
+
 from .capital_client import CapitalClient, create_capital_client_from_env
 from src.utils.market_hours import market_hours_checker
 
@@ -121,8 +121,7 @@ class TradingBot:
             paper_trader=self.paper_trader
         )
         
-        # Sistema de ajuste de posiciones TP/SL (desactivado - Opción A)
-        self.position_adjuster = None
+
         
         # Sistema de eventos para comunicación con LiveTradingBot
         profile_config = TradingProfiles.get_current_profile()
@@ -437,11 +436,15 @@ class TradingBot:
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.analysis_thread.start()
         
-        # Iniciar monitoreo de posiciones
-        self.position_monitor.start_monitoring()
+        # Iniciar monitoreo de posiciones solo si está habilitado en configuración
+        if self.config.get_position_monitoring_enabled():
+            self.position_monitor.start_monitoring()
+            self.logger.info("🔍 Position monitoring started")
+        else:
+            self.logger.info("🔍 Position monitoring disabled - Bot will only open positions with TP/SL")
         
         # Sistema de ajuste TP/SL desactivado (Opción A): no se inicia monitoreo
-        # self._start_position_adjustment_monitoring()
+
         
         # Ejecutar primer análisis inmediatamente (sin delay)
         self.logger.info("🔄 Running immediate initial analysis...")
@@ -454,7 +457,10 @@ class TradingBot:
         self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
         self.logger.info(f"🧠 Active strategies: {', '.join(self.strategies.keys())}")
-        self.logger.info("🔍 Position monitoring started")
+        if self.config.get_position_monitoring_enabled():
+            self.logger.info("🔍 Position monitoring started")
+        else:
+            self.logger.info("🔍 Position monitoring disabled - Bot will only open positions with TP/SL")
         self.logger.info("🎯 TP/SL adjustment monitoring disabled")
     
     def stop(self):
@@ -469,12 +475,14 @@ class TradingBot:
         self.stop_event.set()
         schedule.clear()
         
-        # Detener monitoreo de posiciones
-        self.position_monitor.stop_monitoring()
+        # Detener monitoreo de posiciones solo si está habilitado
+        if self.config.get_position_monitoring_enabled():
+            self.position_monitor.stop_monitoring()
+            self.logger.info("🔍 Position monitoring stopped")
+        else:
+            self.logger.info("🔍 Position monitoring was disabled")
         
-        # Sistema de ajuste TP/SL desactivado (Opción A): no hay monitoreo que detener
-        # if self.position_adjuster:
-        #     self.position_adjuster.stop_monitoring()
+
         
         # Limpiar ThreadPoolExecutor
         if hasattr(self, 'executor') and self.executor:
@@ -497,7 +505,10 @@ class TradingBot:
         self._cleanup_cache()
         
         self.logger.info("🛑 Trading Bot stopped")
-        self.logger.info("🔍 Position monitoring stopped")
+        if self.config.get_position_monitoring_enabled():
+            self.logger.info("🔍 Position monitoring stopped")
+        else:
+            self.logger.info("🔍 Position monitoring was disabled")
         self.logger.info("🎯 TP/SL adjustment monitoring disabled")
         self.logger.info("💾 Cache cleaned up")
     
@@ -855,6 +866,9 @@ class TradingBot:
         
         self.logger.info(f"🎯 Processing {len(high_confidence_signals)} high-confidence signals sequentially...")
         
+        # Inicializar portfolio_summary antes del bucle para evitar errores
+        portfolio_summary = self.get_portfolio_summary()
+        
         # Procesar cada señal de forma secuencial con balance actualizado
         for i, signal in enumerate(high_confidence_signals, 1):
             try:
@@ -1169,7 +1183,8 @@ class TradingBot:
             "risk_management": risk_report,
             "open_positions": open_positions,
             "position_monitor": {
-                "status": self.position_monitor.get_monitoring_status(),
+                "enabled": self.config.get_position_monitoring_enabled(),
+                "status": self.position_monitor.get_monitoring_status() if self.config.get_position_monitoring_enabled() else "disabled",
                 "active_positions": len(open_positions)
             },
             "configuration": {
@@ -1421,61 +1436,7 @@ class TradingBot:
             self.logger.error(f"❌ Error de conexión con Capital.com: {e}")
             return False
     
-    def _start_position_adjustment_monitoring(self):
-        """🎯 Iniciar monitoreo de ajustes de posiciones TP/SL"""
-        try:
-            # Configurar callback para eventos de ajuste
-            self.position_adjuster.set_adjustment_callback(self._on_position_adjusted)
-            
-            # Iniciar monitoreo en hilo separado con wrapper para async
-            self.adjustment_thread = threading.Thread(
-                target=self._run_position_monitoring_async,
-                daemon=True
-            )
-            self.adjustment_thread.start()
-            
-            self.logger.info("🎯 Position adjustment monitoring started")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error starting position adjustment monitoring: {e}")
-    
-    def _run_position_monitoring_async(self):
-        """🔄 Wrapper para ejecutar el monitoreo async en un hilo"""
-        try:
-            # Crear un nuevo loop de eventos para este hilo
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # Ejecutar el monitoreo async
-            loop.run_until_complete(self.position_adjuster.start_monitoring())
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error in position monitoring thread: {e}")
-        finally:
-            try:
-                loop.close()
-            except:
-                pass
-    
-    def _on_position_adjusted(self, adjustment_data: Dict):
-        """📢 Callback cuando se ajusta una posición"""
-        try:
-            # Emitir evento de ajuste
-            self._emit_adjustment_event(adjustment_data)
-            
-            # Log del ajuste
-            symbol = adjustment_data.get('symbol', 'Unknown')
-            old_tp = adjustment_data.get('old_tp', 0)
-            old_sl = adjustment_data.get('old_sl', 0)
-            new_tp = adjustment_data.get('new_tp', 0)
-            new_sl = adjustment_data.get('new_sl', 0)
-            
-            self.logger.info(f"🎯 Position adjusted for {symbol}:")
-            self.logger.info(f"   TP: {old_tp:.4f} → {new_tp:.4f}")
-            self.logger.info(f"   SL: {old_sl:.4f} → {new_sl:.4f}")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error in position adjustment callback: {e}")
+
     
     def _emit_trade_event(self, signal: TradingSignal, trade_result: TradeResult, risk_assessment):
         """📢 Emitir evento de trade ejecutado"""
@@ -1503,21 +1464,7 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error emitting trade event: {e}")
     
-    def _emit_adjustment_event(self, adjustment_data: Dict):
-        """📢 Emitir evento de ajuste de posición"""
-        try:
-            event = {
-                'type': 'position_adjustment',
-                'timestamp': datetime.now(),
-                **adjustment_data
-            }
-            
-            self.event_queue.put(event, block=False)
-            
-        except queue.Full:
-            self.logger.warning("⚠️ Event queue full, dropping adjustment event")
-        except Exception as e:
-            self.logger.error(f"❌ Error emitting adjustment event: {e}")
+
     
     def _emit_analysis_event(self, signals_count: int, daily_trades: int):
         """📢 Emitir evento de análisis completado"""
@@ -1626,11 +1573,42 @@ class TradingBot:
             stop_loss = None
             take_profit = None
             
-            if hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
+            # Verificar si estamos usando perfiles que soportan cálculo basado en ROI
+            current_profile_config = TradingProfiles.get_current_profile()
+            current_profile = current_profile_config.get('name', '')
+            if current_profile in ["Scalping", "Intraday"]:
+                # Para perfiles ROI, recalcular TP/SL basado en ROI del balance invertido
+                try:
+                    from .enhanced_strategies import EnhancedTradingStrategy
+                    strategy_instance = EnhancedTradingStrategy()
+                    
+                    # Obtener ATR para el cálculo
+                    current_price = self._get_current_price(symbol)
+                    atr = current_price * 0.02  # ATR estimado como 2% del precio
+                    
+                    # Calcular TP/SL basado en ROI usando el tamaño de posición real
+                    position_size_usd = real_size * current_price  # Convertir a USD
+                    stop_loss, take_profit, risk_reward = strategy_instance.calculate_roi_based_risk_reward(
+                        current_price, signal.signal_type, position_size_usd, atr
+                    )
+                    
+                    self.logger.info(f"🎯 {current_profile} ROI-based TP/SL calculated:")
+                    self.logger.info(f"🛡️ Stop Loss (ROI-based): ${stop_loss:.4f}")
+                    self.logger.info(f"🎯 Take Profit (ROI-based): ${take_profit:.4f}")
+                    self.logger.info(f"📊 Risk/Reward Ratio: {risk_reward:.2f}")
+                    
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error calculating ROI-based TP/SL for SCALPING: {e}")
+                    # Fallback a valores originales
+                    stop_loss = None
+                    take_profit = None
+            
+            # Si no se calculó con ROI o no es SCALPING, usar valores de la señal
+            if stop_loss is None and hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
                 stop_loss = signal.stop_loss_price
                 self.logger.info(f"🛡️ Stop Loss: ${stop_loss:.4f}")
             
-            if hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
+            if take_profit is None and hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
                 take_profit = signal.take_profit_price
                 self.logger.info(f"🎯 Take Profit: ${take_profit:.4f}")
             

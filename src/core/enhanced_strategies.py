@@ -604,6 +604,111 @@ class EnhancedTradingStrategy(TradingStrategy):
             logger.error(f"Error detecting market regime: {e}")
             return "NORMAL"
     
+    def calculate_roi_based_risk_reward(self, entry_price: float, signal_type: str, position_size: float, atr: float) -> Tuple[float, float, float]:
+        """Calcular stop loss, take profit basado en ROI del balance invertido (para scalping)
+        
+        Args:
+            entry_price: Precio de entrada
+            signal_type: "BUY" o "SELL"
+            position_size: Tamaño de la posición en USD
+            atr: Average True Range
+            
+        Returns:
+            Tuple[stop_loss_price, take_profit_price, risk_reward_ratio]
+        """
+        try:
+            # Importar configuración dinámica
+            from src.config.main_config import RiskManagerConfig
+            
+            # Obtener rangos dinámicos desde config (ahora representan ROI del balance)
+            sl_roi_min = RiskManagerConfig.get_sl_min_percentage()  # % de pérdida del balance
+            sl_roi_max = RiskManagerConfig.get_sl_max_percentage()  # % de pérdida del balance
+            tp_roi_min = RiskManagerConfig.get_tp_min_percentage()  # % de ganancia del balance
+            tp_roi_max = RiskManagerConfig.get_tp_max_percentage()  # % de ganancia del balance
+            
+            # Calcular cantidad de activo que se puede comprar/vender
+            quantity = position_size / entry_price
+            
+            # Determinar ROI objetivo basado en volatilidad (ATR)
+            atr_ratio = (atr / entry_price)
+            
+            if signal_type == "BUY":
+                # Para BUY: calcular precios basados en ROI del balance
+                
+                # Stop Loss ROI: entre sl_roi_min% y sl_roi_max% de pérdida del balance
+                if atr_ratio <= sl_roi_min:
+                    target_sl_roi = sl_roi_min
+                elif atr_ratio >= sl_roi_max:
+                    target_sl_roi = sl_roi_max
+                else:
+                    target_sl_roi = atr_ratio
+                
+                # Take Profit ROI: entre tp_roi_min% y tp_roi_max% de ganancia del balance
+                atr_tp_factor = atr_ratio * 1.5  # Factor conservador para TP
+                if atr_tp_factor <= tp_roi_min:
+                    target_tp_roi = tp_roi_min
+                elif atr_tp_factor >= tp_roi_max:
+                    target_tp_roi = tp_roi_max
+                else:
+                    target_tp_roi = atr_tp_factor
+                
+                # Calcular precios que generen el ROI objetivo
+                # Para BUY: pérdida_balance = (entry_price - stop_loss) * quantity
+                # target_sl_roi = pérdida_balance / position_size
+                # stop_loss = entry_price - (target_sl_roi * position_size / quantity)
+                stop_loss = entry_price - (target_sl_roi * position_size / quantity)
+                
+                # Para BUY: ganancia_balance = (take_profit - entry_price) * quantity
+                # target_tp_roi = ganancia_balance / position_size
+                # take_profit = entry_price + (target_tp_roi * position_size / quantity)
+                take_profit = entry_price + (target_tp_roi * position_size / quantity)
+                
+            elif signal_type == "SELL":
+                # Para SELL: calcular precios basados en ROI del balance
+                
+                # Stop Loss ROI: entre sl_roi_min% y sl_roi_max% de pérdida del balance
+                if atr_ratio <= sl_roi_min:
+                    target_sl_roi = sl_roi_min
+                elif atr_ratio >= sl_roi_max:
+                    target_sl_roi = sl_roi_max
+                else:
+                    target_sl_roi = atr_ratio
+                
+                # Take Profit ROI: entre tp_roi_min% y tp_roi_max% de ganancia del balance
+                atr_tp_factor = atr_ratio * 1.5
+                if atr_tp_factor <= tp_roi_min:
+                    target_tp_roi = tp_roi_min
+                elif atr_tp_factor >= tp_roi_max:
+                    target_tp_roi = tp_roi_max
+                else:
+                    target_tp_roi = atr_tp_factor
+                
+                # Calcular precios que generen el ROI objetivo
+                # Para SELL: pérdida_balance = (stop_loss - entry_price) * quantity
+                # stop_loss = entry_price + (target_sl_roi * position_size / quantity)
+                stop_loss = entry_price + (target_sl_roi * position_size / quantity)
+                
+                # Para SELL: ganancia_balance = (entry_price - take_profit) * quantity
+                # take_profit = entry_price - (target_tp_roi * position_size / quantity)
+                take_profit = entry_price - (target_tp_roi * position_size / quantity)
+            else:
+                return 0.0, 0.0, 0.0
+            
+            # Calcular risk/reward ratio
+            risk = abs(entry_price - stop_loss) * quantity
+            reward = abs(take_profit - entry_price) * quantity
+            
+            if risk > 0:
+                risk_reward_ratio = reward / risk
+            else:
+                risk_reward_ratio = 0.0
+                
+            return stop_loss, take_profit, risk_reward_ratio
+            
+        except Exception as e:
+            logger.error(f"Error calculating ROI-based risk/reward: {str(e)}")
+            return 0.0, 0.0, 0.0
+
     def calculate_risk_reward(self, entry_price: float, signal_type: str, atr: float) -> Tuple[float, float, float]:
         """Calcular stop loss, take profit y ratio riesgo/beneficio
         
