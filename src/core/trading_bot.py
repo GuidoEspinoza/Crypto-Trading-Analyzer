@@ -598,6 +598,73 @@ class TradingBot:
         """📋 Obtener lista de símbolos disponibles en Capital.com desde configuración centralizada"""
         return GLOBAL_SYMBOLS.copy()
 
+    def _check_max_positions_limit(self) -> bool:
+        """
+        🛡️ Verificar si se puede abrir una nueva posición según el límite max_positions
+        
+        Returns:
+            bool: True si se puede abrir nueva posición, False si se alcanzó el límite
+        """
+        try:
+            # Obtener configuración actual
+            current_profile = TradingProfiles.get_current_profile()
+            max_positions = current_profile.get('max_positions', 8)  # Default 8 si no está configurado
+            
+            # Contar posiciones abiertas usando Capital.com
+            if self.capital_client and self.enable_real_trading:
+                # Usar endpoint /positions de Capital.com para trading real
+                positions_result = self.capital_client.get_positions()
+                
+                if positions_result.get("success"):
+                    open_positions = positions_result.get("positions", [])
+                    current_positions_count = len(open_positions)
+                    
+                    self.logger.info(f"📊 Posiciones abiertas: {current_positions_count}/{max_positions}")
+                    
+                    # Log detalle de posiciones si hay alguna
+                    if open_positions:
+                        self.logger.info("📋 Posiciones actuales:")
+                        for pos in open_positions[:5]:  # Mostrar máximo 5 para no saturar logs
+                            symbol = pos.get("market", {}).get("instrumentName", "Unknown")
+                            size = pos.get("position", {}).get("size", 0)
+                            direction = pos.get("position", {}).get("direction", "Unknown")
+                            pnl = pos.get("position", {}).get("upl", 0)
+                            self.logger.info(f"   • {symbol}: {direction} {size} (PnL: ${pnl:.2f})")
+                        
+                        if len(open_positions) > 5:
+                            self.logger.info(f"   ... y {len(open_positions) - 5} posiciones más")
+                    
+                    return current_positions_count < max_positions
+                else:
+                    self.logger.warning(f"⚠️ No se pudo obtener posiciones de Capital.com: {positions_result.get('error')}")
+                    # En caso de error, permitir trading (fail-safe)
+                    return True
+            else:
+                # Para paper trading, usar el paper trader
+                paper_positions = self.paper_trader.get_open_positions()
+                current_positions_count = len(paper_positions)
+                
+                self.logger.info(f"📊 Posiciones paper: {current_positions_count}/{max_positions}")
+                
+                # Log detalle de posiciones paper si hay alguna
+                if paper_positions:
+                    self.logger.info("📋 Posiciones paper actuales:")
+                    for pos in paper_positions[:5]:  # Mostrar máximo 5
+                        symbol = pos.get("symbol", "Unknown")
+                        quantity = pos.get("quantity", 0)
+                        pnl_pct = pos.get("unrealized_pnl_percentage", 0)
+                        self.logger.info(f"   • {symbol}: {quantity:.4f} (PnL: {pnl_pct:+.2f}%)")
+                    
+                    if len(paper_positions) > 5:
+                        self.logger.info(f"   ... y {len(paper_positions) - 5} posiciones más")
+                
+                return current_positions_count < max_positions
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error verificando límite de posiciones: {e}")
+            # En caso de error, permitir trading (fail-safe)
+            return True
+
     def _log_market_status(self):
         """📊 Mostrar estado de los mercados al inicio del análisis"""
         try:
@@ -793,6 +860,11 @@ class TradingBot:
                 # Verificar límite diario
                 if self.stats["daily_trades"] >= self.max_daily_trades:
                     self.logger.info("⏸️ Daily trade limit reached")
+                    break
+                
+                # CRÍTICO: Verificar límite de posiciones simultáneas
+                if not self._check_max_positions_limit():
+                    self.logger.info("⏸️ Maximum positions limit reached")
                     break
                 
                 # Verificar horarios de mercado
@@ -1562,15 +1634,54 @@ class TradingBot:
             self.logger.info(f"🔴 Stop Loss: {stop_loss}, Take Profit: {take_profit}")
             self.logger.info(f"🔴 Capital.com API URL: {self.capital_client.base_url}")
             
+            # Determinar si usar trailing stop basado en configuración del perfil
+            use_trailing_stop = TradingProfiles.get_current_profile().get("use_trailing_stop", False)
+            trailing_distance = None
+            trailing_stop_available = False
+            
+            if use_trailing_stop and stop_loss:
+                # Calcular la distancia correcta según el tipo de operación
+                # Para BUY: stopDistance = current_price - stop_loss (protege hacia abajo)
+                # Para SELL: stopDistance = stop_loss - current_price (protege hacia arriba)
+                if signal.signal_type == "BUY":
+                    trailing_distance = current_price - stop_loss
+                else:  # SELL
+                    trailing_distance = stop_loss - current_price
+                
+                # Verificar que la distancia sea positiva
+                if trailing_distance > 0:
+                    trailing_stop_available = True
+                    self.logger.info(f"🎯 Trailing stop enabled for {signal.signal_type}")
+                    self.logger.info(f"🎯 Current price: {current_price:.4f}, Stop loss: {stop_loss:.4f}")
+                    self.logger.info(f"🎯 Calculated stopDistance: {trailing_distance:.4f} points")
+                else:
+                    trailing_stop_available = False
+                    self.logger.warning(f"⚠️ Invalid trailing distance: {trailing_distance:.4f} (must be positive)")
+                    self.logger.warning(f"⚠️ Falling back to traditional stop loss")
+            
             # Ejecutar orden según el tipo de señal
             if signal.signal_type == "BUY":
                 self.logger.info(f"🔴 Enviando orden BUY a Capital.com...")
-                result = self.capital_client.buy_market_order(
-                    epic=capital_symbol,
-                    size=real_size,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit
-                )
+                if trailing_stop_available and trailing_distance:
+                    result = self.capital_client.buy_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        take_profit=take_profit,
+                        trailing_stop=True,
+                        stop_distance=trailing_distance
+                    )
+                    self.logger.info(f"🎯 BUY order with trailing stop - Distance: {trailing_distance}")
+                else:
+                    result = self.capital_client.buy_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit
+                    )
+                    if use_trailing_stop and not trailing_stop_available:
+                        self.logger.info(f"🔄 BUY order with traditional stop loss (trailing stop not available)")
+                    else:
+                        self.logger.info(f"🔴 BUY order with traditional stop loss")
                 self.logger.info(f"🔴 Respuesta de Capital.com BUY: {result}")
             elif signal.signal_type == "SELL":
                 # Para SELL, primero verificar si tenemos posiciones abiertas
@@ -1605,12 +1716,26 @@ class TradingBot:
                 else:
                     # Abrir nueva posición de venta
                     self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
-                    result = self.capital_client.sell_market_order(
-                        epic=capital_symbol,
-                        size=real_size,
-                        stop_loss=stop_loss,
-                        take_profit=take_profit
-                    )
+                    if trailing_stop_available and trailing_distance:
+                        result = self.capital_client.sell_market_order(
+                            epic=capital_symbol,
+                            size=real_size,
+                            take_profit=take_profit,
+                            trailing_stop=True,
+                            stop_distance=trailing_distance
+                        )
+                        self.logger.info(f"🎯 SELL order with trailing stop - Distance: {trailing_distance}")
+                    else:
+                        result = self.capital_client.sell_market_order(
+                            epic=capital_symbol,
+                            size=real_size,
+                            stop_loss=stop_loss,
+                            take_profit=take_profit
+                        )
+                        if use_trailing_stop and not trailing_stop_available:
+                            self.logger.info(f"🔄 SELL order with traditional stop loss (trailing stop not available)")
+                        else:
+                            self.logger.info(f"🔴 SELL order with traditional stop loss")
                     self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
             else:
                 return {

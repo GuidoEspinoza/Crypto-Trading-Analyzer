@@ -150,9 +150,11 @@ USD_BASE_PRICE = 1.0
 # Lista de símbolos con nombres exactos como aparecen en Capital.com
 GLOBAL_SYMBOLS: List[str] = [
     # === Metales Preciosos ===
-    "GOLD", "SILVER", "PALLADIUM", "PLATINUM",
+    "GOLD", "SILVER",
     # === Criptomonedas ===
-    "BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD", "XRPUSD"
+    "BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD", "XRPUSD",
+    # === INDICES ===
+    "US100", "US500", "DE40"
 ]
 
 # ============================================================================
@@ -190,78 +192,81 @@ class TradingProfiles:
     PROFILES = {
         "SCALPING": {
             "name": "Scalping",
-            "description": "Timeframes 1m-5m, ultra-rápido, ganancias inmediatas CFD",
-            "timeframes": ["1m", "3m", "5m"],
-            "analysis_interval": 1,  # Análisis cada 1 minuto - ultra frecuente
-            "min_confidence": 60.0,  # Confianza baja para más oportunidades scalping
-            "max_daily_trades": 25,  # Muchas operaciones diarias
-            "max_positions": 8,  # Múltiples posiciones simultáneas
+            "description": "Timeframes 3m-15m, controlado, ganancias consistentes CFD",
+            "timeframes": ["3m", "5m", "15m"],  # Eliminamos 1m por ruido excesivo
+            "analysis_interval": 3,  # Análisis cada 3 minutos - más controlado
+            "min_confidence": 75.0,  # CRÍTICO: Confianza alta para reducir señales falsas
+            "max_daily_trades": 12,  # CRÍTICO: Reducir trades para mejor gestión
+            "max_positions": 4,  # CRÍTICO: Máximo 4 posiciones simultáneas
 
-            # Paper Trader Config - SCALPING CFD OPTIMIZADO
-            "max_position_size": 0.08,  # 8% por posición - tamaño moderado
-            "max_total_exposure": 0.60,  # 60% exposición total - agresivo
-            "min_trade_value": 3.0,  # Valor mínimo muy bajo para scalping
-            "paper_min_confidence": 65.0,  # Confianza baja para más entradas
-            "max_slippage": 0.08,  # Slippage alto para ejecución rápida
-            "min_liquidity": 3.0,  # Liquidez mínima baja
+            # Paper Trader Config - SCALPING CFD CONSERVADOR
+            "max_position_size": 0.06,  # 6% por posición - más conservador
+            "max_total_exposure": 0.40,  # 40% exposición total - más seguro
+            "min_trade_value": 5.0,  # Valor mínimo más alto para calidad
+            "paper_min_confidence": 75.0,  # Confianza alta consistente
+            "max_slippage": 0.05,  # Slippage más controlado
+            "min_liquidity": 5.0,  # Liquidez mínima más alta
             
-            # Risk Manager Config - SCALPING AGRESIVO
-            "max_risk_per_trade": 1.2,  # 1.2% riesgo por trade - agresivo scalping
-            "max_daily_risk": 4.0,  # 4% riesgo diario máximo
-            "max_drawdown_threshold": 0.12,  # 12% drawdown máximo
-            "correlation_threshold": 0.80,  # Correlación alta permitida
-            "min_position_size": 8.0,  # Posición mínima baja
-            "risk_max_position_size": 0.08,  # Consistente con max_position_size
-            "kelly_fraction": 0.35,  # Kelly agresivo para scalping
-            "volatility_adjustment": 1.4,  # Ajuste alto por volatilidad
-            "atr_multiplier_min": 1.2,  # Stops muy ajustados
-            "atr_multiplier_max": 2.0,  # Stops ajustados
-            "atr_default": 1.2,
-            "atr_volatile": 2.0,
-            "atr_sideways": 1.0,  # Stops muy ajustados en laterales
-            "trailing_stop_activation": 0.03,  # Trailing al 3% - rápido
-            "breakeven_threshold": 0.004,  # Breakeven al 0.4% - muy rápido
+            # Risk Manager Config - SCALPING CONTROLADO
+            "max_risk_per_trade": 0.8,  # CRÍTICO: 0.8% riesgo por trade - más conservador
+            "max_daily_risk": 3.0,  # 3% riesgo diario máximo - más seguro
+            "max_drawdown_threshold": 0.08,  # 8% drawdown máximo - más estricto
+            "correlation_threshold": 0.70,  # Correlación más estricta
+            "min_position_size": 10.0,  # Posición mínima más alta
+            "risk_max_position_size": 0.06,  # Consistente con max_position_size
+            "kelly_fraction": 0.25,  # Kelly más conservador
+            "volatility_adjustment": 1.2,  # Ajuste moderado por volatilidad
+            "atr_multiplier_min": 1.5,  # CRÍTICO: Stops más amplios para scalping
+            "atr_multiplier_max": 2.5,  # CRÍTICO: Stops más amplios optimizados
+            "atr_default": 1.8,  # Stop loss por defecto más amplio
+            "atr_volatile": 2.5,  # Stops amplios en alta volatilidad
+            "atr_sideways": 1.5,  # Stops moderados en laterales
+            "trailing_stop_activation": 0.015,  # Trailing al 1.5% - más controlado
+            "breakeven_threshold": 0.008,  # Breakeven al 0.8% - más realista
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
             
-            # Take Profit y Stop Loss Config - SCALPING R:R 1.5:1 MÍNIMO
-            "tp_min_percentage": 0.008,  # TP mínimo 0.8% - ganancias ultra-rápidas
-            "tp_max_percentage": 0.025,  # TP máximo 2.5% - no codicia
-            "sl_min_percentage": 0.006,  # SL mínimo 0.6% - protección ajustada scalping
-            "sl_max_percentage": 0.016,  # SL máximo 1.6% - control pérdidas
+            # Capital.com Trailing Stop Config - SCALPING
+            "use_trailing_stop": True,  # Activado por defecto para scalping (mayor dinamismo)
+            
+            # Take Profit y Stop Loss Config - SCALPING R:R 2:1 REALISTA
+            "tp_min_percentage": 0.015,  # CRÍTICO: TP mínimo 1.5% - más realista
+            "tp_max_percentage": 0.035,  # TP máximo 3.5% - objetivos alcanzables
+            "sl_min_percentage": 0.012,  # CRÍTICO: SL mínimo 1.2% - protección adecuada
+            "sl_max_percentage": 0.025,  # CRÍTICO: SL máximo 2.5% - control pérdidas mejorado
             "tp_increment_percentage": 1.2,  # Factor TP agresivo
             "max_tp_adjustments": 3,  # Pocos ajustes para scalping
             "tp_confidence_threshold": 0.65,  # Umbral bajo para ajustar TP
             
             # Umbrales y Límites Adicionales
             "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria alta
-            "min_confidence_threshold": 0.55,  # Confianza mínima baja
+            "min_confidence_threshold": 0.50,  # Confianza mínima más flexible
             "position_size_multiplier": 1.2,  # Multiplicador agresivo
             "volatility_adjustment_factor": 1.4,  # Factor alto por volatilidad
             
-            # Strategy Config - SCALPING OPTIMIZADO
-            "default_min_confidence": 45.0,  # Confianza baja para más señales
-            "default_atr_period": 7,  # Período corto para scalping
-            "rsi_min_confidence": 65.0,  # RSI confianza moderada
-            "rsi_oversold": 30,  # RSI oversold moderado
-            "rsi_overbought": 70,  # RSI overbought moderado
-            "rsi_period": 7,  # Período RSI corto
-            "min_volume_ratio": 1.2,  # Volumen mínimo bajo
-            "min_confluence": 3,  # Confluencia mínima baja
-            "trend_strength_threshold": 25,  # Fuerza tendencia baja
-            "min_atr_ratio": 0.7,  # ATR ratio bajo
-            "max_spread_threshold": 0.003,  # Spread máximo moderado
-            "volume_weight": 0.25,  # Peso volumen alto
-            "confluence_threshold": 0.55,  # Umbral confluencia bajo
+            # Strategy Config - SCALPING CONTROLADO Y SELECTIVO
+            "default_min_confidence": 70.0,  # CRÍTICO: Confianza alta para señales de calidad
+            "default_atr_period": 14,  # Período estándar para mejor precisión
+            "rsi_min_confidence": 75.0,  # CRÍTICO: RSI confianza alta
+            "rsi_oversold": 25,  # CRÍTICO: RSI oversold más extremo (menos señales)
+            "rsi_overbought": 75,  # CRÍTICO: RSI overbought más extremo (menos señales)
+            "rsi_period": 14,  # Período RSI estándar para mejor precisión
+            "min_volume_ratio": 1.8,  # CRÍTICO: Volumen mínimo alto para confirmación
+            "min_confluence": 5,  # CRÍTICO: Confluencia mínima alta (5 confirmaciones)
+            "trend_strength_threshold": 40,  # CRÍTICO: Fuerza tendencia alta
+            "min_atr_ratio": 1.2,  # ATR ratio más alto para volatilidad adecuada
+            "max_spread_threshold": 0.002,  # CRÍTICO: Spread máximo más estricto
+            "volume_weight": 0.35,  # Peso volumen más alto para confirmación
+            "confluence_threshold": 0.75,  # CRÍTICO: Umbral confluencia alto
             
-            # Multi-Timeframe Config - SCALPING
-            "mtf_enhanced_confidence": 55.0,  # Confianza MTF baja
-            "mtf_min_confidence": 70.0,  # Confianza mínima MTF
-            "mtf_min_consensus": 0.60,  # Consenso mínimo MTF
-            "mtf_require_trend_alignment": False,  # No requiere alineación
-            "mtf_min_timeframe_consensus": 2,  # Consenso en 2 timeframes
-            "mtf_trend_alignment_required": False,
-            "volume_timeframe": "1m",  # Timeframe volumen ultra corto
+            # Multi-Timeframe Config - SCALPING ESTRICTO
+            "mtf_enhanced_confidence": 75.0,  # CRÍTICO: Confianza MTF alta
+            "mtf_min_confidence": 80.0,  # CRÍTICO: Confianza mínima MTF muy alta
+            "mtf_min_consensus": 0.80,  # CRÍTICO: Consenso mínimo MTF alto
+            "mtf_require_trend_alignment": True,  # CRÍTICO: Requiere alineación de tendencias
+            "mtf_min_timeframe_consensus": 3,  # CRÍTICO: Consenso en todos los timeframes
+            "mtf_trend_alignment_required": True,  # CRÍTICO: Alineación obligatoria
+            "volume_timeframe": "5m",  # Timeframe volumen más estable
             
             # Live Trading Config - SCALPING ULTRA RÁPIDO
             "trading_fees": 0.001,
@@ -347,19 +352,22 @@ class TradingProfiles:
             "risk_max_position_size": 0.12,  # Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly moderado
             "volatility_adjustment": 1.1,  # Ajuste moderado por volatilidad
-            "atr_multiplier_min": 1.5,  # Stops moderados
-            "atr_multiplier_max": 2.5,  # Stops moderados
-            "atr_default": 1.8,
-            "atr_volatile": 2.5,
-            "atr_sideways": 1.3,  # Stops ajustados en laterales
-            "trailing_stop_activation": 0.04,  # Trailing al 4%
-            "breakeven_threshold": 0.006,  # Breakeven al 0.6%
+            "atr_multiplier_min": 2.0,  # Stops amplios para intraday
+            "atr_multiplier_max": 3.0,  # Stops amplios optimizados
+            "atr_default": 2.2,
+            "atr_volatile": 3.0,
+            "atr_sideways": 1.8,  # Stops moderados en laterales
+            "trailing_stop_activation": 0.035,  # Trailing al 3.5% - conservador
+            "breakeven_threshold": 0.008,  # Breakeven al 0.8% - conservador
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
             
-            # Take Profit y Stop Loss Config - INTRADAY R:R 2.5:1 MÍNIMO
-            "tp_min_percentage": 0.025,  # TP mínimo 2.5% - ganancias sólidas
-            "tp_max_percentage": 0.060,  # TP máximo 6% - ganancias buenas
+            # Capital.com Trailing Stop Config - INTRADAY
+            "use_trailing_stop": True,  # Activado por defecto para intraday
+            
+            # Take Profit y Stop Loss Config - INTRADAY R:R 3:1 OPTIMIZADO
+            "tp_min_percentage": 0.030,  # TP mínimo 3.0% - ganancias ambiciosas
+            "tp_max_percentage": 0.070,  # TP máximo 7.0% - ganancias excelentes
             "sl_min_percentage": 0.010,  # SL mínimo 1% - protección sólida
             "sl_max_percentage": 0.024,  # SL máximo 2.4% - control pérdidas
             "tp_increment_percentage": 1.0,  # Factor TP balanceado
@@ -368,12 +376,12 @@ class TradingProfiles:
             
             # Umbrales y Límites Adicionales
             "max_daily_loss_percent": 4.0,  # Pérdida máxima diaria moderada
-            "min_confidence_threshold": 0.68,  # Confianza mínima moderada-alta
+            "min_confidence_threshold": 0.75,  # Confianza mínima alta - más selectivo
             "position_size_multiplier": 1.0,  # Multiplicador estándar
             "volatility_adjustment_factor": 1.1,  # Factor moderado por volatilidad
             
-            # Strategy Config - INTRADAY OPTIMIZADO
-            "default_min_confidence": 65.0,  # Confianza moderada-alta
+            # Strategy Config - INTRADAY ULTRA-OPTIMIZADO
+            "default_min_confidence": 70.0,  # Confianza alta - más selectivo
             "default_atr_period": 12,  # Período moderado
             "rsi_min_confidence": 82.0,  # RSI confianza alta
             "rsi_oversold": 25,  # RSI oversold moderado
@@ -1099,9 +1107,9 @@ class APIConfig:
     RETRY_DELAY = 1  # segundos
     
     # Sleep intervals para scheduler y error handling
-    SCHEDULER_SLEEP_INTERVAL = 1  # segundos
-    ERROR_RECOVERY_SLEEP = 5  # segundos
-    LATENCY_SIMULATION_SLEEP = 0.1  # segundos
+    SCHEDULER_SLEEP_INTERVAL = 2  # segundos (aumentado para evitar rate limiting)
+    ERROR_RECOVERY_SLEEP = 10  # segundos (aumentado para mejor recuperación)
+    LATENCY_SIMULATION_SLEEP = 0.5  # segundos (aumentado para simular latencia real)
     
     # Data Limits
     DEFAULT_KLINES_LIMIT = 1000

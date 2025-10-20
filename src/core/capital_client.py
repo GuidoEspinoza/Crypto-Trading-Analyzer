@@ -80,6 +80,10 @@ class CapitalClient:
         self.last_session_failure = None
         self.monitoring_enabled = True
         
+        # Trailing stop capabilities
+        self.trailing_stops_enabled = False
+        self.account_info = {}
+        
         # Set default headers
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -136,12 +140,13 @@ class CapitalClient:
         """Internal method to create session with retry logic"""
         url = f"{self.base_url}/session"
         
-        # Build payload
+        # Build payload with plain text password
         payload = {
             "identifier": self.config.identifier,
             "password": self.config.password
         }
         
+        logger.info("🔐 Using plain text password for authentication")
         last_exception = None
         
         for attempt in range(self.max_retries):
@@ -166,6 +171,20 @@ class CapitalClient:
                         self.failed_requests = 0  # Reset failure counter
                         self._update_session_headers()
                         
+                        # Tokens are managed in memory only (like encryptedPassword)
+                        logger.info("🔄 Authentication tokens generated in memory")
+                        
+                        # Extract account info and trailing stop capabilities
+                        session_data = response.json()
+                        self.account_info = session_data
+                        self.trailing_stops_enabled = session_data.get("trailingStopsEnabled", False)
+                        
+                        # Log trailing stop capability
+                        if self.trailing_stops_enabled:
+                            logger.info("✅ Trailing stops are ENABLED for this account")
+                        else:
+                            logger.warning("⚠️  Trailing stops are DISABLED for this account")
+                        
                         # Save session to file for persistence
                         self._save_session_to_file()
                         
@@ -174,8 +193,9 @@ class CapitalClient:
                             "success": True,
                             "cst_token": self.cst_token,
                             "security_token": self.security_token,
-                            "session_data": response.json(),
-                            "created_at": self.session_created_at.isoformat()
+                            "session_data": session_data,
+                            "created_at": self.session_created_at.isoformat(),
+                            "trailing_stops_enabled": self.trailing_stops_enabled
                         }
                     else:
                         raise Exception("Authentication tokens not received in response headers")
@@ -594,6 +614,8 @@ class CapitalClient:
             params["epics"] = ",".join(epics)
         
         try:
+            # Add small delay to avoid rate limiting
+            time.sleep(0.5)
             response = self.session.get(url, params=params, timeout=10)
             self.last_activity = time.time()
             
@@ -602,6 +624,17 @@ class CapitalClient:
                 return {
                     "success": True,
                     "markets": response.json()
+                }
+            elif response.status_code == 429:
+                # Rate limit exceeded - wait longer before next request
+                error_msg = f"Rate limit exceeded: {response.status_code} - {response.text}"
+                logger.warning(error_msg)
+                logger.info("Waiting 5 seconds due to rate limiting...")
+                time.sleep(5)
+                self.failed_requests += 1
+                return {
+                    "success": False,
+                    "error": error_msg
                 }
             else:
                 error_msg = f"Failed to get markets: {response.status_code} - {response.text}"
@@ -634,12 +667,16 @@ class CapitalClient:
         if not symbols:
             return {}
         
-        # Capital.com API supports max 50 epics per request
-        batch_size = 50
+        # Capital.com API supports max 50 epics per request, but using smaller batches to avoid rate limiting
+        batch_size = 25
         all_market_data = {}
         
         for i in range(0, len(symbols), batch_size):
             batch_symbols = symbols[i:i + batch_size]
+            
+            # Add delay between batches to avoid rate limiting (429 errors)
+            if i > 0:  # No delay for first batch
+                time.sleep(2.0)  # 2 second delay between batches
             
             try:
                 result = self.get_markets(epics=batch_symbols)
@@ -876,7 +913,8 @@ class CapitalClient:
     
     def place_order(self, epic: str, direction: str, size: float, order_type: str = "MARKET", 
                    stop_level: Optional[float] = None, limit_level: Optional[float] = None,
-                   guaranteed_stop: bool = False, force_open: bool = True) -> Dict[str, Any]:
+                   guaranteed_stop: bool = False, force_open: bool = True,
+                   trailing_stop: bool = False, stop_distance: Optional[float] = None) -> Dict[str, Any]:
         """
         Place a trading order on Capital.com
         
@@ -885,16 +923,27 @@ class CapitalClient:
             direction: "BUY" or "SELL"
             size: Order size
             order_type: "MARKET" or "LIMIT" (default: "MARKET")
-            stop_level: Stop loss level (optional)
+            stop_level: Stop loss level (optional, cannot be used with trailing_stop)
             limit_level: Take profit level (optional)
-            guaranteed_stop: Whether to use guaranteed stop (default: False)
+            guaranteed_stop: Whether to use guaranteed stop (default: False, cannot be used with trailing_stop)
             force_open: Whether to force open new position (default: True)
+            trailing_stop: Whether to use trailing stop (default: False)
+            stop_distance: Distance for trailing stop in points (required if trailing_stop=True)
             
         Returns:
             Dict containing order result
         """
         if not self._ensure_valid_session():
             return {"success": False, "error": "Failed to establish valid session"}
+        
+        # Validar parámetros de trailing stop según documentación de Capital.com
+        if trailing_stop:
+            if stop_distance is None:
+                return {"success": False, "error": "stopDistance is required when trailingStop is true"}
+            if guaranteed_stop:
+                return {"success": False, "error": "trailingStop cannot be used with guaranteedStop"}
+            if stop_level is not None:
+                logger.warning("stopLevel will be ignored when using trailingStop, using stopDistance instead")
         
         # Verificar si el mercado está disponible para operar usando la API de Capital.com
         market_check = self.is_market_tradeable(epic)
@@ -919,9 +968,17 @@ class CapitalClient:
             "guaranteedStop": guaranteed_stop
         }
         
-        # Add stop and limit levels if provided (nombres correctos según API)
-        if stop_level is not None:
-            order_data["stopLevel"] = stop_level
+        # Configurar trailing stop o stop loss tradicional
+        if trailing_stop:
+            order_data["trailingStop"] = True
+            order_data["stopDistance"] = stop_distance
+            logger.info(f"🎯 Using trailing stop with distance: {stop_distance} points")
+        else:
+            # Add stop and limit levels if provided (nombres correctos según API)
+            if stop_level is not None:
+                order_data["stopLevel"] = stop_level
+        
+        # Add take profit level if provided
         if limit_level is not None:
             order_data["profitLevel"] = limit_level  # Capital.com usa 'profitLevel' no 'limitLevel'
         
@@ -955,15 +1012,18 @@ class CapitalClient:
             return {"success": False, "error": error_msg}
     
     def buy_market_order(self, epic: str, size: float, stop_loss: Optional[float] = None, 
-                        take_profit: Optional[float] = None) -> Dict[str, Any]:
+                        take_profit: Optional[float] = None, trailing_stop: bool = False,
+                        stop_distance: Optional[float] = None) -> Dict[str, Any]:
         """
         Place a market buy order
         
         Args:
             epic: Market identifier (e.g., "ETHUSD")
             size: Order size
-            stop_loss: Stop loss level (optional)
+            stop_loss: Stop loss level (optional, ignored if trailing_stop=True)
             take_profit: Take profit level (optional)
+            trailing_stop: Whether to use trailing stop (default: False)
+            stop_distance: Distance for trailing stop in points (required if trailing_stop=True)
             
         Returns:
             Dict containing order result
@@ -974,19 +1034,24 @@ class CapitalClient:
             size=size,
             order_type="MARKET",
             stop_level=stop_loss,
-            limit_level=take_profit
+            limit_level=take_profit,
+            trailing_stop=trailing_stop,
+            stop_distance=stop_distance
         )
     
     def sell_market_order(self, epic: str, size: float, stop_loss: Optional[float] = None, 
-                         take_profit: Optional[float] = None) -> Dict[str, Any]:
+                         take_profit: Optional[float] = None, trailing_stop: bool = False,
+                         stop_distance: Optional[float] = None) -> Dict[str, Any]:
         """
         Place a market sell order
         
         Args:
             epic: Market identifier (e.g., "ETHUSD")
             size: Order size
-            stop_loss: Stop loss level (optional)
+            stop_loss: Stop loss level (optional, ignored if trailing_stop=True)
             take_profit: Take profit level (optional)
+            trailing_stop: Whether to use trailing stop (default: False)
+            stop_distance: Distance for trailing stop in points (required if trailing_stop=True)
             
         Returns:
             Dict containing order result
@@ -997,7 +1062,9 @@ class CapitalClient:
             size=size,
             order_type="MARKET",
             stop_level=stop_loss,
-            limit_level=take_profit
+            limit_level=take_profit,
+            trailing_stop=trailing_stop,
+            stop_distance=stop_distance
         )
     
     def get_positions(self) -> Dict[str, Any]:
@@ -1180,6 +1247,75 @@ class CapitalClient:
                 "success": False,
                 "tradeable": False,
                 "error": error_msg
+            }
+
+    def is_trailing_stop_available(self, epic: str) -> Dict[str, Any]:
+        """
+        Check if trailing stops are available for a specific instrument
+        
+        Args:
+            epic: Instrument epic identifier
+            
+        Returns:
+            Dict containing trailing stop availability information
+        """
+        try:
+            # First check if trailing stops are enabled at account level
+            if not self.trailing_stops_enabled:
+                return {
+                    "success": True,
+                    "available": False,
+                    "reason": "Trailing stops are disabled for this account",
+                    "account_enabled": False,
+                    "instrument_supported": None
+                }
+            
+            # Get market details to check instrument-specific trailing stop support
+            market_info = self.get_markets(epics=[epic])
+            
+            if not market_info.get("success", False):
+                return {
+                    "success": False,
+                    "available": False,
+                    "reason": f"Failed to get market information for {epic}",
+                    "account_enabled": True,
+                    "instrument_supported": None
+                }
+            
+            # Check if market data contains dealing rules
+            market_details = market_info.get("data", {}).get("marketDetails", [])
+            if not market_details:
+                return {
+                    "success": True,
+                    "available": False,
+                    "reason": f"No market details found for {epic}",
+                    "account_enabled": True,
+                    "instrument_supported": False
+                }
+            
+            # Check trailing stop preference in dealing rules
+            dealing_rules = market_details[0].get("dealingRules", {})
+            trailing_preference = dealing_rules.get("trailingStopsPreference", "NOT_AVAILABLE")
+            
+            is_available = trailing_preference != "NOT_AVAILABLE"
+            
+            return {
+                "success": True,
+                "available": is_available,
+                "reason": f"Trailing stops preference: {trailing_preference}",
+                "account_enabled": True,
+                "instrument_supported": is_available,
+                "trailing_preference": trailing_preference
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking trailing stop availability for {epic}: {e}")
+            return {
+                "success": False,
+                "available": False,
+                "reason": f"Error checking trailing stop availability: {str(e)}",
+                "account_enabled": self.trailing_stops_enabled,
+                "instrument_supported": None
             }
 
     def close_session(self) -> Dict[str, Any]:
