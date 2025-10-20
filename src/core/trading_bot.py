@@ -503,6 +503,24 @@ class TradingBot:
     
     def _get_current_price(self, symbol: str) -> float:
         """💰 Obtener precio actual del símbolo usando Capital.com con cache"""
+        import math
+        
+        def _validate_price(price: float, source: str) -> bool:
+            """Validar que el precio sea válido y seguro para trading"""
+            if price is None:
+                self.logger.warning(f"⚠️ Precio None recibido de {source} para {symbol}")
+                return False
+            if math.isnan(price):
+                self.logger.error(f"🚨 Precio NaN recibido de {source} para {symbol} - CRÍTICO")
+                return False
+            if math.isinf(price):
+                self.logger.error(f"🚨 Precio Infinity recibido de {source} para {symbol} - CRÍTICO")
+                return False
+            if price <= 0:
+                self.logger.warning(f"⚠️ Precio inválido ({price}) de {source} para {symbol}")
+                return False
+            return True
+        
         try:
             # Normalizar símbolo para Capital.com (Gold, Silver, etc.)
             capital_symbol = self._normalize_symbol_for_capital(symbol)
@@ -512,7 +530,7 @@ class TradingBot:
             
             # Verificar cache (TTL más corto para precios)
             cached_price = self._get_from_cache(cache_key)
-            if cached_price is not None:
+            if cached_price is not None and _validate_price(cached_price, "cache"):
                 return cached_price
             
             # Usar Capital.com client si está disponible
@@ -520,35 +538,57 @@ class TradingBot:
                 try:
                     market_data = self.capital_client.get_market_data([capital_symbol])
                     if market_data and capital_symbol in market_data:
-                        current_price = float(market_data[capital_symbol].get('bid', 0))
+                        # Intentar obtener bid, offer o mid price
+                        price_data = market_data[capital_symbol]
+                        current_price = None
                         
-                        # Almacenar en cache
-                        if current_price > 0:
-                            self._store_in_cache(cache_key, current_price)
+                        # Prioridad: bid > offer > mid
+                        for price_key in ['bid', 'offer', 'mid']:
+                            if price_key in price_data and price_data[price_key] is not None:
+                                try:
+                                    current_price = float(price_data[price_key])
+                                    if _validate_price(current_price, f"Capital.com-{price_key}"):
+                                        # Almacenar en cache solo precios válidos
+                                        self._store_in_cache(cache_key, current_price)
+                                        return current_price
+                                except (ValueError, TypeError) as e:
+                                    self.logger.warning(f"⚠️ Error convirtiendo precio {price_key}: {e}")
+                                    continue
                         
-                        return current_price
+                        self.logger.warning(f"⚠️ Capital.com no retornó precios válidos para {capital_symbol}")
+                        
                 except Exception as e:
-                    self.logger.warning(f"⚠️ Capital.com price fetch failed for {capital_symbol}: {e}")
+                    self.logger.error(f"🚨 Capital.com connection failed for {capital_symbol}: {e}")
             
             # Fallback: intentar obtener desde estrategias
             try:
                 if self.strategies:
                     strategy = next(iter(self.strategies.values()))
                     df = strategy.get_market_data(symbol, "1m", limit=1)
-                    fallback_price = float(df['close'].iloc[-1]) if not df.empty else 0.0
+                    if not df.empty:
+                        fallback_price = float(df['close'].iloc[-1])
+                        if _validate_price(fallback_price, "strategy-fallback"):
+                            # Cache del fallback también
+                            cache_key = self._get_cache_key("current_price", symbol)
+                            self._store_in_cache(cache_key, fallback_price)
+                            return fallback_price
                     
-                    # Cache del fallback también
-                    if fallback_price > 0:
-                        cache_key = self._get_cache_key("current_price", symbol)
-                        self._store_in_cache(cache_key, fallback_price)
-                    
-                    return fallback_price
-            except:
-                pass
-            return 0.0
+                    self.logger.warning(f"⚠️ Strategy fallback no retornó datos válidos para {symbol}")
+            except Exception as e:
+                self.logger.error(f"🚨 Strategy fallback failed for {symbol}: {e}")
+            
+            # CRÍTICO: No retornar 0.0 - lanzar excepción para evitar trades peligrosos
+            error_msg = f"🚨 CRÍTICO: No se pudo obtener precio válido para {symbol} de ninguna fuente"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        except ValueError:
+            # Re-lanzar errores de validación
+            raise
         except Exception as e:
-            self.logger.error(f"❌ Error getting current price for {symbol}: {e}")
-            return 0.0
+            error_msg = f"🚨 CRÍTICO: Error inesperado obteniendo precio para {symbol}: {e}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
     def _normalize_symbol_for_capital(self, symbol: str) -> str:
         """🔄 Normalizar símbolo para Capital.com (ya están en formato correcto)"""

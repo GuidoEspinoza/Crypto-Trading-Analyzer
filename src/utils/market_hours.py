@@ -209,7 +209,7 @@ class MarketHoursChecker:
                     closed_markets.append(market_type)
             else:
                 # Para INDICES y COMMODITIES, verificar horario de NY
-                ny_time = current_time.astimezone(self.timezones['US/Eastern'])
+                ny_time = current_time.astimezone(self.ny_tz)
                 current_time_only = ny_time.time()
                 
                 if (weekday < 5 and 

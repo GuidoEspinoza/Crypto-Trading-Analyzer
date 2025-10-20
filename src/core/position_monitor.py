@@ -192,9 +192,16 @@ class PositionMonitor:
                 # Recopilar precios actuales para todas las posiciones
                 market_data = {}
                 for position in active_positions:
-                    current_price = self._get_current_price(position.symbol)
-                    if current_price is not None:
+                    try:
+                        current_price = self._get_current_price(position.symbol)
                         market_data[position.symbol] = current_price
+                    except ValueError as e:
+                        logger.warning(f"⚠️ No se pudo obtener precio para {position.symbol}: {e}")
+                        # Continuar con otras posiciones
+                        continue
+                    except Exception as e:
+                        logger.error(f"🚨 Error inesperado obteniendo precio para {position.symbol}: {e}")
+                        continue
                 
                 # Actualizar trailing stops dinámicos
                 if market_data:
@@ -266,9 +273,13 @@ class PositionMonitor:
             return
         
         # Obtener precio actual
-        current_price = self._get_current_price(symbol)
-        if current_price is None:
-            logger.warning(f"⚠️ Could not get price for {symbol}")
+        try:
+            current_price = self._get_current_price(symbol)
+        except ValueError as e:
+            logger.warning(f"⚠️ No se pudo obtener precio para {symbol}: {e}")
+            return
+        except Exception as e:
+            logger.error(f"🚨 Error inesperado obteniendo precio para {symbol}: {e}")
             return
         
         # Actualizar precio en PositionManager

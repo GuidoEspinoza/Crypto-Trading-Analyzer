@@ -56,41 +56,65 @@ class TradingStrategy(ABC):
         pass
     
     def get_market_data(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> pd.DataFrame:
-        """Obtener datos de mercado usando Capital.com"""
+        """Obtener datos de mercado usando Capital.com - EVITA LOOP INFINITO"""
         try:
-            # Si hay TradingBot asignado, usar su método para obtener datos históricos
-            if hasattr(self, 'trading_bot') and self.trading_bot and hasattr(self.trading_bot, 'capital_client'):
-                # Usar Capital.com para obtener datos históricos
-                # Por ahora, crear un DataFrame básico con el precio actual
-                current_price = self.get_current_price(symbol)
-                if current_price > 0:
-                    # Crear DataFrame básico con datos simulados para compatibilidad
-                    import pandas as pd
-                    from datetime import datetime, timedelta
+            # Si hay TradingBot asignado y tiene capital_client, intentar obtener datos directamente
+            if (hasattr(self, 'trading_bot') and self.trading_bot and 
+                hasattr(self.trading_bot, 'capital_client') and 
+                self.trading_bot.capital_client is not None):
+                
+                try:
+                    # Intentar obtener precio directamente de Capital.com sin usar get_current_price
+                    # para evitar loop infinito
+                    capital_symbol = symbol  # Asumir que ya está normalizado
+                    market_data = self.trading_bot.capital_client.get_market_data([capital_symbol])
                     
-                    timestamps = [datetime.now() - timedelta(hours=i) for i in range(limit, 0, -1)]
-                    # Simular datos OHLCV básicos alrededor del precio actual
-                    data = []
-                    for ts in timestamps:
-                        # Variación pequeña alrededor del precio actual
-                        variation = 0.01 * (0.5 - abs(hash(str(ts)) % 100) / 100)
-                        price = current_price * (1 + variation)
-                        data.append({
-                            'timestamp': ts,
-                            'open': price,
-                            'high': price * 1.005,
-                            'low': price * 0.995,
-                            'close': price,
-                            'volume': 1000
-                        })
-                    
-                    df = pd.DataFrame(data)
-                    df.set_index('timestamp', inplace=True)
-                    df.sort_index(inplace=True)
-                    return df
+                    if market_data and capital_symbol in market_data:
+                        price_data = market_data[capital_symbol]
+                        current_price = None
+                        
+                        # Intentar obtener precio válido
+                        for price_key in ['bid', 'offer', 'mid']:
+                            if price_key in price_data and price_data[price_key] is not None:
+                                try:
+                                    current_price = float(price_data[price_key])
+                                    if current_price > 0:
+                                        break
+                                except (ValueError, TypeError):
+                                    continue
+                        
+                        if current_price and current_price > 0:
+                            # Crear DataFrame básico con datos simulados para compatibilidad
+                            import pandas as pd
+                            from datetime import datetime, timedelta
+                            
+                            timestamps = [datetime.now() - timedelta(hours=i) for i in range(limit, 0, -1)]
+                            # Simular datos OHLCV básicos alrededor del precio actual
+                            data = []
+                            for ts in timestamps:
+                                # Variación pequeña alrededor del precio actual
+                                variation = 0.01 * (0.5 - abs(hash(str(ts)) % 100) / 100)
+                                price = current_price * (1 + variation)
+                                data.append({
+                                    'timestamp': ts,
+                                    'open': price,
+                                    'high': price * 1.005,
+                                    'low': price * 0.995,
+                                    'close': price,
+                                    'volume': 1000
+                                })
+                            
+                            df = pd.DataFrame(data)
+                            df.set_index('timestamp', inplace=True)
+                            df.sort_index(inplace=True)
+                            return df
+                            
+                except Exception as e:
+                    logging.warning(f"Error obteniendo datos de Capital.com para {symbol}: {e}")
             
-            # Fallback: DataFrame vacío
+            # Fallback: DataFrame vacío (NO intentar get_current_price para evitar loop)
             import pandas as pd
+            logging.warning(f"No se pudieron obtener datos de mercado para {symbol} - retornando DataFrame vacío")
             return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
             
         except Exception as e:
@@ -100,28 +124,56 @@ class TradingStrategy(ABC):
     
     def get_current_price(self, symbol: str) -> float:
         """Obtener precio actual del símbolo usando fuente centralizada si está disponible, con cache TTL"""
+        import math
+        
+        def _validate_price(price: float) -> bool:
+            """Validar que el precio sea válido y seguro para trading"""
+            return (price is not None and 
+                    not math.isnan(price) and 
+                    not math.isinf(price) and 
+                    price > 0)
+        
         try:
             # Si hay TradingBot asignado, delegar para usar cache centralizado y normalización consistente
             if hasattr(self, 'trading_bot') and self.trading_bot:
-                price = self.trading_bot._get_current_price(symbol)
-                if price and price > 0:
-                    return float(price)
+                try:
+                    price = self.trading_bot._get_current_price(symbol)
+                    if _validate_price(price):
+                        return float(price)
+                except ValueError as e:
+                    # TradingBot ahora lanza ValueError cuando no puede obtener precio válido
+                    logging.warning(f"TradingBot no pudo obtener precio para {symbol}: {e}")
+                except Exception as e:
+                    logging.error(f"Error inesperado en TradingBot para {symbol}: {e}")
             
-            # Fallback: retornar 0 si no hay TradingBot disponible
-            logging.warning(f"No TradingBot available for price lookup of {symbol}")
-            return 0.0
-        except Exception as e:
-            logging.error(f"Error getting current price for {symbol}: {e}")
-            # Fallback: usar el último precio de los datos históricos
+            # Fallback: usar datos históricos como último recurso
             try:
                 df = self.get_market_data(symbol, "1m", limit=1)
-                fallback = float(df['close'].iloc[-1]) if not df.empty else 0.0
-                if fallback > 0:
-                    cache_key = self._get_cache_key("strategy_current_price", symbol)
-                    self._store_in_cache(cache_key, fallback)
-                return fallback
-            except:
-                return 0.0
+                if not df.empty:
+                    fallback_price = float(df['close'].iloc[-1])
+                    if _validate_price(fallback_price):
+                        cache_key = self._get_cache_key("strategy_current_price", symbol)
+                        self._store_in_cache(cache_key, fallback_price)
+                        return fallback_price
+                    else:
+                        logging.warning(f"Precio histórico inválido para {symbol}: {fallback_price}")
+                else:
+                    logging.warning(f"No hay datos históricos disponibles para {symbol}")
+            except Exception as e:
+                logging.error(f"Error obteniendo datos históricos para {symbol}: {e}")
+            
+            # CRÍTICO: No retornar 0.0 - lanzar excepción para evitar trades peligrosos
+            error_msg = f"🚨 CRÍTICO: No se pudo obtener precio válido para {symbol} desde estrategia"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+            
+        except ValueError:
+            # Re-lanzar errores de validación
+            raise
+        except Exception as e:
+            error_msg = f"🚨 CRÍTICO: Error inesperado obteniendo precio en estrategia para {symbol}: {e}"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
 
 # Importar AdvancedIndicators con path absoluto
 import sys

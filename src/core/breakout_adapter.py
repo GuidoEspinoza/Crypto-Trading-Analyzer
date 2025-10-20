@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 from src.core.breakout_professional import BreakoutProfessional, BreakoutSignal, BreakoutDirection
 from src.core.enhanced_strategies import EnhancedSignal, TradingStrategy
+from src.config.main_config import StrategyConfig, TradingBotConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ class BreakoutAdapter(TradingStrategy):
         
         # Inyectar el método get_market_data de la clase padre en la estrategia
         self.strategy.get_market_data = self.get_market_data
+        
+        # Exponer min_confidence desde la configuración centralizada
+        self.min_confidence = TradingBotConfig.get_min_confidence_threshold()
         
         logger.info(f"✅ {self.name} adapter inicializado")
     

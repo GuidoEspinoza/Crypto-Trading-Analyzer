@@ -313,20 +313,55 @@ class PaperTrader:
         """
         try:
             # Validaciones básicas
-            if not hasattr(signal, 'symbol') or not signal.symbol:
-                self.logger.warning("❌ Signal missing symbol")
+            if not hasattr(signal, 'symbol') or not signal.symbol or not signal.symbol.strip():
+                self.logger.warning("❌ Signal missing or empty symbol")
                 return False
                 
             if not hasattr(signal, 'signal_type') or not signal.signal_type:
                 self.logger.warning("❌ Signal missing signal_type")
                 return False
-                
-            if not hasattr(signal, 'price') or signal.price <= 0:
-                self.logger.warning("❌ Signal missing or invalid price")
+            
+            # Validar signal_type
+            if signal.signal_type.upper() not in ["BUY", "SELL"]:
+                self.logger.warning(f"❌ Invalid signal_type: {signal.signal_type}. Must be BUY or SELL")
                 return False
                 
-            if not hasattr(signal, 'confidence_score') or signal.confidence_score < self.min_confidence_threshold:
-                self.logger.warning(f"❌ Signal confidence too low: {signal.confidence_score} < {self.min_confidence_threshold}")
+            # Validación robusta de precio
+            if not hasattr(signal, 'price'):
+                self.logger.warning("❌ Signal missing price")
+                return False
+            
+            # Verificar que el precio sea un número válido
+            try:
+                price = float(signal.price)
+                if price <= 0:
+                    self.logger.warning(f"❌ Signal price must be positive: {price}")
+                    return False
+                if not isinstance(price, (int, float)) or price != price:  # NaN check
+                    self.logger.warning(f"❌ Signal price is NaN: {signal.price}")
+                    return False
+                if price == float('inf') or price == float('-inf'):
+                    self.logger.warning(f"❌ Signal price is infinite: {price}")
+                    return False
+            except (ValueError, TypeError):
+                self.logger.warning(f"❌ Signal price is not a valid number: {signal.price}")
+                return False
+                
+            # Validación de confidence_score
+            if not hasattr(signal, 'confidence_score'):
+                self.logger.warning("❌ Signal missing confidence_score")
+                return False
+            
+            try:
+                confidence = float(signal.confidence_score)
+                if confidence < 0 or confidence > 100:
+                    self.logger.warning(f"❌ Signal confidence_score out of range: {confidence}. Must be between 0-100")
+                    return False
+                if confidence < self.min_confidence_threshold:
+                    self.logger.warning(f"❌ Signal confidence too low: {confidence} < {self.min_confidence_threshold}")
+                    return False
+            except (ValueError, TypeError):
+                self.logger.warning(f"❌ Signal confidence_score is not a valid number: {signal.confidence_score}")
                 return False
             
             return True
@@ -723,6 +758,16 @@ class PaperTrader:
             self.logger.error(f"❌ Error getting balance for {symbol}: {e}")
             return 0.0
     
+    @property
+    def balance(self) -> float:
+        """
+        💰 Propiedad para obtener el balance USD actual
+        
+        Returns:
+            float: Balance USD disponible
+        """
+        return self.get_balance("USD")
+    
     def _update_usd_balance(self, amount: float):
         """
         💵 Actualizar balance de USD
@@ -963,8 +1008,20 @@ class PaperTrader:
                     self.logger.warning(f"❌ Missing required field: {field}")
                     return False
             
-            if trade_data["price"] <= 0:
-                self.logger.warning("❌ Invalid price")
+            # Validación robusta de precio
+            try:
+                price = float(trade_data["price"])
+                if price <= 0:
+                    self.logger.warning(f"❌ Trade price must be positive: {price}")
+                    return False
+                if not isinstance(price, (int, float)) or price != price:  # NaN check
+                    self.logger.warning(f"❌ Trade price is NaN: {trade_data['price']}")
+                    return False
+                if price == float('inf') or price == float('-inf'):
+                    self.logger.warning(f"❌ Trade price is infinite: {price}")
+                    return False
+            except (ValueError, TypeError):
+                self.logger.warning(f"❌ Trade price is not a valid number: {trade_data['price']}")
                 return False
             
             if trade_data["action"].upper() not in ["BUY", "SELL"]:

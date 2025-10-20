@@ -23,7 +23,7 @@
 - **Confianza mínima**: 65%
 - **Riesgo por trade**: 1.5%
 
-### 🏛️ ELITE - Precisión Institucional
+### ⚡ SCALPING - Ganancias Ultra-Rápidas CFD
 - **Objetivo**: Señales de alta calidad y precisión
 - **Timeframes**: 15m, 30m, 1h
 - **Análisis**: Cada 10 minutos
@@ -31,7 +31,7 @@
 - **Confianza mínima**: 75%
 - **Riesgo por trade**: 1.8%
 
-### 🛡️ CONSERVADOR - Protección de Capital
+### 📈 INTRADAY - Operaciones Diarias Balanceadas CFD
 - **Objetivo**: Mínima pérdida, crecimiento estable
 - **Timeframes**: 1h, 4h, 1d
 - **Análisis**: Cada 30 minutos
@@ -126,7 +126,7 @@ python3 main.py --report
 
 ```env
 # Configuración Principal
-TRADING_PROFILE=RAPIDO     # RAPIDO | ELITE | CONSERVADOR
+TRADING_PROFILE=SCALPING   # SCALPING | INTRADAY
 TRADING_MODE=paper         # paper | live
 ANALYSIS_INTERVAL=5        # minutos
 
@@ -172,8 +172,8 @@ crypto-trading-analyzer/
 ### 🚀 Ejecución Principal
 ```bash
 # Iniciar bot con perfil específico
-python3 main.py --profile RAPIDO
-python3 main.py --profile CONSERVADOR
+python3 main.py --profile SCALPING
+python3 main.py --profile INTRADAY
 
 # Monitoreo directo en Capital.com
 # Todas las estadísticas disponibles en la plataforma

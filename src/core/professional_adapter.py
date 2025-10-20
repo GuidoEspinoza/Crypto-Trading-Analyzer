@@ -14,6 +14,7 @@ from dataclasses import dataclass
 # Importar el sistema existente
 from .enhanced_strategies import TradingSignal, TradingStrategy, EnhancedSignal
 from .capital_client import CapitalClient
+from ..config.main_config import StrategyConfig, TradingBotConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,9 @@ class ProfessionalStrategyAdapter(TradingStrategy):
         
         # Configuración del adaptador
         self.min_professional_score = 70  # Umbral más bajo para testing
+        
+        # Exponer min_confidence desde la configuración centralizada
+        self.min_confidence = TradingBotConfig.get_min_confidence_threshold()
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis simplificado para diagnóstico"""

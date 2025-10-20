@@ -75,7 +75,7 @@ def change_trading_profile(new_profile: str) -> bool:
     Cambiar el perfil de trading modificando el archivo main_config.py
     
     Args:
-        new_profile: Nuevo perfil a establecer ("RAPIDO", "ELITE", "CONSERVADOR")
+        new_profile: Nuevo perfil a establecer ("SCALPING", "INTRADAY")
     
     Returns:
         bool: True si el cambio fue exitoso, False en caso contrario
@@ -241,7 +241,7 @@ class ProfileUpdate(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "profile": "ELITE",
+                "profile": "INTRADAY",
                 "restart_bot": True
             }
         }
@@ -748,9 +748,8 @@ async def update_trading_profile(profile_config: ProfileUpdate):
     🔄 Cambiar el perfil de trading activo
     
     **Perfiles disponibles:**
-    - **RAPIDO**: Timeframes 1m-15m, análisis cada 5 min, máxima frecuencia
-    - **ELITE**: Timeframes 15m-4h, análisis cada 30 min, equilibrio óptimo  
-    - **CONSERVADOR**: Timeframes 1h-1d, análisis cada 60 min, máxima estabilidad
+    - **SCALPING**: Timeframes 1m-5m, análisis cada 5 min, ganancias ultra-rápidas CFD
+        - **INTRADAY**: Timeframes 15m-1h, análisis cada 15 min, operaciones diarias balanceadas CFD
     
     **Funcionalidad:** Cambia automáticamente el perfil modificando el archivo de configuración.
     El bot se reiniciará automáticamente si `restart_bot=True`.

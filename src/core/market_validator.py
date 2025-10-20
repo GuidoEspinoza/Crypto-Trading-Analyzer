@@ -82,23 +82,50 @@ class MarketValidator:
     
     def _get_current_price(self, symbol: str) -> float:
         """💰 Obtener precio actual usando Capital.com"""
+        import math
+        
+        def _validate_price(price: float) -> bool:
+            """Validar que el precio sea válido y seguro para trading"""
+            return (price is not None and 
+                    not math.isnan(price) and 
+                    not math.isinf(price) and 
+                    price > 0)
+        
         try:
             # Si tenemos referencia a TradingBot, usar su método centralizado
             if hasattr(self, 'trading_bot') and self.trading_bot:
-                return float(self.trading_bot._get_current_price(symbol))
+                try:
+                    price = self.trading_bot._get_current_price(symbol)
+                    if _validate_price(price):
+                        return float(price)
+                except ValueError as e:
+                    self.logger.warning(f"TradingBot no pudo obtener precio para {symbol}: {e}")
+                except Exception as e:
+                    self.logger.error(f"Error inesperado en TradingBot para {symbol}: {e}")
             
             # Fallback: usar Capital.com directamente si está disponible
             if hasattr(self, 'capital_client') and self.capital_client:
                 try:
                     price = self.capital_client.get_current_price(symbol)
-                    if price > 0:
+                    if _validate_price(price):
                         return price
+                    else:
+                        self.logger.warning(f"Capital.com retornó precio inválido para {symbol}: {price}")
                 except Exception as e:
                     self.logger.warning(f"Error obteniendo precio de Capital.com para {symbol}: {e}")
             
-            # Sin fallback a base de datos - solo Capital.com
-            self.logger.warning(f"No se pudo obtener precio para {symbol}")
-            return 0.0
+            # CRÍTICO: No retornar 0.0 - lanzar excepción para evitar validaciones incorrectas
+            error_msg = f"🚨 CRÍTICO: No se pudo obtener precio válido para {symbol} en market_validator"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        except ValueError:
+            # Re-lanzar errores de validación
+            raise
+        except Exception as e:
+            error_msg = f"🚨 CRÍTICO: Error inesperado obteniendo precio en market_validator para {symbol}: {e}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
         except Exception as e:
             self.logger.error(f"❌ Error fetching current price for {symbol}: {e}")
             return 0.0
