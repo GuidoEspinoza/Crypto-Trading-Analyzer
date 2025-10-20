@@ -828,12 +828,17 @@ class TradingBot:
     
     def _process_signals(self, signals: List[TradingSignal]):
         """
-        🎯 Procesar y ejecutar señales de trading
+        🎯 Procesar y ejecutar señales de trading con flujo secuencial
+        
+        FLUJO OPTIMIZADO:
+        1. Obtener balance disponible
+        2. Analizar una señal -> ejecutar trade
+        3. Actualizar balance disponible
+        4. Repetir para la siguiente señal
         
         Args:
             signals: Lista de señales generadas
         """
-
         
         # Filtrar señales por confianza mínima
         high_confidence_signals = [
@@ -848,15 +853,13 @@ class TradingBot:
         # Ordenar por confianza (mayor primero)
         high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
         
-        # Obtener valor actual del portfolio
-        portfolio_summary = self.get_portfolio_summary()
-        portfolio_value = portfolio_summary.get("total_value", 1000.0)  # Valor por defecto
+        self.logger.info(f"🎯 Processing {len(high_confidence_signals)} high-confidence signals sequentially...")
         
-        self.logger.info(f"💼 Current portfolio value: ${portfolio_value:,.2f}")
-        
-        # Procesar cada señal
-        for signal in high_confidence_signals:
+        # Procesar cada señal de forma secuencial con balance actualizado
+        for i, signal in enumerate(high_confidence_signals, 1):
             try:
+                self.logger.info(f"📊 Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}")
+                
                 # Verificar límite diario
                 if self.stats["daily_trades"] >= self.max_daily_trades:
                     self.logger.info("⏸️ Daily trade limit reached")
@@ -875,7 +878,14 @@ class TradingBot:
                 
                 self.logger.info(f"✅ {signal.symbol}: {market_reason}")
                 
-                # Análisis de riesgo
+                # 🔄 PASO 1: Obtener balance actualizado antes de cada análisis
+                portfolio_summary = self.get_portfolio_summary()
+                portfolio_value = portfolio_summary.get("total_value", 1000.0)
+                available_balance = portfolio_summary.get("available_balance", portfolio_value)
+                
+                self.logger.info(f"💰 Updated balance for {signal.symbol}: Total=${portfolio_value:,.2f}, Available=${available_balance:,.2f}")
+                
+                # 🔄 PASO 2: Análisis de riesgo con balance actualizado
                 risk_assessment = self.risk_manager.assess_trade_risk(signal, portfolio_value)
                 
                 self.logger.info(f"🛡️ Risk assessment for {signal.symbol}:")
@@ -884,7 +894,7 @@ class TradingBot:
                 self.logger.info(f"   - Approved: {risk_assessment.is_approved}")
                 self.logger.info(f"   - Risk Level: {risk_assessment.risk_level.value}")
                 
-                # Ejecutar si está aprobado
+                # 🔄 PASO 3: Ejecutar trade si está aprobado
                 if risk_assessment.is_approved and self.enable_trading:
                     # Ejecutar paper trade siempre
                     trade_result = self.paper_trader.execute_signal(signal)
@@ -933,6 +943,9 @@ class TradingBot:
                                 log_message += f" | 🔴 Real Trade: FAILED - {real_trade_result.get('error', 'Unknown error')}"
                         
                         self.logger.info(log_message)
+                        
+                        # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
+                        self.logger.info(f"🔄 Trade completed for {signal.symbol}. Balance will be refreshed for next signal.")
                         
                         # Emitir evento de trade ejecutado
                         self._emit_trade_event(signal, trade_result, risk_assessment)
