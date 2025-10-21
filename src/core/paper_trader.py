@@ -721,12 +721,28 @@ class PaperTrader:
             total_value = sum(pos["current_value"] for pos in self.portfolio.values())
             total_pnl = sum(pos["unrealized_pnl"] for pos in self.portfolio.values())
             
+            # Crear lista de assets (posiciones abiertas)
+            assets = []
+            for symbol, position in self.portfolio.items():
+                if symbol != "USD" and position["quantity"] != 0:
+                    assets.append({
+                        "symbol": symbol,
+                        "quantity": position["quantity"],
+                        "avg_price": position["avg_price"],
+                        "current_price": position["current_price"],
+                        "current_value": position["current_value"],
+                        "unrealized_pnl": position["unrealized_pnl"],
+                        "unrealized_pnl_percentage": position["unrealized_pnl_percentage"]
+                    })
+            
             return {
                 "total_value": total_value,
                 "initial_balance": self.initial_balance,
+                "available_balance": self.portfolio.get("USD", {}).get("quantity", 0.0),
                 "total_pnl": total_pnl,
                 "total_pnl_percentage": (total_pnl / self.initial_balance) * 100 if self.initial_balance > 0 else 0.0,
-                "positions": len([pos for pos in self.portfolio.values() if pos["quantity"] > 0]),
+                "positions": len([pos for pos in self.portfolio.values() if pos["quantity"] != 0]),
+                "assets": assets,
                 "last_updated": datetime.now()
             }
         except Exception as e:
@@ -734,9 +750,11 @@ class PaperTrader:
             return {
                 "total_value": self.initial_balance,
                 "initial_balance": self.initial_balance,
+                "available_balance": self.initial_balance,
                 "total_pnl": 0.0,
                 "total_pnl_percentage": 0.0,
                 "positions": 0,
+                "assets": [],
                 "last_updated": datetime.now()
             }
     
@@ -858,7 +876,7 @@ class PaperTrader:
         try:
             positions = []
             for symbol, position in self.portfolio.items():
-                if symbol != "USD" and position["quantity"] > 0:
+                if symbol != "USD" and position["quantity"] != 0:  # Incluir tanto posiciones largas como cortas
                     positions.append({
                         "symbol": symbol,
                         "quantity": position["quantity"],

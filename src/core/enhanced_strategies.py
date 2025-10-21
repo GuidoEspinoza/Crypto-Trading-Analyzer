@@ -208,20 +208,18 @@ class EnhancedTradingStrategy(TradingStrategy):
     
     def __init__(self, name: str, enable_filters: bool = True):
         super().__init__(name)
-        # Importar configuración para obtener valores del perfil activo
-        from src.config.main_config import StrategyConfig
-        config = StrategyConfig.ProfessionalRSI()
-        self.min_volume_ratio = config.get_min_volume_ratio()  # Volumen según perfil activo
-        self.min_confluence = config.get_min_confluence()  # Confluencia según perfil activo
+        # Usar configuración base disponible
+        from src.config.main_config import TradingProfiles
+        profile = TradingProfiles.get_current_profile()
+        self.min_volume_ratio = profile.get("min_volume_ratio", 1.5)  # Volumen según perfil activo
+        self.min_confluence = profile.get("min_confluence", 3)  # Confluencia según perfil activo
         # Signal filters deshabilitados (módulo eliminado)
         self.signal_filter = None
         
         # Configuración avanzada de confluencia desde configuración centralizada
         self.confluence_weights = ConfluenceConfig.COMPONENT_WEIGHTS.copy()
-        # Sobrescribir peso de volumen si está disponible en el perfil
-        if hasattr(config, 'get_volume_weight'):
-            self.confluence_weights["volume"] = config.get_volume_weight()
-        self.min_confluence_score = config.get_confluence_threshold() if hasattr(config, 'get_confluence_threshold') else ConfluenceConfig.CONFLUENCE_THRESHOLDS["strong"]
+        # Usar valores por defecto para confluencia
+        self.min_confluence_score = ConfluenceConfig.CONFLUENCE_THRESHOLDS["strong"]
     
     @classmethod
     def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
@@ -823,21 +821,22 @@ class ProfessionalRSIStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Professional_RSI_Enhanced")
         
-        # Configuración desde archivo centralizado
-        self.config = StrategyConfig.ProfessionalRSI()
-        self.min_confidence = self.config.get_min_confidence()
-        self.rsi_oversold = self.config.get_rsi_oversold()
-        self.rsi_overbought = self.config.get_rsi_overbought()
-        self.rsi_period = self.config.get_rsi_period()
+        # Usar configuración del perfil activo
+        from src.config.main_config import TradingProfiles
+        profile = TradingProfiles.get_current_profile()
+        self.min_confidence = profile.get("rsi_min_confidence", 65.0)
+        self.rsi_oversold = profile.get("rsi_oversold", 30)
+        self.rsi_overbought = profile.get("rsi_overbought", 70)
+        self.rsi_period = profile.get("rsi_period", 14)
         
         # Configuración de confirmaciones
-        self.min_volume_ratio = self.config.get_min_volume_ratio()
-        self.min_confluence = self.config.get_min_confluence()
-        self.trend_strength_threshold = self.config.get_trend_strength_threshold()
+        self.min_volume_ratio = profile.get("min_volume_ratio", 1.5)
+        self.min_confluence = profile.get("min_confluence", 3)
+        self.trend_strength_threshold = profile.get("trend_strength_threshold", 40)
         
-        # Configuración de filtros de calidad (usar fallbacks si no existen métodos)
-        self.min_atr_ratio = getattr(self.config, 'MIN_ATR_RATIO', 0.8)
-        self.max_spread_threshold = getattr(self.config, 'MAX_SPREAD_THRESHOLD', 0.002)
+        # Configuración de filtros de calidad
+        self.min_atr_ratio = profile.get("min_atr_ratio", 0.8)
+        self.max_spread_threshold = 0.002
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis RSI profesional con confirmaciones avanzadas"""
@@ -1108,17 +1107,18 @@ class MultiTimeframeStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Multi_Timeframe")
         
-        # Configuración desde archivo centralizado
-        self.config = StrategyConfig.MultiTimeframe()
-        self.timeframes = self.config.get_timeframes()
-        self.min_confidence = self.config.get_min_confidence()
-        self.enhanced_confidence = self.config.get_enhanced_confidence()
-        self.rsi_config = getattr(self.config, 'RSI_CONFIG', {"1m": {"oversold": 35, "overbought": 65}})
+        # Usar configuración del perfil activo
+        from src.config.main_config import TradingProfiles
+        profile = TradingProfiles.get_current_profile()
+        self.timeframes = profile.get("timeframes", ["1m", "5m", "15m", "1h"])
+        self.min_confidence = profile.get("min_confidence", 65.0)
+        self.enhanced_confidence = profile.get("enhanced_confidence", 80.0)
+        self.rsi_config = {"1m": {"oversold": 35, "overbought": 65}}
         # Usar pesos dinámicos por timeframe según perfil activo
-        self.timeframe_weights = self.config.get_timeframe_weights()
-        self.min_timeframe_consensus = self.config.get_min_timeframe_consensus()
-        self.trend_alignment_required = self.config.get_trend_alignment_required()
-        self.min_consensus_ratio = self.config.get_min_consensus()
+        self.timeframe_weights = profile.get("timeframe_weights", {"1m": 0.2, "5m": 0.3, "15m": 0.3, "1h": 0.2})
+        self.min_timeframe_consensus = profile.get("min_timeframe_consensus", 0.6)
+        self.trend_alignment_required = profile.get("trend_alignment_required", True)
+        self.min_consensus_ratio = profile.get("min_consensus", 0.6)
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis multi-timeframe"""
@@ -1270,19 +1270,20 @@ class EnsembleStrategy(EnhancedTradingStrategy):
     def __init__(self):
         super().__init__("Ensemble_Master")
         
-        # Configuración desde archivo centralizado
-        self.config = StrategyConfig.Ensemble()
+        # Usar configuración del perfil activo
+        from src.config.main_config import TradingProfiles
+        profile = TradingProfiles.get_current_profile()
         
         # Inicializar sub-estrategias
         self.rsi_strategy = ProfessionalRSIStrategy()
         self.mtf_strategy = MultiTimeframeStrategy()
         
         # Pesos para cada estrategia (basado en performance histórica)
-        self.strategy_weights = getattr(self.config, 'STRATEGY_WEIGHTS', {"Professional_RSI": 0.4, "Multi_Timeframe": 0.6})
+        self.strategy_weights = profile.get("strategy_weights", {"Professional_RSI": 0.4, "Multi_Timeframe": 0.6})
         
         # Configuración de consenso
-        self.min_consensus_threshold = self.config.get_min_consensus_threshold()
-        self.confidence_boost_factor = self.config.get_confidence_boost_factor()
+        self.min_consensus_threshold = profile.get("min_consensus_threshold", 0.6)
+        self.confidence_boost_factor = profile.get("confidence_boost_factor", 1.2)
         
     def analyze(self, symbol: str, timeframe: str = "1h") -> EnhancedSignal:
         """Análisis ensemble combinando múltiples estrategias"""

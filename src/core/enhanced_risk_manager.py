@@ -54,7 +54,7 @@ class DynamicStopLoss:
 
 @dataclass
 class DynamicTakeProfit:
-    """Take profit dinámico y ajustable"""
+    """Take profit dinámico"""
     initial_tp: float
     current_tp: float
     trailing_tp: float
@@ -62,9 +62,7 @@ class DynamicTakeProfit:
     tp_type: str  # FIXED, TRAILING, DYNAMIC
     last_update: datetime
     take_profit_price: float = 0.0  # Precio actual del take profit
-    confidence_threshold: float = 0.0  # Umbral de confianza para ajustar TP
-    max_tp_adjustments: int = 5  # Máximo número de ajustes permitidos (se inicializa desde config)
-    adjustments_made: int = 0  # Número de ajustes realizados
+    confidence_threshold: float = 0.0  # Umbral de confianza para TP
 
 @dataclass
 class EnhancedRiskAssessment:
@@ -474,25 +472,22 @@ class EnhancedRiskManager:
                 tp_type="DYNAMIC",
                 last_update=datetime.now(),
                 take_profit_price=round(initial_tp, 2),
-                confidence_threshold=confidence_threshold,
-                max_tp_adjustments=risk_config.get_max_tp_adjustments(),
-                adjustments_made=0
+                confidence_threshold=confidence_threshold
             )
             
         except Exception as e:
             logger.error(f"Error configuring dynamic take profit: {e}")
+            fallback_profile = TradingProfiles.get_current_profile()
             tp_price = signal.price * 1.06 if signal.signal_type == "BUY" else signal.price * 0.94
             return DynamicTakeProfit(
                 initial_tp=tp_price,
                 current_tp=tp_price,
                 trailing_tp=tp_price,
-                tp_increment_pct=profile['tp_increment_base_pct'],
+                tp_increment_pct=fallback_profile['tp_increment_base_pct'],
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=tp_price,
-                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold(),
-                max_tp_adjustments=RiskManagerConfig().get_max_tp_adjustments(),
-                adjustments_made=0
+                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold()
             )
     
     def _calculate_portfolio_risk_metrics(self) -> Dict:
@@ -616,6 +611,7 @@ class EnhancedRiskManager:
     
     def _create_default_risk_assessment(self, signal: EnhancedSignal) -> EnhancedRiskAssessment:
         """Crear evaluación de riesgo por defecto en caso de error"""
+        fallback_profile = TradingProfiles.get_current_profile()
         default_stop_price = signal.price * 0.95 if signal.signal_type == "BUY" else signal.price * 1.05
         default_tp_price = signal.price * 1.06 if signal.signal_type == "BUY" else signal.price * 0.94
         default_trailing_distance = abs(signal.price - default_stop_price) / signal.price * 100
@@ -627,7 +623,7 @@ class EnhancedRiskManager:
                 max_position_size=self.portfolio_value * 0.01,
                 risk_per_trade=self.portfolio_value * 0.01,
                 position_value=self.min_position_size,
-                leverage_used=profile['default_leverage'],
+                leverage_used=fallback_profile['default_leverage'],
                 risk_level=RiskLevel.HIGH,
                 reasoning="Error in calculation - using conservative defaults",
                 max_risk_amount=round(self.portfolio_value * 0.01, 2)
@@ -646,13 +642,11 @@ class EnhancedRiskManager:
                 initial_tp=default_tp_price,
                 current_tp=default_tp_price,
                 trailing_tp=default_tp_price,
-                tp_increment_pct=profile['tp_increment_base_pct'],
+                tp_increment_pct=fallback_profile['tp_increment_base_pct'],
                 tp_type="FIXED",
                 last_update=datetime.now(),
                 take_profit_price=default_tp_price,
-                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold(),
-                max_tp_adjustments=RiskManagerConfig().get_max_tp_adjustments(),
-                adjustments_made=0
+                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold()
             ),
             market_risk_factors={"error": "Could not calculate risk factors"},
             portfolio_risk_metrics={"error": "Could not calculate portfolio metrics"},
@@ -835,17 +829,11 @@ class EnhancedRiskManager:
                 tp_type=dynamic_tp.tp_type,
                 last_update=datetime.now(),
                 take_profit_price=dynamic_tp.take_profit_price,
-                confidence_threshold=dynamic_tp.confidence_threshold,
-                max_tp_adjustments=dynamic_tp.max_tp_adjustments,
-                adjustments_made=dynamic_tp.adjustments_made
+                confidence_threshold=dynamic_tp.confidence_threshold
             )
             
             # Solo actualizar si hay ganancias significativas
             if current_profit_pct < RiskManagerConfig.get_tp_min_percentage():  # Umbral mínimo configurado (decimal)
-                return updated_tp
-            
-            # Verificar si ya se alcanzó el máximo de ajustes
-            if updated_tp.adjustments_made >= updated_tp.max_tp_adjustments:
                 return updated_tp
             
             # Calcular nuevo take profit basado en ganancias
@@ -862,7 +850,6 @@ class EnhancedRiskManager:
                         updated_tp.current_tp = round(new_tp, 2)
                         updated_tp.trailing_tp = round(new_tp, 2)
                         updated_tp.take_profit_price = round(new_tp, 2)
-                        updated_tp.adjustments_made += 1
                         
                         logger.info(f"TP dinámico actualizado (BUY): {updated_tp.current_tp} "
                                   f"(ganancia: {current_profit_pct*100:.2f}%)")
@@ -878,7 +865,6 @@ class EnhancedRiskManager:
                         updated_tp.current_tp = round(new_tp, 2)
                         updated_tp.trailing_tp = round(new_tp, 2)
                         updated_tp.take_profit_price = round(new_tp, 2)
-                        updated_tp.adjustments_made += 1
                         
                         logger.info(f"TP dinámico actualizado (SELL): {updated_tp.current_tp} "
                                   f"(ganancia: {current_profit_pct*100:.2f}%)")
