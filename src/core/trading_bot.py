@@ -1579,8 +1579,8 @@ class TradingBot:
             if current_profile in ["Scalping", "Intraday"]:
                 # Para perfiles ROI, recalcular TP/SL basado en ROI del balance invertido
                 try:
-                    from .enhanced_strategies import EnhancedTradingStrategy
-                    strategy_instance = EnhancedTradingStrategy()
+                    from .enhanced_strategies import ProfessionalRSIStrategy
+                    strategy_instance = ProfessionalRSIStrategy()
                     
                     # Obtener ATR para el cálculo
                     current_price = self._get_current_price(symbol)
