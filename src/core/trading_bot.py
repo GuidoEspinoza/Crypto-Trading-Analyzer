@@ -1579,8 +1579,8 @@ class TradingBot:
             if current_profile in ["Scalping", "Intraday"]:
                 # Para perfiles ROI, recalcular TP/SL basado en ROI del balance invertido
                 try:
-                    from .enhanced_strategies import ProfessionalRSIStrategy
-                    strategy_instance = ProfessionalRSIStrategy()
+                    from .trend_following_professional import TrendFollowingProfessional
+                    strategy_instance = TrendFollowingProfessional()
                     
                     # Obtener ATR para el cálculo
                     current_price = self._get_current_price(symbol)
@@ -1675,8 +1675,19 @@ class TradingBot:
                         self.logger.info(f"🔴 BUY order with traditional stop loss")
                 self.logger.info(f"🔴 Respuesta de Capital.com BUY: {result}")
             elif signal.signal_type == "SELL":
-                # Para SELL, primero verificar si tenemos posiciones abiertas
-                self.logger.info(f"🔴 Verificando posiciones existentes para SELL...")
+                # Verificar modo hedging antes de decidir si cerrar o abrir nueva posición
+                self.logger.info(f"🔴 Verificando modo hedging y posiciones existentes para SELL...")
+                
+                # Obtener preferencias de cuenta para verificar modo hedging
+                preferences_result = self.capital_client.get_account_preferences()
+                hedging_mode = False
+                if preferences_result.get("success"):
+                    hedging_mode = preferences_result.get("hedging_mode", False)
+                    self.logger.info(f"🔄 Modo hedging: {'ACTIVADO' if hedging_mode else 'DESACTIVADO'}")
+                else:
+                    self.logger.warning(f"⚠️ No se pudo obtener preferencias de cuenta: {preferences_result.get('error')}")
+                
+                # Obtener posiciones existentes
                 positions_result = self.capital_client.get_positions()
                 if not positions_result.get("success"):
                     return {
@@ -1691,13 +1702,13 @@ class TradingBot:
                         open_position = position
                         break
                 
-                if open_position:
-                    # Cerrar posición existente
+                if open_position and not hedging_mode:
+                    # Solo cerrar posición existente si NO está en modo hedging
                     deal_id = open_position.get("position", {}).get("dealId")
                     position_size = abs(float(open_position.get("position", {}).get("size", 0)))
                     close_size = min(real_size, position_size)
                     
-                    self.logger.info(f"🔴 Cerrando posición existente - Deal ID: {deal_id}, Size: {close_size}")
+                    self.logger.info(f"🔴 Cerrando posición existente (modo normal) - Deal ID: {deal_id}, Size: {close_size}")
                     result = self.capital_client.close_position(
                         deal_id=deal_id,
                         direction="SELL",
@@ -1705,8 +1716,12 @@ class TradingBot:
                     )
                     self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {result}")
                 else:
-                    # Abrir nueva posición de venta
-                    self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+                    # Abrir nueva posición de venta (siempre en modo hedging, o si no hay posición existente)
+                    if hedging_mode and open_position:
+                        self.logger.info(f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)")
+                    else:
+                        self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+                    
                     if trailing_stop_available and trailing_distance:
                         result = self.capital_client.sell_market_order(
                             epic=capital_symbol,

@@ -1016,7 +1016,8 @@ async def get_enhanced_risk_analysis(symbol: str):
     """🛡️ Análisis de riesgo mejorado"""
     try:
         # Crear señal de prueba para análisis
-        strategy = ProfessionalRSIStrategy()
+        from src.core.trend_following_professional import TrendFollowingProfessional
+        strategy = TrendFollowingProfessional()
         signal = strategy.analyze(symbol, "1h")
         
         # Obtener balance real del paper trader
