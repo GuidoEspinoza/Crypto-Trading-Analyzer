@@ -1087,7 +1087,6 @@ class TradingBot:
             # Obtener balance disponible de Capital.com
             logger.info(f"🔧 DEBUG: llamando get_available_balance()")
             balance_info = self.capital_client.get_available_balance()
-            logger.info(f"🔧 DEBUG: balance_info from Capital.com: {balance_info}")
             
             if isinstance(balance_info, dict):
                 available_balance = float(balance_info.get('available', 0.0))

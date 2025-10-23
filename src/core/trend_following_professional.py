@@ -18,10 +18,8 @@ from datetime import datetime
 import logging
 from dataclasses import dataclass
 
-from .professional_strategies import (
-    ProfessionalSignal, MarketRegime, SignalQuality,
-    ProfessionalFilters, AdvancedScoring, ProfessionalConfig
-)
+from .enhanced_strategies import TradingSignal, EnhancedSignal
+from .mean_reversion_professional import MarketRegime
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +28,6 @@ class TrendFollowingProfessional:
     
     def __init__(self):
         self.name = "TrendFollowingProfessional"
-        self.filters = ProfessionalFilters()
-        self.scoring = AdvancedScoring()
-        self.config = ProfessionalConfig()
         
         # Parámetros de la estrategia
         self.ema_fast = 21
@@ -351,54 +346,44 @@ class TrendFollowingProfessional:
             risk_reward_ratio = reward_amount / risk_amount if risk_amount > 0 else 0
             
             # 7. Crear señal profesional
-            signal = ProfessionalSignal(
+            signal = EnhancedSignal(
                 symbol=symbol,
                 signal_type=signal_type,
                 price=current_price,
                 confidence_score=0.0,  # Se calculará después
-                quality=SignalQuality.NOISE,  # Se determinará después
+                strength="Strong" if confluence_count >= 4 else "Moderate" if confluence_count >= 3 else "Weak",
                 strategy_name=self.name,
                 timestamp=datetime.now(),
                 
-                # Componentes de análisis
-                trend_alignment=trend_analysis["aligned"],
+                # Componentes de análisis EnhancedSignal
                 volume_confirmation=volume_analysis["confirmed"],
-                momentum_confirmation=momentum_analysis["momentum"] != "neutral",
-                pattern_confirmation=structure_analysis["structure"] != "insufficient_data",
-                structure_confirmation=structure_analysis["strength"] > 0.5,
-                
-                # Métricas de riesgo
+                trend_confirmation="BULLISH" if signal_type == "BUY" else "BEARISH" if signal_type == "SELL" else "NEUTRAL",
                 risk_reward_ratio=risk_reward_ratio,
                 stop_loss_price=stop_loss,
                 take_profit_price=take_profit,
-                max_drawdown_expected=risk_amount / current_price * 100,
+                market_regime=market_regime.value if hasattr(market_regime, 'value') else str(market_regime),
+                confluence_score=confluence_count,
+                timeframe=timeframe,
                 
-                # Contexto de mercado
-                market_regime=market_regime,
-                volatility_percentile=self.calculate_volatility_percentile(df),
-                volume_ratio=volume_analysis.get("volume_ratio", 1.0),
-                
-                # Confluencia
-                confluence_count=confluence_count,
-                confluence_details=confluence_details,
-                
-                # Notas
-                analysis_notes=f"Trend: {trend_analysis['direction']}, Momentum: {momentum_analysis['momentum']}, Structure: {structure_analysis['structure']}",
-                risk_notes=f"R/R: {risk_reward_ratio:.2f}, ATR: {df['atr'].iloc[-1]:.4f}"
+                # Notas adicionales
+                notes=f"Trend: {trend_analysis['direction']}, Momentum: {momentum_analysis['momentum']}, Structure: {structure_analysis['structure']}, R/R: {risk_reward_ratio:.2f}"
             )
             
-            # 8. Calcular scoring y calidad
-            signal.confidence_score = self.scoring.calculate_signal_score(signal)
-            signal.quality = self.scoring.determine_quality(signal.confidence_score)
+            # 8. Calcular confianza basada en confluencias
+            base_confidence = 50.0
+            confluence_bonus = confluence_count * 8.0  # 8% por confluencia
+            volume_bonus = 10.0 if volume_analysis["confirmed"] else 0.0
+            trend_bonus = 15.0 if trend_analysis["aligned"] else 0.0
             
-            # 9. Aplicar filtros profesionales
-            if not self.filters.apply_all_filters(signal):
-                logger.info(f"Señal para {symbol} no pasó los filtros profesionales")
+            signal.confidence_score = min(95.0, base_confidence + confluence_bonus + volume_bonus + trend_bonus)
+            
+            # 9. Filtros básicos de calidad
+            if signal.confidence_score < 65.0:
+                logger.info(f"Señal para {symbol} no alcanza confianza mínima (65%): {signal.confidence_score:.1f}%")
                 return None
             
-            # 10. Solo retornar señales de calidad profesional+
-            if not self.scoring.is_tradeable(signal):
-                logger.info(f"Señal para {symbol} no alcanza calidad mínima para trading")
+            if confluence_count < 3:
+                logger.info(f"Señal para {symbol} no tiene suficientes confluencias: {confluence_count}")
                 return None
             
             return signal

@@ -58,129 +58,6 @@ def _get_env_bool(var_name: str, default: bool) -> bool:
 TRADING_PROFILE = "INTRADAY"  # Opciones: "SCALPING", "INTRADAY"
 
 # ============================================================================
-# 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
-# ============================================================================
-
-# Modo de operación del sistema
-PRODUCTION_MODE = _get_env_float("PRODUCTION_MODE", 0.0) == 1.0  # False por defecto (desarrollo)
-
-# Configuraciones dependientes del modo
-# Dashboard eliminado - usando Capital.com directamente
-PAPER_TRADING_ONLY = not PRODUCTION_MODE  # Paper trading en desarrollo, real en producción
-ENABLE_REAL_TRADING = _get_env_bool("ENABLE_REAL_TRADING", PRODUCTION_MODE)  # Trading real configurado por variable de entorno
-
-# Configuraciones de logging y debugging
-VERBOSE_LOGGING = not PRODUCTION_MODE  # Logging detallado en desarrollo
-ENABLE_DEBUG_FEATURES = not PRODUCTION_MODE  # Características de debug
-
-# ============================================================================
-# 💰 CONFIGURACIÓN DE BALANCE
-# ============================================================================
-
-def _get_capital_balance() -> float:
-    """
-    Obtiene el balance disponible real de la cuenta de Capital.com
-    
-    Returns:
-        float: Balance disponible en USD, o 0.0 si hay error
-    """
-    try:
-        # Importación diferida para evitar dependencias circulares
-        import sys
-        import importlib
-        
-        # Importar dinámicamente el módulo
-        capital_module = importlib.import_module('src.core.capital_client')
-        create_capital_client_from_env = getattr(capital_module, 'create_capital_client_from_env')
-        
-        # Crear cliente de Capital.com
-        capital_client = create_capital_client_from_env()
-        
-        # Obtener balance disponible
-        balance_info = capital_client.get_available_balance()
-        
-        if balance_info and 'available' in balance_info:
-            available_balance = float(balance_info['available'])
-            print(f"✅ Balance real obtenido de Capital.com: ${available_balance:,.2f}")
-            return available_balance
-        else:
-            print("⚠️ No se pudo obtener el balance de Capital.com, usando balance por defecto")
-            return 0.0
-            
-    except Exception as e:
-        print(f"❌ Error al obtener balance de Capital.com: {e}")
-        return 0.0
-
-# 💰 Balance inicial global para todas las posiciones en USD (paper trading)
-PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
-
-# 💰 Balance inicial global para todas las posiciones en USD (real trading)
-# Se obtiene dinámicamente de Capital.com cuando ENABLE_REAL_TRADING está habilitado
-REAL_GLOBAL_INITIAL_BALANCE = 0.0  # Se inicializa en 0, se obtiene dinámicamente cuando se necesite
-
-def get_global_initial_balance() -> float:
-    """
-    Obtiene el balance inicial global, ya sea del paper trading o del balance real de Capital.com
-    
-    Returns:
-        float: Balance inicial en USD
-    """
-    global REAL_GLOBAL_INITIAL_BALANCE
-    
-    if _get_env_bool("ENABLE_REAL_TRADING", False):
-        # Si el trading real está habilitado, obtener balance real
-        if REAL_GLOBAL_INITIAL_BALANCE == 0.0:  # Solo obtener si no se ha obtenido antes
-            REAL_GLOBAL_INITIAL_BALANCE = _get_capital_balance()
-        return REAL_GLOBAL_INITIAL_BALANCE
-    else:
-        # Si no, usar paper trading
-        return PAPER_GLOBAL_INITIAL_BALANCE
-
-# Balance inicial global para todas las posiciones en USD
-# Usa balance real si el trading real está habilitado, sino usa paper trading
-GLOBAL_INITIAL_BALANCE = PAPER_GLOBAL_INITIAL_BALANCE  # Por defecto paper trading, se actualiza dinámicamente
-
-# Precio base de USD (moneda fiat)
-USD_BASE_PRICE = 1.0
-
-# ============================================================================
-# 🎯 LISTA DE ACTIVOS
-# ============================================================================
-
-# Lista de símbolos con nombres exactos como aparecen en Capital.com
-GLOBAL_SYMBOLS: List[str] = [
-    # === Metales Preciosos ===
-    "GOLD", "SILVER",
-    # === Criptomonedas ===
-    "BTCUSD", "ETHUSD"
-]
-
-# ============================================================================
-# 📝 NOTA: MAPEO ELIMINADO
-# ============================================================================
-# El mapeo de símbolos fue eliminado porque GLOBAL_SYMBOLS ahora contiene
-# los nombres exactos como aparecen en Capital.com, simplificando el sistema
-
-# ============================================================================
-# ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
-# ============================================================================
-
-# Zona horaria para Chile (CLT/CLST)
-# Usado en:
-# - TradingBot para programación de operaciones
-# - Logging para marcas de tiempo
-TIMEZONE: str = "America/Santiago"
-
-# Alias para compatibilidad con código existente
-CHILE_TZ: str = TIMEZONE
-
-# Horario de reset diario optimizado para trading de criptomonedas en Chile
-# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
-# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
-DAILY_RESET_HOUR: int = 11  # 11:00 AM CLT
-DAILY_RESET_MINUTE: int = 0  # 11:00 AM exacto
-
-# ============================================================================
 # 📊 DEFINICIÓN DE PERFILES DE TRADING
 # ============================================================================
 
@@ -210,7 +87,7 @@ class TradingProfiles:
             "max_daily_risk": 3.0,  # 3% riesgo diario máximo - más seguro
             "max_drawdown_threshold": 0.08,  # 8% drawdown máximo - más estricto
             "correlation_threshold": 0.70,  # Correlación más estricta
-            "min_position_size": 10.0,  # Posición mínima más alta
+            "min_position_size": 5.0,  # Posición mínima más alta
             "risk_max_position_size": 0.06,  # Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly más conservador
 
@@ -327,25 +204,25 @@ class TradingProfiles:
             "name": "Intraday",
             "description": "Timeframes 15m-1h, operaciones diarias balanceadas CFD con TP/SL basado en ROI del balance",
             "timeframes": ["15m", "30m", "1h"],
-            "analysis_interval": 5,  # Análisis cada 5 minutos - balanceado intraday
-            "min_confidence": 65.0,  # OPTIMIZADO: Confianza más realista para más señales
-            "max_daily_trades": 15,  # Operaciones moderadas diarias - OPTIMIZADO
-            "max_positions": 6,  # Posiciones controladas - OPTIMIZADO (reduce riesgo teórico)
+            "analysis_interval": 8,  # OPTIMIZADO: Análisis cada 8 minutos - más selectivo
+            "min_confidence": 78.0,  # OPTIMIZADO: Confianza mucho más estricta para mejor precisión
+            "max_daily_trades": 8,  # OPTIMIZADO: Máximo 8 operaciones diarias - más selectivo
+            "max_positions": 4,  # OPTIMIZADO: Máximo 4 posiciones - mejor control de riesgo
 
             # Paper Trader Config - INTRADAY CFD OPTIMIZADO
-            "max_position_size": 0.08,  # OPTIMIZADO: 8% por posición - más balanceado
-            "max_total_exposure": 0.35,  # OPTIMIZADO: 35% exposición total - más conservador
-            "min_trade_value": 8.0,  # Valor mínimo moderado
-            "paper_min_confidence": 75.0,  # Confianza alta para filtrado
-            "max_slippage": 0.05,  # Slippage moderado
-            "min_liquidity": 8.0,  # Liquidez moderada
+            "max_position_size": 0.06,  # OPTIMIZADO: 6% por posición - más conservador
+            "max_total_exposure": 0.25,  # OPTIMIZADO: 25% exposición total - mucho más conservador
+            "min_trade_value": 10.0,  # OPTIMIZADO: Valor mínimo más alto para mejor calidad
+            "paper_min_confidence": 78.0,  # OPTIMIZADO: Confianza consistente con trading real
+            "max_slippage": 0.03,  # OPTIMIZADO: Slippage más estricto
+            "min_liquidity": 12.0,  # OPTIMIZADO: Liquidez más alta requerida
             
-            # Risk Manager Config - INTRADAY BALANCEADO
-            "max_risk_per_trade": 1.5,  # 1.5% riesgo por trade - balanceado agresivo
-            "max_daily_risk": 3.5,  # 3.5% riesgo diario máximo
+            # Risk Manager Config - INTRADAY CONSERVADOR
+            "max_risk_per_trade": 1.0,  # OPTIMIZADO: 1% riesgo por trade - más conservador
+            "max_daily_risk": 2.5,  # OPTIMIZADO: 2.5% riesgo diario máximo - más estricto
             "max_drawdown_threshold": 0.08,  # 8% drawdown máximo
             "correlation_threshold": 0.65,  # Correlación moderada
-            "min_position_size": 15.0,  # Posición mínima moderada
+            "min_position_size": 10.0,  # Posición mínima moderada
             "risk_max_position_size": 0.08,  # OPTIMIZADO: Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly moderado
 
@@ -371,31 +248,31 @@ class TradingProfiles:
             "tp_confidence_threshold": 0.72,  # Umbral moderado para ajustar TP
             
             # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 4.0,  # Pérdida máxima diaria moderada
-            "min_confidence_threshold": 0.65,  # OPTIMIZADO: Confianza mínima más realista
-            "position_size_multiplier": 1.0,  # Multiplicador estándar
+            "max_daily_loss_percent": 2.5,  # OPTIMIZADO: Pérdida máxima diaria más conservadora
+            "min_confidence_threshold": 0.78,  # OPTIMIZADO: Confianza mínima mucho más estricta
+            "position_size_multiplier": 0.8,  # OPTIMIZADO: Multiplicador más conservador
             
             # Strategy Config - INTRADAY ULTRA-OPTIMIZADO
-            "default_min_confidence": 65.0,  # OPTIMIZADO: Confianza más balanceada
-            "default_atr_period": 12,  # Período moderado
-            "rsi_min_confidence": 70.0,  # OPTIMIZADO: RSI confianza más realista
-            "rsi_oversold": 25,  # RSI oversold moderado
-            "rsi_overbought": 75,  # RSI overbought moderado
-            "rsi_period": 12,  # Período RSI moderado
-            "min_volume_ratio": 1.8,  # Volumen mínimo moderado-alto
-            "min_confluence": 3,  # OPTIMIZADO: Confluencia más permisiva
-            "trend_strength_threshold": 38,  # Fuerza tendencia moderada
-            "min_atr_ratio": 1.1,  # ATR ratio moderado
-            "max_spread_threshold": 0.0015,  # Spread máximo estricto
-            "volume_weight": 0.22,  # Peso volumen moderado
-            "confluence_threshold": 0.60,  # OPTIMIZADO: Umbral confluencia más balanceado
+            "default_min_confidence": 78.0,  # OPTIMIZADO: Confianza mucho más estricta
+            "default_atr_period": 14,  # OPTIMIZADO: Período más largo para mejor señales
+            "rsi_min_confidence": 82.0,  # OPTIMIZADO: RSI confianza muy alta
+            "rsi_oversold": 20,  # OPTIMIZADO: RSI oversold más estricto
+            "rsi_overbought": 80,  # OPTIMIZADO: RSI overbought más estricto
+            "rsi_period": 14,  # OPTIMIZADO: Período RSI estándar más confiable
+            "min_volume_ratio": 2.5,  # OPTIMIZADO: Volumen mínimo mucho más alto
+            "min_confluence": 5,  # OPTIMIZADO: Confluencia mucho más estricta
+            "trend_strength_threshold": 55,  # OPTIMIZADO: Fuerza tendencia mucho más alta
+            "min_atr_ratio": 1.4,  # OPTIMIZADO: ATR ratio más estricto
+            "max_spread_threshold": 0.001,  # OPTIMIZADO: Spread máximo más estricto
+            "volume_weight": 0.30,  # OPTIMIZADO: Mayor peso al volumen
+            "confluence_threshold": 0.75,  # OPTIMIZADO: Umbral confluencia mucho más estricto
             
             # Multi-Timeframe Config - INTRADAY
-            "mtf_enhanced_confidence": 68.0,  # OPTIMIZADO: Confianza MTF más realista
-            "mtf_min_confidence": 68.0,  # OPTIMIZADO: Confianza mínima MTF balanceada
-            "mtf_min_consensus": 0.60,  # OPTIMIZADO: Consenso más permisivo MTF
+            "mtf_enhanced_confidence": 82.0,  # OPTIMIZADO: Confianza MTF muy alta
+            "mtf_min_confidence": 80.0,  # OPTIMIZADO: Confianza mínima MTF muy estricta
+            "mtf_min_consensus": 0.80,  # OPTIMIZADO: Consenso mucho más estricto MTF
             "mtf_require_trend_alignment": True,  # Requiere alineación
-            "mtf_min_timeframe_consensus": 2,  # Consenso en 2 timeframes
+            "mtf_min_timeframe_consensus": 3,  # OPTIMIZADO: Consenso en los 3 timeframes
             "mtf_trend_alignment_required": True,
             "volume_timeframe": "15m",  # Timeframe volumen moderado
             
@@ -471,6 +348,124 @@ class TradingProfiles:
     def get_current_profile(cls) -> Dict[str, Any]:
         """Obtiene el perfil actualmente configurado."""
         return cls.get_profile(TRADING_PROFILE)
+
+
+# ============================================================================
+# 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
+# ============================================================================
+
+# Modo de operación del sistema
+PRODUCTION_MODE = _get_env_float("PRODUCTION_MODE", 0.0) == 1.0  # False por defecto (desarrollo)
+
+# Configuraciones dependientes del modo
+# Dashboard eliminado - usando Capital.com directamente
+PAPER_TRADING_ONLY = not PRODUCTION_MODE  # Paper trading en desarrollo, real en producción
+ENABLE_REAL_TRADING = _get_env_bool("ENABLE_REAL_TRADING", PRODUCTION_MODE)  # Trading real configurado por variable de entorno
+
+# Configuraciones de logging y debugging
+VERBOSE_LOGGING = not PRODUCTION_MODE  # Logging detallado en desarrollo
+ENABLE_DEBUG_FEATURES = not PRODUCTION_MODE  # Características de debug
+
+# ============================================================================
+# 💰 CONFIGURACIÓN DE BALANCE
+# ============================================================================
+
+def _get_capital_balance() -> float:
+    """
+    Obtiene el balance disponible real de la cuenta de Capital.com
+    
+    Returns:
+        float: Balance disponible en USD, o 0.0 si hay error
+    """
+    try:
+        # Importación diferida para evitar dependencias circulares
+        import sys
+        import importlib
+        
+        # Importar dinámicamente el módulo
+        capital_module = importlib.import_module('src.core.capital_client')
+        create_capital_client_from_env = getattr(capital_module, 'create_capital_client_from_env')
+        
+        # Crear cliente de Capital.com
+        capital_client = create_capital_client_from_env()
+        
+        # Obtener balance disponible
+        balance_info = capital_client.get_available_balance()
+        
+        if balance_info and 'available' in balance_info:
+            available_balance = float(balance_info['available'])
+            print(f"✅ Balance real obtenido de Capital.com: ${available_balance:,.2f}")
+            return available_balance
+        else:
+            print("⚠️ No se pudo obtener el balance de Capital.com, usando balance por defecto")
+            return 0.0
+            
+    except Exception as e:
+        print(f"❌ Error al obtener balance de Capital.com: {e}")
+        return 0.0
+
+# 💰 Balance inicial global para todas las posiciones en USD (paper trading)
+PAPER_GLOBAL_INITIAL_BALANCE = 1000.0
+
+# 💰 Balance inicial global para todas las posiciones en USD (real trading)
+# Se obtiene dinámicamente de Capital.com cuando ENABLE_REAL_TRADING está habilitado
+REAL_GLOBAL_INITIAL_BALANCE = 0.0  # Se inicializa en 0, se obtiene dinámicamente cuando se necesite
+
+def get_global_initial_balance() -> float:
+    """
+    Obtiene el balance inicial global, ya sea del paper trading o del balance real de Capital.com
+    
+    Returns:
+        float: Balance inicial en USD
+    """
+    global REAL_GLOBAL_INITIAL_BALANCE
+    
+    if _get_env_bool("ENABLE_REAL_TRADING", False):
+        # Si el trading real está habilitado, obtener balance real
+        if REAL_GLOBAL_INITIAL_BALANCE == 0.0:  # Solo obtener si no se ha obtenido antes
+            REAL_GLOBAL_INITIAL_BALANCE = _get_capital_balance()
+        return REAL_GLOBAL_INITIAL_BALANCE
+    else:
+        # Si no, usar paper trading
+        return PAPER_GLOBAL_INITIAL_BALANCE
+
+# Balance inicial global para todas las posiciones en USD
+# Usa balance real si el trading real está habilitado, sino usa paper trading
+GLOBAL_INITIAL_BALANCE = PAPER_GLOBAL_INITIAL_BALANCE  # Por defecto paper trading, se actualiza dinámicamente
+
+# Precio base de USD (moneda fiat)
+USD_BASE_PRICE = 1.0
+
+# ============================================================================
+# 🎯 LISTA DE ACTIVOS
+# ============================================================================
+
+# Lista de símbolos con nombres exactos como aparecen en Capital.com
+GLOBAL_SYMBOLS: List[str] = [
+    # === Metales Preciosos ===
+    "GOLD", "SILVER",
+    # === Criptomonedas ===
+    "BTCUSD", "ETHUSD"
+]
+
+# ============================================================================
+# ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
+# ============================================================================
+
+# Zona horaria para Chile (CLT/CLST)
+# Usado en:
+# - TradingBot para programación de operaciones
+# - Logging para marcas de tiempo
+TIMEZONE: str = "America/Santiago"
+
+# Alias para compatibilidad con código existente
+CHILE_TZ: str = TIMEZONE
+
+# Horario de reset diario optimizado para trading de criptomonedas en Chile
+# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
+# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
+DAILY_RESET_HOUR: int = 11  # 11:00 AM CLT
+DAILY_RESET_MINUTE: int = 0  # 11:00 AM exacto
 
 # ============================================================================
 # CONFIGURACIÓN DEL TRADING BOT PRINCIPAL
