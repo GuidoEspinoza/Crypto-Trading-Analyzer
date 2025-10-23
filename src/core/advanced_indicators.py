@@ -857,8 +857,8 @@ class AdvancedIndicators:
                 typical_price = (df['high'] + df['low'] + df['close']) / 3
                 money_flow = typical_price * df['volume']
                 
-                positive_flow = pd.Series(index=df.index, dtype=float)
-                negative_flow = pd.Series(index=df.index, dtype=float)
+                positive_flow = pd.Series(index=df.index, dtype=float).fillna(0)
+                negative_flow = pd.Series(index=df.index, dtype=float).fillna(0)
                 
                 for i in range(1, len(df)):
                     if typical_price.iloc[i] > typical_price.iloc[i-1]:
@@ -874,8 +874,12 @@ class AdvancedIndicators:
                 positive_flow_sum = positive_flow.rolling(window=period).sum()
                 negative_flow_sum = negative_flow.rolling(window=period).sum()
                 
-                money_ratio = positive_flow_sum / negative_flow_sum
+                # 🚨 FIX CRÍTICO: Evitar división por cero
+                money_ratio = positive_flow_sum / (negative_flow_sum + 1e-10)  # Añadir epsilon para evitar división por cero
                 mfi = 100 - (100 / (1 + money_ratio))
+                
+                # Validar que el resultado sea válido
+                mfi = mfi.fillna(50.0)  # Rellenar NaN con valor neutral
             
             current_mfi = AdvancedIndicators.safe_float(mfi.iloc[-1], 50.0)
             

@@ -54,21 +54,23 @@ class PositionMonitor:
     - Gestión de riesgo en tiempo real
     """
     
-    def __init__(self, price_fetcher: Callable[[str], float], paper_trader=None):
+    def __init__(self, price_fetcher: Callable[[str], float], paper_trader=None, capital_client=None):
         """
         Inicializar el monitor de posiciones
         
         Args:
             price_fetcher: Función para obtener precios actuales
             paper_trader: Instancia del paper trader para ejecutar órdenes
+            capital_client: Cliente de Capital.com para operaciones reales
         """
         self.price_fetcher = price_fetcher
         self.paper_trader = paper_trader
+        self.capital_client = capital_client
         self.config = TradingBotConfig()
         self.risk_config = RiskManagerConfig()
         
-        # Inicializar PositionManager
-        self.position_manager = PositionManager(paper_trader)
+        # Inicializar PositionManager con capital_client
+        self.position_manager = PositionManager(paper_trader, capital_client)
         
         # Control de threading
         self.monitoring_active = False
@@ -338,9 +340,14 @@ class PositionMonitor:
                     self._last_log_time = {}
                 self._last_log_time[trade_id] = time.time()
                 
-                pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
-                if position.trade_type == "SELL":
-                    pnl_pct = -pnl_pct
+                # Validar que entry_price no sea None antes del cálculo
+                if position.entry_price is None or position.entry_price == 0:
+                    logger.warning(f"⚠️ Position {trade_id} has invalid entry_price: {position.entry_price}")
+                    pnl_pct = 0.0
+                else:
+                    pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                    if position.trade_type == "SELL":
+                        pnl_pct = -pnl_pct
                 
                 # Formatear SL y TP manejando valores None
                 sl_str = f"${position.stop_loss:.4f}" if position.stop_loss is not None else "N/A"
@@ -354,6 +361,11 @@ class PositionMonitor:
     
     def _get_current_price(self, symbol: str) -> Optional[float]:
         """💰 Obtener precio actual con cache"""
+        # Validar símbolo antes de procesar
+        if not symbol or not symbol.strip():
+            logger.error(f"❌ Symbol is empty or invalid: '{symbol}'")
+            return None
+            
         now = time.time()
         
         # Verificar cache
@@ -567,6 +579,17 @@ class PositionMonitor:
             "positions_managed": position_stats["positions_managed"],
             "take_profits_executed": position_stats["take_profits_executed"],
             "stop_losses_executed": position_stats["stop_losses_executed"],
-            "trailing_stops_activated": position_stats["trailing_stops_activated"],
+            "trailing_stops_activated": position_stats.get("trailing_stops_activated", 0),
             "total_realized_pnl": position_stats["total_realized_pnl"]
         }
+    
+    def process_position_timeouts(self) -> Dict[str, int]:
+        """⏰ Procesar timeouts de posiciones activas
+        
+        Delega al PositionManager para verificar y cerrar posiciones
+        que hayan excedido el tiempo límite configurado.
+        
+        Returns:
+            Diccionario con estadísticas del procesamiento
+        """
+        return self.position_manager.process_position_timeouts()

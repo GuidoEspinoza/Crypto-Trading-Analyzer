@@ -118,7 +118,8 @@ class TradingBot:
         # Sistema de monitoreo de posiciones
         self.position_monitor = PositionMonitor(
             price_fetcher=self._get_current_price,
-            paper_trader=self.paper_trader
+            paper_trader=self.paper_trader,
+            capital_client=self.capital_client
         )
         
 
@@ -516,6 +517,11 @@ class TradingBot:
         """💰 Obtener precio actual del símbolo usando Capital.com con cache"""
         import math
         
+        # Validar que el símbolo no esté vacío
+        if not symbol or not symbol.strip():
+            self.logger.error(f"🚨 CRÍTICO: Símbolo vacío o inválido proporcionado a _get_current_price: '{symbol}'")
+            return 0.0
+        
         def _validate_price(price: float, source: str) -> bool:
             """Validar que el precio sea válido y seguro para trading"""
             if price is None:
@@ -636,7 +642,8 @@ class TradingBot:
                     if open_positions:
                         self.logger.info("📋 Posiciones actuales:")
                         for pos in open_positions[:5]:  # Mostrar máximo 5 para no saturar logs
-                            symbol = pos.get("market", {}).get("instrumentName", "Unknown")
+                            # Usar 'epic' como símbolo principal, con fallback a instrumentName
+                            symbol = pos.get("market", {}).get("epic", pos.get("market", {}).get("instrumentName", "Unknown"))
                             size = pos.get("position", {}).get("size", 0)
                             direction = pos.get("position", {}).get("direction", "Unknown")
                             pnl = pos.get("position", {}).get("upl", 0)
@@ -1776,4 +1783,31 @@ class TradingBot:
             self.logger.error(f"❌ Error getting events: {e}")
         
         return events
+    
+    def process_position_timeouts(self) -> Dict[str, int]:
+        """⏰ Procesar timeouts de posiciones activas
+        
+        Verifica todas las posiciones activas y cierra las que hayan excedido
+        el tiempo límite configurado en position_timeout_hours.
+        
+        Returns:
+            Diccionario con estadísticas del procesamiento
+        """
+        try:
+            logger.info("⏰ Starting position timeout processing...")
+            result = self.position_monitor.process_position_timeouts()
+            
+            if result.get("timeout_positions", 0) > 0:
+                logger.info(
+                    f"⏰ Timeout processing completed: {result['closed_positions']}/{result['timeout_positions']} "
+                    f"positions closed from {result['total_positions']} total"
+                )
+            else:
+                logger.debug(f"⏰ No positions with timeout found from {result['total_positions']} total")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing position timeouts: {e}")
+            return {"total_positions": 0, "timeout_positions": 0, "closed_positions": 0, "error": str(e)}
 trading_bot = TradingBot()

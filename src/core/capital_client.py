@@ -610,8 +610,17 @@ class CapitalClient:
         if search_term:
             params["searchTerm"] = search_term
         elif epics:
-            # Join epics with comma for API request
-            params["epics"] = ",".join(epics)
+            # Filter out empty or None epics before joining
+            valid_epics = [epic for epic in epics if epic and epic.strip()]
+            if valid_epics:
+                # Join epics with comma for API request
+                params["epics"] = ",".join(valid_epics)
+            else:
+                # If no valid epics, return empty result
+                return {
+                    "success": False,
+                    "error": "No valid epics provided"
+                }
         
         try:
             # Add small delay to avoid rate limiting
@@ -667,12 +676,18 @@ class CapitalClient:
         if not symbols:
             return {}
         
+        # Filtrar símbolos vacíos o None antes del procesamiento
+        valid_symbols = [symbol for symbol in symbols if symbol and symbol.strip()]
+        if not valid_symbols:
+            logger.warning("No valid symbols provided to get_market_data")
+            return {}
+        
         # Capital.com API supports max 50 epics per request, but using smaller batches to avoid rate limiting
         batch_size = 25
         all_market_data = {}
         
-        for i in range(0, len(symbols), batch_size):
-            batch_symbols = symbols[i:i + batch_size]
+        for i in range(0, len(valid_symbols), batch_size):
+            batch_symbols = valid_symbols[i:i + batch_size]
             
             # Add delay between batches to avoid rate limiting (429 errors)
             if i > 0:  # No delay for first batch

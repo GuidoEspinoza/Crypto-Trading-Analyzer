@@ -170,6 +170,11 @@ class EnhancedRiskManager:
         
     def assess_trade_risk(self, signal: EnhancedSignal, current_portfolio_value: float) -> EnhancedRiskAssessment:
         """Evaluar riesgo de un trade específico"""
+        # Verificar que signal no sea None
+        if signal is None:
+            logger.error("❌ Signal es None - no se puede evaluar riesgo")
+            return self._create_default_risk_assessment_for_none()
+        
         print(f"🔧 DEBUG: assess_trade_risk llamado para {signal.symbol}")
         logger.info(f"🔍 assess_trade_risk llamado para {signal.symbol}")
         try:
@@ -250,7 +255,7 @@ class EnhancedRiskManager:
             
             # Riesgo de volatilidad - Obtener desde configuración
             profile = TradingProfiles.get_current_profile()
-            volatility_factor = profile['volatility_adjustment_factor']
+            volatility_factor = profile.get('volatility_adjustment_factor', 1.0)  # Valor por defecto si no existe
             
             if signal.market_regime == "VOLATILE":
                 risk_factors["volatility_risk"] = min(0.8 * volatility_factor, 1.0)
@@ -322,17 +327,23 @@ class EnhancedRiskManager:
             max_position_value = self.portfolio_value * self.max_position_size
             
             # Determinar nivel de riesgo basado en el porcentaje del portfolio usado
-            position_risk_ratio = monto_operacion / self.portfolio_value
-            if position_risk_ratio <= 0.05:
-                risk_level = RiskLevel.VERY_LOW
-            elif position_risk_ratio <= 0.10:
-                risk_level = RiskLevel.LOW
-            elif position_risk_ratio <= 0.15:
-                risk_level = RiskLevel.MODERATE
-            elif position_risk_ratio <= 0.20:
-                risk_level = RiskLevel.HIGH
+            # Validar división por cero
+            if self.portfolio_value > 0:
+                position_risk_ratio = monto_operacion / self.portfolio_value
+                if position_risk_ratio <= 0.05:
+                    risk_level = RiskLevel.VERY_LOW
+                elif position_risk_ratio <= 0.10:
+                    risk_level = RiskLevel.LOW
+                elif position_risk_ratio <= 0.15:
+                    risk_level = RiskLevel.MODERATE
+                elif position_risk_ratio <= 0.20:
+                    risk_level = RiskLevel.HIGH
+                else:
+                    risk_level = RiskLevel.VERY_HIGH
             else:
-                risk_level = RiskLevel.VERY_HIGH
+                # Si portfolio_value es 0, asignar riesgo extremo
+                position_risk_ratio = 1.0  # 100% de riesgo
+                risk_level = RiskLevel.EXTREME
             
             print(f"🔧 DEBUG: Nivel de riesgo: {risk_level.value} (ratio: {position_risk_ratio:.3f})")
             
@@ -493,13 +504,17 @@ class EnhancedRiskManager:
     def _calculate_portfolio_risk_metrics(self) -> Dict:
         """Calcular métricas de riesgo del portfolio"""
         try:
+            # Calcular utilización del portfolio con validación de división por cero
+            total_position_size = sum(pos.get("size", 0) for pos in self.open_positions.values())
+            portfolio_utilization = round(total_position_size / self.portfolio_value, 4) if self.portfolio_value > 0 else 0.0
+            
             return {
                 "current_drawdown": round(self.current_drawdown, 4),
                 "max_historical_drawdown": round(self.max_historical_drawdown, 4),
                 "daily_pnl": round(self.daily_pnl, 2),
                 "portfolio_value": round(self.portfolio_value, 2),
                 "open_positions_count": len(self.open_positions),
-                "portfolio_utilization": round(sum(pos.get("size", 0) for pos in self.open_positions.values()) / self.portfolio_value, 4),
+                "portfolio_utilization": portfolio_utilization,
                 "risk_budget_used": round(len(self.open_positions) * self.max_portfolio_risk, 4)
             }
         except Exception as e:
@@ -656,6 +671,57 @@ class EnhancedRiskManager:
             volatility_risk=0.8,
             liquidity_risk=0.6,
             is_approved=False  # No aprobar trades en caso de error
+        )
+    
+    def _create_default_risk_assessment_for_none(self) -> EnhancedRiskAssessment:
+        """Crear evaluación de riesgo por defecto cuando signal es None"""
+        fallback_profile = TradingProfiles.get_current_profile()
+        default_price = 1.0  # Precio por defecto
+        default_stop_price = default_price * 0.95
+        default_tp_price = default_price * 1.05
+        default_trailing_distance = 5.0
+        
+        return EnhancedRiskAssessment(
+            overall_risk_score=100.0,  # Riesgo máximo
+            risk_level=RiskLevel.EXTREME,
+            position_sizing=PositionSizing(
+                recommended_size=0.0,  # No recomendar ninguna posición
+                max_position_size=0.0,
+                risk_per_trade=0.0,
+                position_value=0.0,
+                leverage_used=1.0,
+                risk_level=RiskLevel.EXTREME,
+                reasoning="Signal es None - no se puede evaluar riesgo",
+                max_risk_amount=0.0
+            ),
+            dynamic_stop_loss=DynamicStopLoss(
+                initial_stop=default_stop_price,
+                current_stop=default_stop_price,
+                trailing_stop=default_stop_price,
+                atr_multiplier=2.0,
+                stop_type="FIXED",
+                last_update=datetime.now(),
+                stop_loss_price=default_stop_price,
+                trailing_distance=default_trailing_distance
+            ),
+            dynamic_take_profit=DynamicTakeProfit(
+                initial_tp=default_tp_price,
+                current_tp=default_tp_price,
+                trailing_tp=default_tp_price,
+                tp_increment_pct=fallback_profile['tp_increment_base_pct'],
+                tp_type="FIXED",
+                last_update=datetime.now(),
+                take_profit_price=default_tp_price,
+                confidence_threshold=RiskManagerConfig().get_tp_confidence_threshold()
+            ),
+            market_risk_factors={"error": "Signal es None - no se puede analizar"},
+            portfolio_risk_metrics={"error": "Signal es None - no se puede analizar"},
+            recommendations=["🚨 Signal es None - No operar", "Verificar condiciones del mercado"],
+            max_drawdown_alert=True,
+            correlation_risk=1.0,  # Riesgo máximo
+            volatility_risk=1.0,   # Riesgo máximo
+            liquidity_risk=1.0,    # Riesgo máximo
+            is_approved=False      # Nunca aprobar trades cuando signal es None
         )
     
     def update_position(self, symbol: str, current_price: float, position_data: Dict):

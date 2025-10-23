@@ -74,16 +74,20 @@ class PositionManager:
     - Ejecución automática de TP/SL
     - Trailing stops dinámicos
     - Análisis de performance
+    - Integración con Capital.com API
     """
     
-    def __init__(self, paper_trader: PaperTrader = None):
+    def __init__(self, paper_trader: PaperTrader = None, capital_client=None):
         """
         Inicializar el gestor de posiciones
         
         Args:
             paper_trader: Instancia del paper trader para ejecutar órdenes
+            capital_client: Cliente de Capital.com para operaciones reales
         """
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.paper_trader = paper_trader or PaperTrader()
+        self.capital_client = capital_client
         self.config = TradingBotConfig()
         self.risk_config = RiskManagerConfig()
         
@@ -117,10 +121,35 @@ class PositionManager:
         Returns:
             Lista de posiciones activas
         """
-        # Base de datos eliminada - las posiciones se obtienen directamente de Capital.com
-        # Este método se mantiene para compatibilidad pero devuelve lista vacía
-        logger.debug("📊 PositionManager simplificado - usando Capital.com directamente")
-        return []
+        try:
+            if not self.capital_client:
+                logger.debug("📊 No Capital.com client available")
+                return []
+            
+            # Obtener posiciones de Capital.com
+            positions_result = self.capital_client.get_positions()
+            if not positions_result.get("success"):
+                logger.warning(f"⚠️ Failed to get positions: {positions_result.get('error')}")
+                return []
+            
+            capital_positions = positions_result.get("positions", [])
+            active_positions = []
+            
+            for position in capital_positions:
+                try:
+                    position_info = self._convert_capital_position_to_info(position)
+                    if position_info:
+                        active_positions.append(position_info)
+                except Exception as e:
+                    logger.error(f"❌ Error converting position: {e}")
+                    continue
+            
+            logger.debug(f"📊 Found {len(active_positions)} active positions")
+            return active_positions
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting active positions: {e}")
+            return []
     
     # Método _create_position_info eliminado - las posiciones se obtienen directamente de Capital.com
     
@@ -207,6 +236,11 @@ class PositionManager:
         try:
             current_price = position.current_price
             
+            # 1. Verificar timeout de posición (nuevo parámetro)
+            timeout_reason = self._check_position_timeout(position)
+            if timeout_reason:
+                return timeout_reason
+            
             if position.trade_type == "BUY":
                 # Verificar Take Profit (solo si está configurado)
                 if position.take_profit is not None and current_price >= position.take_profit:
@@ -239,7 +273,7 @@ class PositionManager:
         """🎯 Cerrar posición específica
         
         Args:
-            trade_id: ID del trade a cerrar
+            trade_id: ID del trade a cerrar (dealId de Capital.com)
             current_price: Precio actual para el cierre
             reason: Razón del cierre
             
@@ -247,15 +281,100 @@ class PositionManager:
             True si se cerró correctamente
         """
         try:
-            # Base de datos eliminada - las posiciones se gestionan directamente en Capital.com
-            logger.info(f"🎯 Posición {trade_id} cerrada por {reason} a ${current_price:.4f}")
-            return True
+            if not self.capital_client:
+                logger.warning("⚠️ No Capital.com client available for closing position")
+                return False
+            
+            # Convertir trade_id a string para Capital.com API
+            deal_id = str(trade_id)
+            
+            # Cerrar posición usando Capital.com API
+            result = self.capital_client.close_position(deal_id)
+            
+            if result.get("success"):
+                logger.info(f"🎯 Position {deal_id} closed successfully by {reason} at ${current_price:.4f}")
+                self.stats["positions_managed"] += 1
+                
+                # Actualizar estadísticas según la razón
+                if "TAKE_PROFIT" in reason:
+                    self.stats["tp_executed"] += 1
+                elif "STOP_LOSS" in reason:
+                    self.stats["sl_executed"] += 1
+                elif "TRAILING_STOP" in reason:
+                    self.stats["trailing_stops_activated"] += 1
+                
+                return True
+            else:
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"❌ Failed to close position {deal_id}: {error_msg}")
+                return False
+                
         except Exception as e:
             logger.error(f"❌ Error closing position {trade_id}: {e}")
             return False
     
 
     
+    def process_position_timeouts(self) -> Dict[str, int]:
+        """⏰ Procesar timeouts de posiciones activas
+        
+        Verifica todas las posiciones activas y cierra las que hayan excedido
+        el tiempo límite configurado en position_timeout_hours.
+        
+        Returns:
+            Diccionario con estadísticas del procesamiento
+        """
+        try:
+            positions = self.get_active_positions()
+            if not positions:
+                return {"total_positions": 0, "timeout_positions": 0, "closed_positions": 0}
+            
+            timeout_positions = 0
+            closed_positions = 0
+            
+            for position in positions:
+                # Verificar si la posición debe cerrarse por timeout
+                exit_reason = self.check_exit_conditions(position)
+                
+                if exit_reason == "POSITION_TIMEOUT":
+                    timeout_positions += 1
+                    
+                    # Intentar cerrar la posición
+                    success = self.close_position(
+                        trade_id=position.trade_id,
+                        current_price=position.current_price,
+                        reason=exit_reason
+                    )
+                    
+                    if success:
+                        closed_positions += 1
+                        logger.info(
+                            f"✅ Position {position.trade_id} ({position.symbol}) closed due to timeout"
+                        )
+                    else:
+                        logger.error(
+                            f"❌ Failed to close timeout position {position.trade_id} ({position.symbol})"
+                        )
+            
+            result = {
+                "total_positions": len(positions),
+                "timeout_positions": timeout_positions,
+                "closed_positions": closed_positions,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            if timeout_positions > 0:
+                logger.info(
+                    f"⏰ Timeout processing completed: {closed_positions}/{timeout_positions} "
+                    f"positions closed from {len(positions)} total"
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing position timeouts: {e}")
+            return {"total_positions": 0, "timeout_positions": 0, "closed_positions": 0, "error": str(e)}
+
     def get_position_by_id(self, trade_id: int) -> Optional[PositionInfo]:
         """📊 Obtener posición por ID
         
@@ -447,5 +566,183 @@ class PositionManager:
             logger.error(f"❌ Error calculating dynamic take profit for {position.symbol}: {e}")
             return None
     
+    def _check_position_timeout(self, position: PositionInfo) -> Optional[str]:
+        """⏰ Verificar si una posición ha excedido el tiempo límite
+        
+        Args:
+            position: Información de la posición
+            
+        Returns:
+            Razón de cierre por timeout o None si no debe cerrarse
+        """
+        try:
+            # Obtener configuración del perfil actual
+            profile = TradingProfiles.get_current_profile()
+            position_timeout_hours = profile.get('position_timeout_hours', 6)  # Default 6 horas
+            min_movement_threshold = profile.get('min_movement_threshold', 0.005)  # Default 0.5%
+            
+            # Calcular tiempo transcurrido desde la entrada
+            current_time = datetime.now()
+            
+            # Verificar que entry_time no sea None
+            if position.entry_time is None:
+                logger.warning(f"⚠️ Position {position.trade_id} has no entry_time, skipping timeout check")
+                return None
+                
+            time_elapsed = current_time - position.entry_time
+            hours_elapsed = time_elapsed.total_seconds() / 3600
+            
+            # Solo verificar timeout si han pasado las horas configuradas
+            if hours_elapsed >= position_timeout_hours:
+                # Calcular movimiento de la posición
+                price_movement = abs(position.current_price - position.entry_price) / position.entry_price
+                
+                # Si el movimiento es menor al umbral mínimo, cerrar por timeout
+                if price_movement < min_movement_threshold:
+                    logger.info(
+                        f"⏰ Position {position.trade_id} ({position.symbol}) timeout: "
+                        f"{hours_elapsed:.1f}h elapsed, only {price_movement*100:.2f}% movement "
+                        f"(threshold: {min_movement_threshold*100:.2f}%)"
+                    )
+                    return "POSITION_TIMEOUT"
+                else:
+                    logger.debug(
+                        f"⏰ Position {position.trade_id} ({position.symbol}) has sufficient movement: "
+                        f"{price_movement*100:.2f}% > {min_movement_threshold*100:.2f}% threshold"
+                    )
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking position timeout for {position.trade_id}: {e}")
+            return None
+    
     # Métodos _calculate_max_profit y _calculate_max_loss eliminados - 
     # las métricas se calculan directamente desde Capital.com
+    
+    def _convert_capital_position_to_info(self, capital_position: dict) -> Optional[PositionInfo]:
+        """🔄 Convertir posición de Capital.com a PositionInfo
+        
+        Args:
+            capital_position: Posición desde Capital.com API
+            
+        Returns:
+            PositionInfo o None si hay error
+        """
+        try:
+            # DEBUG: Log de la posición completa
+            self.logger.info(f"🔍 Converting Capital position: {capital_position}")
+            
+            # Extraer datos anidados de position y market
+            position_data = capital_position.get("position", {})
+            market_data = capital_position.get("market", {})
+            
+            # Usar 'epic' del market para el símbolo
+            symbol = market_data.get("epic", "")
+            
+            # Si no hay epic, intentar con instrumentName como fallback
+            if not symbol:
+                symbol = market_data.get("instrumentName", "")
+            
+            # Extraer datos de la posición usando la estructura correcta
+            entry_price = float(position_data.get("level", 0))  # level es el precio de entrada
+            current_price = float(market_data.get("bid", 0))  # usar bid como precio actual
+            quantity = float(position_data.get("size", 0))
+            pnl = float(position_data.get("upl", 0))  # Unrealized P&L
+            direction = position_data.get("direction", "BUY")
+            created_date = position_data.get("createdDateUTC")
+            
+            # DEBUG: Log de datos extraídos
+            self.logger.info(f"🔍 Extracted data - symbol: {symbol}, entry_price: {entry_price}, current_price: {current_price}, quantity: {quantity}, pnl: {pnl}, direction: {direction}, created_date: {created_date}")
+            
+            # Validar entry_price
+            if entry_price <= 0:
+                self.logger.warning(f"⚠️ Invalid entry_price={entry_price} for {symbol}, using current_price as fallback")
+                entry_price = current_price
+            
+            self.logger.info(f"💰 Using entry_price={entry_price:.4f} for {symbol} ({direction})")
+            
+            # Convertir dealId (puede ser hexadecimal) a hash numérico
+            deal_id_str = position_data.get("dealId", "0")
+            trade_id = hash(deal_id_str) % (10**10)  # Convertir a número positivo de 10 dígitos
+            
+            position_info = PositionInfo(
+                trade_id=trade_id,
+                symbol=symbol,
+                trade_type=direction,
+                entry_price=entry_price,
+                current_price=current_price,
+                quantity=quantity,
+                entry_value=quantity * entry_price,
+                current_value=quantity * current_price,
+                unrealized_pnl=pnl,
+                unrealized_pnl_percentage=0.0,  # Se calculará después
+                stop_loss=float(position_data.get("stopLevel")) if position_data.get("stopLevel") else None,
+                take_profit=float(position_data.get("profitLevel")) if position_data.get("profitLevel") else None,
+                trailing_stop=None,  # Capital.com no expone trailing stops directamente
+                entry_time=self._parse_capital_time(position_data.get("createdDateUTC")),
+                strategy_name="Capital.com",
+                confidence_score=0.0,
+                timeframe="Unknown",
+                notes=f"Deal ID: {position_data.get('dealId')}",
+                days_held=0.0,  # Se calculará después
+                max_profit=0.0,
+                max_loss=0.0,
+                risk_reward_ratio=0.0  # Se calculará después si hay SL/TP
+            )
+            
+            # Calcular PnL percentage
+            if position_info.entry_value > 0:
+                position_info.unrealized_pnl_percentage = (position_info.unrealized_pnl / position_info.entry_value) * 100
+            
+            # Calcular días mantenida
+            if position_info.entry_time:
+                time_diff = datetime.now() - position_info.entry_time
+                position_info.days_held = time_diff.total_seconds() / (24 * 3600)
+            
+            # Calcular risk_reward_ratio si hay SL y TP
+            if position_info.stop_loss and position_info.take_profit:
+                if position_info.trade_type == "BUY":
+                    risk = abs(position_info.entry_price - position_info.stop_loss)
+                    reward = abs(position_info.take_profit - position_info.entry_price)
+                else:  # SELL
+                    risk = abs(position_info.stop_loss - position_info.entry_price)
+                    reward = abs(position_info.entry_price - position_info.take_profit)
+                
+                if risk > 0:
+                    position_info.risk_reward_ratio = reward / risk
+            
+            return position_info
+            
+        except Exception as e:
+            logger.error(f"❌ Error converting Capital.com position: {e}")
+            logger.debug(f"Position data: {capital_position}")
+            return None
+    
+    def _parse_capital_time(self, time_str: str) -> Optional[datetime]:
+        """🕐 Parsear tiempo de Capital.com
+        
+        Args:
+            time_str: String de tiempo de Capital.com
+            
+        Returns:
+            datetime o None si hay error
+        """
+        try:
+            self.logger.info(f"🔍 Parsing time string: '{time_str}'")
+            
+            if not time_str:
+                self.logger.warning(f"⚠️ Empty time string received")
+                return None
+            
+            # Capital.com usa formato ISO con Z
+            if time_str.endswith('Z'):
+                time_str = time_str[:-1] + '+00:00'
+            
+            parsed_time = datetime.fromisoformat(time_str)
+            self.logger.info(f"✅ Successfully parsed time: {parsed_time}")
+            return parsed_time
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error parsing Capital.com time '{time_str}': {e}")
+            return None

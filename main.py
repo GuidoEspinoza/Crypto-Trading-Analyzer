@@ -1020,6 +1020,15 @@ async def get_enhanced_risk_analysis(symbol: str):
         strategy = TrendFollowingProfessional()
         signal = strategy.analyze(symbol, "1h")
         
+        # Verificar si se generó una señal válida
+        if signal is None:
+            return {
+                "symbol": symbol,
+                "error": "No se pudo generar una señal válida para este símbolo",
+                "message": "El mercado puede estar en condiciones laterales o sin tendencia clara",
+                "timestamp": datetime.now().isoformat()
+            }
+        
         # Obtener balance real del paper trader
         bot = get_trading_bot()
         current_portfolio_value = bot.paper_trader.get_balance() if bot.paper_trader else 1000.0

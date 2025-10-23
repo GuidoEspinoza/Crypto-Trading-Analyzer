@@ -133,8 +133,31 @@ class MeanReversionProfessional:
         return pd.DataFrame()
     
     def calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
-        """Calcular RSI"""
-        return talib.RSI(prices.values, timeperiod=period)
+        """
+        Calcular RSI (Relative Strength Index)
+        """
+        try:
+            if len(prices) < period + 1:
+                return pd.Series(np.nan, index=prices.index, dtype=float)
+            
+            delta = prices.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=period, min_periods=period).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=period).mean()
+            
+            # Evitar división por cero
+            rs = pd.Series(np.nan, index=prices.index, dtype=float)
+            valid_loss = loss > 0
+            rs[valid_loss] = gain[valid_loss] / loss[valid_loss]
+            
+            # Calcular RSI solo donde rs es válido
+            rsi = pd.Series(np.nan, index=prices.index, dtype=float)
+            valid_rs = ~rs.isna()
+            rsi[valid_rs] = 100 - (100 / (1 + rs[valid_rs]))
+            
+            return rsi
+        except Exception as e:
+            logger.error(f"Error calculando RSI: {e}")
+            return pd.Series(np.nan, index=prices.index if len(prices) > 0 else pd.Index([]), dtype=float)
     
     def calculate_stochastic(self, high: pd.Series, low: pd.Series, close: pd.Series) -> Tuple[pd.Series, pd.Series]:
         """Calcular Stochastic Oscillator"""
@@ -144,13 +167,48 @@ class MeanReversionProfessional:
                           slowd_period=self.stoch_d_period)
         return pd.Series(k), pd.Series(d)
     
-    def calculate_bollinger_bands(self, prices: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
-        """Calcular Bollinger Bands"""
-        upper, middle, lower = talib.BBANDS(prices.values,
-                                          timeperiod=self.bb_period,
-                                          nbdevup=self.bb_std,
-                                          nbdevdn=self.bb_std)
-        return pd.Series(upper), pd.Series(middle), pd.Series(lower)
+    def calculate_bollinger_bands(self, prices: pd.Series, period: int = 20, std_dev: float = 2.0) -> Dict[str, pd.Series]:
+        """
+        Calcular Bollinger Bands
+        """
+        try:
+            if len(prices) < period:
+                # Retornar series vacías con el mismo índice que prices
+                empty_series = pd.Series(np.nan, index=prices.index, dtype=float)
+                return {
+                    'upper': empty_series,
+                    'middle': empty_series,
+                    'lower': empty_series,
+                    'width': empty_series
+                }
+            
+            sma = prices.rolling(window=period, min_periods=period).mean()
+            std = prices.rolling(window=period, min_periods=period).std()
+            
+            upper_band = sma + (std * std_dev)
+            lower_band = sma - (std * std_dev)
+            
+            # Calcular width con validación para evitar división por cero
+            width = pd.Series(np.nan, index=prices.index, dtype=float)
+            valid_sma = sma > 0
+            width[valid_sma] = (upper_band[valid_sma] - lower_band[valid_sma]) / sma[valid_sma] * 100
+            
+            return {
+                'upper': upper_band,
+                'middle': sma,
+                'lower': lower_band,
+                'width': width
+            }
+        except Exception as e:
+            logger.error(f"Error calculando Bollinger Bands: {e}")
+            # Retornar series vacías con el mismo índice que prices
+            empty_series = pd.Series(np.nan, index=prices.index if len(prices) > 0 else pd.Index([]), dtype=float)
+            return {
+                'upper': empty_series,
+                'middle': empty_series,
+                'lower': empty_series,
+                'width': empty_series
+            }
     
     def calculate_keltner_channels(self, high: pd.Series, low: pd.Series, close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """Calcular Keltner Channels"""
@@ -167,8 +225,17 @@ class MeanReversionProfessional:
         Detectar divergencias entre precio e indicador
         """
         try:
-            if len(prices) < lookback * 2:
+            if len(prices) < lookback * 2 or len(indicator) < lookback * 2:
                 return DivergenceSignal(DivergenceType.NONE, 0, 0, [], [], 0)
+            
+            # Verificar que las series tengan el mismo tamaño
+            min_length = min(len(prices), len(indicator))
+            if min_length < lookback * 2:
+                return DivergenceSignal(DivergenceType.NONE, 0, 0, [], [], 0)
+            
+            # Truncar series al mismo tamaño
+            prices = prices.iloc[-min_length:]
+            indicator = indicator.iloc[-min_length:]
             
             # Encontrar picos y valles en precio
             price_highs = []
@@ -176,14 +243,21 @@ class MeanReversionProfessional:
             indicator_highs = []
             indicator_lows = []
             
-            for i in range(lookback, len(prices) - lookback):
+            # Usar ventana más pequeña para evitar índices fuera de rango
+            window = min(5, lookback // 4)
+            
+            for i in range(window, len(prices) - window):
+                # Verificar que tenemos suficientes datos
+                if i - window < 0 or i + window >= len(prices):
+                    continue
+                    
                 # Picos en precio
-                if prices.iloc[i] == max(prices.iloc[i-5:i+6]):
+                if prices.iloc[i] == max(prices.iloc[i-window:i+window+1]):
                     price_highs.append((i, prices.iloc[i]))
                     indicator_highs.append((i, indicator.iloc[i]))
                 
                 # Valles en precio
-                if prices.iloc[i] == min(prices.iloc[i-5:i+6]):
+                if prices.iloc[i] == min(prices.iloc[i-window:i+window+1]):
                     price_lows.append((i, prices.iloc[i]))
                     indicator_lows.append((i, indicator.iloc[i]))
             
@@ -194,17 +268,21 @@ class MeanReversionProfessional:
                 last_ind_high = indicator_highs[-1][1]
                 prev_ind_high = indicator_highs[-2][1]
                 
-                # Divergencia bajista: precio hace máximo más alto, indicador hace máximo más bajo
-                if last_price_high > prev_price_high and last_ind_high < prev_ind_high:
-                    strength = abs(last_price_high - prev_price_high) / prev_price_high * 100
-                    return DivergenceSignal(
-                        DivergenceType.BEARISH,
-                        min(strength * 10, 100),
-                        price_highs[-1][0],
-                        [prev_price_high, last_price_high],
-                        [prev_ind_high, last_ind_high],
-                        min(strength * 5, 100)
-                    )
+                # Verificar que los valores son válidos
+                if (prev_price_high > 0 and not np.isnan(prev_price_high) and 
+                    not np.isnan(last_price_high) and not np.isnan(last_ind_high) and not np.isnan(prev_ind_high)):
+                    
+                    # Divergencia bajista: precio hace máximo más alto, indicador hace máximo más bajo
+                    if last_price_high > prev_price_high and last_ind_high < prev_ind_high:
+                        strength = abs(last_price_high - prev_price_high) / prev_price_high * 100
+                        return DivergenceSignal(
+                            DivergenceType.BEARISH,
+                            min(strength * 10, 100),
+                            price_highs[-1][0],
+                            [prev_price_high, last_price_high],
+                            [prev_ind_high, last_ind_high],
+                            min(strength * 5, 100)
+                        )
             
             if len(price_lows) >= 2 and len(indicator_lows) >= 2:
                 last_price_low = price_lows[-1][1]
@@ -212,17 +290,21 @@ class MeanReversionProfessional:
                 last_ind_low = indicator_lows[-1][1]
                 prev_ind_low = indicator_lows[-2][1]
                 
-                # Divergencia alcista: precio hace mínimo más bajo, indicador hace mínimo más alto
-                if last_price_low < prev_price_low and last_ind_low > prev_ind_low:
-                    strength = abs(prev_price_low - last_price_low) / prev_price_low * 100
-                    return DivergenceSignal(
-                        DivergenceType.BULLISH,
-                        min(strength * 10, 100),
-                        price_lows[-1][0],
-                        [prev_price_low, last_price_low],
-                        [prev_ind_low, last_ind_low],
-                        min(strength * 5, 100)
-                    )
+                # Verificar que los valores son válidos
+                if (prev_price_low > 0 and not np.isnan(prev_price_low) and 
+                    not np.isnan(last_price_low) and not np.isnan(last_ind_low) and not np.isnan(prev_ind_low)):
+                    
+                    # Divergencia alcista: precio hace mínimo más bajo, indicador hace mínimo más alto
+                    if last_price_low < prev_price_low and last_ind_low > prev_ind_low:
+                        strength = abs(prev_price_low - last_price_low) / prev_price_low * 100
+                        return DivergenceSignal(
+                            DivergenceType.BULLISH,
+                            min(strength * 10, 100),
+                            price_lows[-1][0],
+                            [prev_price_low, last_price_low],
+                            [prev_ind_low, last_ind_low],
+                            min(strength * 5, 100)
+                        )
             
             return DivergenceSignal(DivergenceType.NONE, 0, 0, [], [], 0)
             
@@ -326,7 +408,8 @@ class MeanReversionProfessional:
             # 2. Calcular indicadores
             rsi = self.calculate_rsi(df['close'])
             stoch_k, stoch_d = self.calculate_stochastic(df['high'], df['low'], df['close'])
-            bb_upper, bb_middle, bb_lower = self.calculate_bollinger_bands(df['close'])
+            bb_bands = self.calculate_bollinger_bands(df['close'])
+            bb_upper, bb_middle, bb_lower = bb_bands['upper'], bb_bands['middle'], bb_bands['lower']
             kc_upper, kc_middle, kc_lower = self.calculate_keltner_channels(df['high'], df['low'], df['close'])
             
             current_price = df['close'].iloc[-1]

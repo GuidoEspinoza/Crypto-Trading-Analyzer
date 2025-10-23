@@ -72,7 +72,7 @@ class TradingProfiles:
             "analysis_interval": 1,  # OPTIMIZADO: Análisis cada minuto para trades rápidos
             "min_confidence": 75.0,  # CRÍTICO: Confianza alta para reducir señales falsas
             "max_daily_trades": 20,  # CRÍTICO: Reducir trades para mejor gestión
-            "max_positions": 4,  # CRÍTICO: Máximo 4 posiciones simultáneas
+            "max_positions": 6,  # CRÍTICO: Máximo 6 posiciones simultáneas
 
             # Paper Trader Config - SCALPING CFD CONSERVADOR
             "max_position_size": 0.06,  # 6% por posición - más conservador
@@ -90,6 +90,7 @@ class TradingProfiles:
             "min_position_size": 5.0,  # Posición mínima más alta
             "risk_max_position_size": 0.06,  # Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly más conservador
+            "volatility_adjustment_factor": 1.0,  # Factor de ajuste por volatilidad
 
             "atr_multiplier_min": 1.5,  # CRÍTICO: Stops más amplios para scalping
             "atr_multiplier_max": 2.5,  # CRÍTICO: Stops más amplios optimizados
@@ -203,11 +204,11 @@ class TradingProfiles:
         "INTRADAY": {
             "name": "Intraday",
             "description": "Timeframes 15m-1h, operaciones diarias balanceadas CFD con TP/SL basado en ROI del balance",
-            "timeframes": ["15m", "30m", "1h"],
-            "analysis_interval": 8,  # OPTIMIZADO: Análisis cada 8 minutos - más selectivo
-            "min_confidence": 78.0,  # OPTIMIZADO: Confianza mucho más estricta para mejor precisión
-            "max_daily_trades": 8,  # OPTIMIZADO: Máximo 8 operaciones diarias - más selectivo
-            "max_positions": 4,  # OPTIMIZADO: Máximo 4 posiciones - mejor control de riesgo
+            "timeframes": ["30m", "1h", "4h"],  # CAMBIADO: eliminado 15m, agregado 4h para mejor calidad
+            "analysis_interval": 12,  # AUMENTADO: Análisis cada 12 minutos - mucho más selectivo
+            "min_confidence": 80.0,  # AUMENTADO: Confianza aún más estricta para máxima precisión
+            "max_daily_trades": 10,  # Máximo 10 operaciones diarias
+            "max_positions": 4,  # Máximo 4 posiciones - control total de riesgo
 
             # Paper Trader Config - INTRADAY CFD OPTIMIZADO
             "max_position_size": 0.06,  # OPTIMIZADO: 6% por posición - más conservador
@@ -223,8 +224,9 @@ class TradingProfiles:
             "max_drawdown_threshold": 0.08,  # 8% drawdown máximo
             "correlation_threshold": 0.65,  # Correlación moderada
             "min_position_size": 10.0,  # Posición mínima moderada
-            "risk_max_position_size": 0.08,  # OPTIMIZADO: Consistente con max_position_size
+            "risk_max_position_size": 0.06,  # OPTIMIZADO: Consistente con max_position_size
             "kelly_fraction": 0.25,  # Kelly moderado
+            "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad (más alto para intraday)
 
             "atr_multiplier_min": 2.0,  # Stops amplios para intraday
             "atr_multiplier_max": 3.0,  # Stops amplios optimizados
@@ -252,20 +254,20 @@ class TradingProfiles:
             "min_confidence_threshold": 0.78,  # OPTIMIZADO: Confianza mínima mucho más estricta
             "position_size_multiplier": 0.8,  # OPTIMIZADO: Multiplicador más conservador
             
-            # Strategy Config - INTRADAY ULTRA-OPTIMIZADO
-            "default_min_confidence": 78.0,  # OPTIMIZADO: Confianza mucho más estricta
-            "default_atr_period": 14,  # OPTIMIZADO: Período más largo para mejor señales
-            "rsi_min_confidence": 82.0,  # OPTIMIZADO: RSI confianza muy alta
-            "rsi_oversold": 20,  # OPTIMIZADO: RSI oversold más estricto
-            "rsi_overbought": 80,  # OPTIMIZADO: RSI overbought más estricto
-            "rsi_period": 14,  # OPTIMIZADO: Período RSI estándar más confiable
-            "min_volume_ratio": 2.5,  # OPTIMIZADO: Volumen mínimo mucho más alto
-            "min_confluence": 5,  # OPTIMIZADO: Confluencia mucho más estricta
-            "trend_strength_threshold": 55,  # OPTIMIZADO: Fuerza tendencia mucho más alta
-            "min_atr_ratio": 1.4,  # OPTIMIZADO: ATR ratio más estricto
-            "max_spread_threshold": 0.001,  # OPTIMIZADO: Spread máximo más estricto
-            "volume_weight": 0.30,  # OPTIMIZADO: Mayor peso al volumen
-            "confluence_threshold": 0.75,  # OPTIMIZADO: Umbral confluencia mucho más estricto
+            # Strategy Config - INTRADAY ULTRA-OPTIMIZADO ANTI-LATERAL
+            "default_min_confidence": 80.0,  # AUMENTADO: Confianza ultra estricta
+            "default_atr_period": 21,  # AUMENTADO: Período más largo para señales más suaves
+            "rsi_min_confidence": 85.0,  # AUMENTADO: RSI confianza extrema
+            "rsi_oversold": 25,  # AUMENTADO: RSI oversold mucho más estricto
+            "rsi_overbought": 75,  # REDUCIDO: RSI overbought mucho más estricto
+            "rsi_period": 21,  # AUMENTADO: Período RSI más largo para menos ruido
+            "min_volume_ratio": 3.0,  # AUMENTADO: Volumen mínimo ultra alto
+            "min_confluence": 6,  # AUMENTADO: Confluencia ultra estricta
+            "trend_strength_threshold": 65,  # AUMENTADO: Fuerza tendencia ultra alta
+            "min_atr_ratio": 1.8,  # AUMENTADO: ATR ratio ultra estricto
+            "max_spread_threshold": 0.0008,  # REDUCIDO: Spread máximo ultra estricto
+            "volume_weight": 0.35,  # AUMENTADO: Peso máximo al volumen
+            "confluence_threshold": 0.80,  # AUMENTADO: Umbral confluencia ultra estricto
             
             # Multi-Timeframe Config - INTRADAY
             "mtf_enhanced_confidence": 82.0,  # OPTIMIZADO: Confianza MTF muy alta
@@ -283,19 +285,22 @@ class TradingProfiles:
             "order_check_interval": 1.8,  # Verificación moderada
             "live_first_analysis_delay": 15,  # Delay inicial moderado
             
-            # Position Adjuster Config - INTRADAY
-            "enable_position_monitoring": False,  # DESACTIVADO: Solo abrir posiciones con TP/SL, no cerrar automáticamente
-            "position_monitoring_interval": 35,  # Monitoreo moderado
-            "price_cache_duration": 25,  # Cache moderado
+            # Position Adjuster Config - INTRADAY ANTI-LATERAL
+            "enable_position_monitoring": True,  # ACTIVADO: Para cerrar trades lentos automáticamente
+            "position_monitoring_interval": 20,  # REDUCIDO: Monitoreo más frecuente
+            "price_cache_duration": 15,  # REDUCIDO: Cache más fresco
             "max_close_attempts": 3,  # Intentos estándar
-            "profit_scaling_threshold": 0.022,  # Escalado al 2.2%
-            "trailing_stop_sl_pct": 0.018,  # SL trailing 1.8%
-            "trailing_stop_tp_pct": 0.045,  # TP trailing 4.5%
-            "profit_protection_sl_pct": 0.012,  # Protección ganancias 1.2%
-            "profit_protection_tp_pct": 0.035,  # TP protección 3.5%
-            "risk_management_threshold": -0.012,  # Umbral riesgo -1.2%
-            "risk_management_sl_pct": 0.015,  # SL riesgo 1.5%
-            "risk_management_tp_pct": 0.025,  # TP riesgo 2.5%
+            "position_timeout_hours": 6,  # NUEVO: Cerrar posiciones después de 6 horas sin movimiento significativo
+            "min_movement_threshold": 0.005,  # NUEVO: Movimiento mínimo 0.5% para considerar progreso
+            "sideways_detection_period": 120,  # NUEVO: Detectar lateral en 2 horas
+            "profit_scaling_threshold": 0.015,  # REDUCIDO: Escalado más temprano al 1.5%
+            "trailing_stop_sl_pct": 0.012,  # REDUCIDO: SL trailing más agresivo 1.2%
+            "trailing_stop_tp_pct": 0.030,  # REDUCIDO: TP trailing más conservador 3.0%
+            "profit_protection_sl_pct": 0.008,  # REDUCIDO: Protección ganancias más temprana 0.8%
+            "profit_protection_tp_pct": 0.025,  # REDUCIDO: TP protección más conservador 2.5%
+            "risk_management_threshold": -0.008,  # MEJORADO: Umbral riesgo más estricto -0.8%
+            "risk_management_sl_pct": 0.010,  # REDUCIDO: SL riesgo más agresivo 1.0%
+            "risk_management_tp_pct": 0.020,  # REDUCIDO: TP riesgo más conservador 2.0%
             
             # Enhanced Risk Manager Config
             "kelly_win_rate": 0.68,  # Tasa ganancia intraday
