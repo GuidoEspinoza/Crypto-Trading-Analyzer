@@ -71,7 +71,7 @@ class TradingProfiles:
             "timeframes": ["1m", "3m", "5m"],  # OPTIMIZADO: Timeframes ultra-rápidos para scalping
             "analysis_interval": 1,  # OPTIMIZADO: Análisis cada minuto para trades rápidos
             "min_confidence": 75.0,  # CRÍTICO: Confianza alta para reducir señales falsas
-            "max_daily_trades": 20,  # CRÍTICO: Reducir trades para mejor gestión
+            "max_daily_trades": 30,  # CRÍTICO: Reducir trades para mejor gestión
             "max_positions": 6,  # CRÍTICO: Máximo 6 posiciones simultáneas
 
             # Paper Trader Config - SCALPING CFD CONSERVADOR
@@ -79,8 +79,8 @@ class TradingProfiles:
             "max_total_exposure": 0.40,  # 40% exposición total - más seguro
             "min_trade_value": 5.0,  # Valor mínimo más alto para calidad
             "paper_min_confidence": 75.0,  # Confianza alta consistente
-            "max_slippage": 0.05,  # Slippage más controlado
-            "min_liquidity": 5.0,  # Liquidez mínima más alta
+            "max_slippage": 0.03,  # Slippage más controlado
+            "min_liquidity": 8.0,  # Liquidez mínima más alta
             
             # Risk Manager Config - SCALPING CONTROLADO
             "max_risk_per_trade": 0.8,  # CRÍTICO: 0.8% riesgo por trade - más conservador
@@ -97,7 +97,7 @@ class TradingProfiles:
             "atr_default": 1.8,  # Stop loss por defecto más amplio
             "atr_volatile": 2.5,  # Stops amplios en alta volatilidad
             "atr_sideways": 1.5,  # Stops moderados en laterales
-            "trailing_stop_activation": 0.006,  # OPTIMIZADO: Trailing al 0.6% para scalping
+            "trailing_stop_activation": 0.003,  # OPTIMIZADO: Trailing al 0.3% para scalping
             "breakeven_threshold": 0.004,  # OPTIMIZADO: Breakeven al 0.4% para protección rápida
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
@@ -106,7 +106,7 @@ class TradingProfiles:
             "use_trailing_stop": True,  # Activado por defecto para scalping (mayor dinamismo)
             
             # Take Profit y Stop Loss Config - SCALPING ROI-BASED (% del balance invertido)
-            "tp_min_percentage": 0.005,  # ROI: TP mínimo 0.5% del balance para trades ultra-rápidos
+            "tp_min_percentage": 0.0035,  # ROI: TP mínimo 0.35% del balance para trades ultra-rápidos
             "tp_max_percentage": 0.015,  # ROI: TP máximo 1.5% del balance para cierre rápido
             "sl_min_percentage": 0.003,  # ROI: SL mínimo 0.3% del balance para scalping
             "sl_max_percentage": 0.008,  # ROI: SL máximo 0.8% del balance para control estricto
@@ -126,7 +126,7 @@ class TradingProfiles:
             "rsi_overbought": 75,  # CRÍTICO: RSI overbought más extremo (menos señales)
             "rsi_period": 14,  # Período RSI estándar para mejor precisión
             "min_volume_ratio": 1.8,  # CRÍTICO: Volumen mínimo alto para confirmación
-            "min_confluence": 5,  # CRÍTICO: Confluencia mínima alta (5 confirmaciones)
+            "min_confluence": 6,  # CRÍTICO: Confluencia mínima alta (6 confirmaciones)
             "trend_strength_threshold": 40,  # CRÍTICO: Fuerza tendencia alta
             "min_atr_ratio": 1.2,  # ATR ratio más alto para volatilidad adecuada
             "max_spread_threshold": 0.002,  # CRÍTICO: Spread máximo más estricto
@@ -212,8 +212,8 @@ class TradingProfiles:
 
             # Paper Trader Config - INTRADAY CFD OPTIMIZADO
             "max_position_size": 0.06,  # OPTIMIZADO: 6% por posición - más conservador
-            "max_total_exposure": 0.25,  # OPTIMIZADO: 25% exposición total - mucho más conservador
-            "min_trade_value": 10.0,  # OPTIMIZADO: Valor mínimo más alto para mejor calidad
+            "max_total_exposure": 0.30,  # OPTIMIZADO: 30% exposición total - mucho más conservador
+            "min_trade_value": 15.0,  # OPTIMIZADO: Valor mínimo más alto para mejor calidad
             "paper_min_confidence": 78.0,  # OPTIMIZADO: Confianza consistente con trading real
             "max_slippage": 0.03,  # OPTIMIZADO: Slippage más estricto
             "min_liquidity": 12.0,  # OPTIMIZADO: Liquidez más alta requerida
@@ -229,7 +229,7 @@ class TradingProfiles:
             "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad (más alto para intraday)
 
             "atr_multiplier_min": 2.0,  # Stops amplios para intraday
-            "atr_multiplier_max": 3.0,  # Stops amplios optimizados
+            "atr_multiplier_max": 3.5,  # Stops amplios optimizados
             "atr_default": 2.2,
             "atr_volatile": 3.0,
             "atr_sideways": 1.8,  # Stops moderados en laterales
@@ -290,7 +290,7 @@ class TradingProfiles:
             "position_monitoring_interval": 20,  # REDUCIDO: Monitoreo más frecuente
             "price_cache_duration": 15,  # REDUCIDO: Cache más fresco
             "max_close_attempts": 3,  # Intentos estándar
-            "position_timeout_hours": 6,  # NUEVO: Cerrar posiciones después de 6 horas sin movimiento significativo
+            "position_timeout_hours": 8,  # NUEVO: Cerrar posiciones después de 6 horas sin movimiento significativo
             "min_movement_threshold": 0.005,  # NUEVO: Movimiento mínimo 0.5% para considerar progreso
             "sideways_detection_period": 120,  # NUEVO: Detectar lateral en 2 horas
             "profit_scaling_threshold": 0.015,  # REDUCIDO: Escalado más temprano al 1.5%
@@ -447,10 +447,16 @@ USD_BASE_PRICE = 1.0
 
 # Lista de símbolos con nombres exactos como aparecen en Capital.com
 GLOBAL_SYMBOLS: List[str] = [
-    # === Metales Preciosos ===
-    "GOLD", "SILVER",
-    # === Criptomonedas ===
-    "BTCUSD", "ETHUSD"
+    # === Metales Preciosos (Base) ===
+    "GOLD",
+    # === Criptomonedas (Base) ===
+    "BTCUSD", "ETHUSD",
+    # === Forex (Volatilidad y Liquidez) ===
+    "EURUSD",
+    # === Índices (Volatilidad de Apertura) ===
+    "US500",
+    # === Acciones/Tech (Volatilidad Intraday) ===
+    "NVDA"
 ]
 
 # ============================================================================
