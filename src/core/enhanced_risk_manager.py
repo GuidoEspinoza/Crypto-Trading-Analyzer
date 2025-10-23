@@ -322,6 +322,30 @@ class EnhancedRiskManager:
             tamano_posicion = valor_negociacion / precio_actual
             print(f"🔧 DEBUG: Tamaño posición (${valor_negociacion:.2f} / ${precio_actual:.2f}): {tamano_posicion:.6f}")
             
+            # NUEVO: Ajuste dinámico por volatilidad ATR (percentil 90+)
+            volatility_adjustment = 1.0
+            atr_info = None
+            
+            # Aplicar ajuste de volatilidad solo para NVDA y BTCUSD (como especifica el prompt)
+            if signal.symbol.upper() in ['NVDA', 'BTCUSD']:
+                atr_info = self._calculate_atr_percentile(signal.symbol, signal.timeframe)
+                volatility_adjustment = atr_info.get('volatility_adjustment', 1.0)
+                
+                if volatility_adjustment < 1.0:
+                    print(f"🔧 DEBUG: Ajuste por volatilidad ATR para {signal.symbol}: {volatility_adjustment:.1f}x")
+                    print(f"🔧 DEBUG: {atr_info.get('reason', 'Sin razón')}")
+                    logger.info(f"🌪️ Ajuste volatilidad {signal.symbol}: {volatility_adjustment:.1f}x - {atr_info.get('reason', '')}")
+                    
+                    # Aplicar ajuste al monto de operación y valor de negociación
+                    monto_operacion *= volatility_adjustment
+                    valor_negociacion *= volatility_adjustment
+                    tamano_posicion *= volatility_adjustment
+                    
+                    print(f"🔧 DEBUG: Después del ajuste ATR:")
+                    print(f"🔧 DEBUG: - Monto operación ajustado: ${monto_operacion:.2f}")
+                    print(f"🔧 DEBUG: - Valor negociación ajustado: ${valor_negociacion:.2f}")
+                    print(f"🔧 DEBUG: - Tamaño posición ajustado: {tamano_posicion:.6f}")
+            
             # Aplicar límites mínimos y máximos
             recommended_size = max(self.min_position_size, tamano_posicion)
             max_position_value = self.portfolio_value * self.max_position_size
@@ -347,10 +371,14 @@ class EnhancedRiskManager:
             
             print(f"🔧 DEBUG: Nivel de riesgo: {risk_level.value} (ratio: {position_risk_ratio:.3f})")
             
-            # Reasoning actualizado para nueva estrategia
+            # Reasoning actualizado para nueva estrategia con ajuste de volatilidad
             reasoning = f"Balance: ${self.portfolio_value:.2f}, Monto operación ({self.max_position_size*100:.1f}%): ${monto_operacion:.2f}, " \
                        f"Apalancamiento: {dynamic_leverage}x, Valor negociación: ${valor_negociacion:.2f}, " \
                        f"Precio: ${precio_actual:.2f}, Tamaño final: {tamano_posicion:.6f}"
+            
+            # Agregar información del ajuste de volatilidad si aplica
+            if atr_info and volatility_adjustment < 1.0:
+                reasoning += f", Ajuste volatilidad ATR: {volatility_adjustment:.1f}x (Percentil {atr_info.get('atr_percentile', 0):.1f}%)"
             
             print(f"🔧 DEBUG: Reasoning: {reasoning}")
             
@@ -1030,4 +1058,108 @@ class EnhancedRiskManager:
                 "current_drawdown": self.current_drawdown * 100,
                 "open_positions_count": len(self.open_positions),
                 "overall_risk_level": "UNKNOWN"
+            }
+    
+    def _calculate_atr_percentile(self, symbol: str, timeframe: str = "1h", periods: int = 20, lookback_days: int = 5) -> Dict:
+        """
+        Calcular el percentil del ATR actual vs los últimos 5 días
+        
+        Args:
+            symbol: Símbolo del activo (ej: NVDA, BTCUSD)
+            timeframe: Timeframe para el cálculo
+            periods: Períodos para el cálculo del ATR
+            lookback_days: Días hacia atrás para calcular el percentil
+            
+        Returns:
+            Dict con información del percentil de ATR
+        """
+        try:
+            from .advanced_indicators import AdvancedIndicators
+            
+            # Obtener datos históricos extendidos para el cálculo del percentil
+            # Necesitamos más datos para tener suficiente historia de ATR
+            extended_periods = periods + (lookback_days * 24)  # Aproximadamente 5 días de datos horarios
+            
+            # Obtener datos de mercado
+            market_data = AdvancedIndicators.get_market_data(symbol, timeframe, extended_periods)
+            
+            if market_data is None or len(market_data) < periods:
+                logger.warning(f"Datos insuficientes para calcular percentil ATR de {symbol}")
+                return {
+                    "current_atr": 0.0,
+                    "atr_percentile": 50.0,
+                    "is_extreme_volatility": False,
+                    "volatility_adjustment": 1.0,
+                    "reason": "Datos insuficientes"
+                }
+            
+            # Calcular ATR para todo el período
+            df = pd.DataFrame(market_data)
+            df['high'] = pd.to_numeric(df['high'])
+            df['low'] = pd.to_numeric(df['low'])
+            df['close'] = pd.to_numeric(df['close'])
+            
+            # Calcular True Range
+            df['prev_close'] = df['close'].shift(1)
+            df['tr1'] = df['high'] - df['low']
+            df['tr2'] = abs(df['high'] - df['prev_close'])
+            df['tr3'] = abs(df['low'] - df['prev_close'])
+            df['true_range'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
+            
+            # Calcular ATR usando media móvil exponencial
+            df['atr'] = df['true_range'].ewm(span=periods).mean()
+            
+            # Obtener ATR actual (último valor)
+            current_atr = df['atr'].iloc[-1]
+            
+            # Calcular percentil del ATR actual vs los últimos lookback_days
+            recent_atr_values = df['atr'].dropna().tail(lookback_days * 24)  # Últimos 5 días aprox
+            
+            if len(recent_atr_values) < 10:  # Mínimo 10 valores para percentil confiable
+                logger.warning(f"Pocos valores de ATR para percentil confiable de {symbol}")
+                return {
+                    "current_atr": float(current_atr),
+                    "atr_percentile": 50.0,
+                    "is_extreme_volatility": False,
+                    "volatility_adjustment": 1.0,
+                    "reason": "Pocos valores históricos"
+                }
+            
+            # Calcular percentil
+            atr_percentile = (recent_atr_values < current_atr).sum() / len(recent_atr_values) * 100
+            
+            # Determinar si es volatilidad extrema (percentil 90+)
+            is_extreme_volatility = atr_percentile >= 90.0
+            
+            # Calcular ajuste de volatilidad
+            # Si está en percentil 90+, reducir posición en 20%
+            if is_extreme_volatility:
+                volatility_adjustment = 0.8  # Reducir 20%
+                reason = f"ATR en percentil {atr_percentile:.1f}% - Volatilidad extrema detectada"
+            elif atr_percentile >= 80.0:
+                volatility_adjustment = 0.9  # Reducir 10% si está en percentil 80-89
+                reason = f"ATR en percentil {atr_percentile:.1f}% - Volatilidad alta"
+            else:
+                volatility_adjustment = 1.0  # Sin ajuste
+                reason = f"ATR en percentil {atr_percentile:.1f}% - Volatilidad normal"
+            
+            logger.info(f"📊 ATR Percentil {symbol}: {atr_percentile:.1f}% | Ajuste: {volatility_adjustment:.1f}x")
+            
+            return {
+                "current_atr": float(current_atr),
+                "atr_percentile": round(atr_percentile, 1),
+                "is_extreme_volatility": is_extreme_volatility,
+                "volatility_adjustment": volatility_adjustment,
+                "reason": reason,
+                "atr_values_count": len(recent_atr_values)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculando percentil ATR para {symbol}: {e}")
+            return {
+                "current_atr": 0.0,
+                "atr_percentile": 50.0,
+                "is_extreme_volatility": False,
+                "volatility_adjustment": 1.0,
+                "reason": f"Error: {str(e)}"
             }

@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import logging
 from dataclasses import dataclass
+import pytz
 
 from .enhanced_strategies import TradingSignal, EnhancedSignal
 from .mean_reversion_professional import MarketRegime
@@ -424,6 +425,12 @@ class TrendFollowingProfessional:
             
             logger.info(f"✅ Validación multi-timeframe APROBADA para {symbol}: {mtf_analysis['details']}")
 
+            # 2.5. NUEVO: Filtro de horario de trading para mercados estadounidenses
+            trading_hours = self._is_us_trading_hours(symbol)
+            if not trading_hours["is_trading_hours"]:
+                logger.info(f"🕘 Trading fuera de horario para {symbol}: {trading_hours['reason']}")
+                return None
+
             # 3. Calcular indicadores técnicos
             df = self.calculate_technical_indicators(df)
             
@@ -440,9 +447,9 @@ class TrendFollowingProfessional:
             sideways_analysis = self.detect_sideways_market(df)
             volatility_analysis = self.calculate_volatility_filter(df)
             
-            # Filtro crítico: Evitar trades en mercados laterales
-            if sideways_analysis["is_sideways"] and sideways_analysis["confidence"] > 60.0:
-                logger.info(f"🚫 Mercado lateral detectado para {symbol}: {sideways_analysis['reason']}")
+            # NUEVO: Filtro crítico mejorado - Anular solo en casos extremos de mercado lateral
+            if sideways_analysis["is_sideways"] and sideways_analysis["confidence"] > 80.0:
+                logger.info(f"🚫 Mercado lateral extremo detectado para {symbol}: {sideways_analysis['reason']}")
                 return None
             
             # Filtro crítico: Evitar trades sin volatilidad suficiente
@@ -558,7 +565,23 @@ class TrendFollowingProfessional:
             volume_bonus = 10.0 if volume_analysis["confirmed"] else 0.0
             trend_bonus = 15.0 if trend_analysis["aligned"] else 0.0
             
-            signal.confidence_score = min(95.0, base_confidence + confluence_bonus + volume_bonus + trend_bonus)
+            # NUEVO: Ponderación por ADX - Aumentar confianza cuando ADX > 25 (tendencia fuerte)
+            current_adx = df['adx'].iloc[-1] if not pd.isna(df['adx'].iloc[-1]) else 20
+            adx_bonus = 0.0
+            if current_adx > 25:
+                # Bonus progresivo: 5% base + 0.2% por cada punto de ADX sobre 25
+                adx_bonus = 5.0 + (current_adx - 25) * 0.2
+                adx_bonus = min(adx_bonus, 15.0)  # Máximo 15% de bonus
+                logger.info(f"📈 ADX fuerte detectado para {symbol} (ADX: {current_adx:.1f}) - Aumentando confianza en {adx_bonus:.1f}%")
+            
+            # NUEVO: Penalización por mercado lateral
+            sideways_penalty = 0.0
+            if sideways_analysis["is_sideways"] and sideways_analysis["confidence"] > 60.0:
+                # Reducir confianza proporcionalmente a la confianza de detección lateral
+                sideways_penalty = (sideways_analysis["confidence"] - 60.0) * 0.5  # 0.5% por cada 1% de confianza lateral
+                logger.info(f"⚠️ Mercado lateral detectado para {symbol} (confianza: {sideways_analysis['confidence']:.1f}%) - Reduciendo confianza en {sideways_penalty:.1f}%")
+            
+            signal.confidence_score = min(95.0, base_confidence + confluence_bonus + volume_bonus + trend_bonus + adx_bonus - sideways_penalty)
             
             # 9. Filtros básicos de calidad MEJORADOS
             if signal.confidence_score < 75.0:  # AUMENTADO de 65% a 75%
@@ -765,3 +788,70 @@ if __name__ == "__main__":
         current_timeframe = timeframes[0] if timeframes else '1h'
         
         return timeframe_map.get(current_timeframe, 60)  # Default 60 minutos (1h)
+    
+    def _is_us_trading_hours(self, symbol: str) -> Dict:
+        """🕘 Verificar si estamos dentro del horario de trading de mercados estadounidenses
+        
+        Args:
+            symbol: Símbolo del activo
+            
+        Returns:
+            Dict con información del horario de trading
+        """
+        # Símbolos que requieren horario de trading estadounidense
+        us_symbols = ['NVDA', 'US500', 'SPY', 'QQQ', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
+        
+        # Si no es un símbolo estadounidense, permitir trading 24/7
+        if not any(us_sym in symbol.upper() for us_sym in us_symbols):
+            return {
+                "is_trading_hours": True,
+                "reason": "24/7 market (crypto/forex)",
+                "current_time": datetime.now(),
+                "market_status": "open"
+            }
+        
+        try:
+            # Obtener hora actual en EST/EDT
+            est = pytz.timezone('US/Eastern')
+            current_time = datetime.now(est)
+            
+            # Verificar si es día de semana (lunes=0, domingo=6)
+            weekday = current_time.weekday()
+            if weekday >= 5:  # Sábado (5) o Domingo (6)
+                return {
+                    "is_trading_hours": False,
+                    "reason": f"Weekend - Market closed",
+                    "current_time": current_time,
+                    "market_status": "closed_weekend"
+                }
+            
+            # Verificar horario de trading (09:30 - 16:00 EST/EDT)
+            market_open = current_time.replace(hour=9, minute=30, second=0, microsecond=0)
+            market_close = current_time.replace(hour=16, minute=0, second=0, microsecond=0)
+            
+            is_open = market_open <= current_time <= market_close
+            
+            if is_open:
+                return {
+                    "is_trading_hours": True,
+                    "reason": f"US market open (09:30-16:00 EST/EDT)",
+                    "current_time": current_time,
+                    "market_status": "open"
+                }
+            else:
+                return {
+                    "is_trading_hours": False,
+                    "reason": f"US market closed - Current time: {current_time.strftime('%H:%M')} EST/EDT (Market: 09:30-16:00)",
+                    "current_time": current_time,
+                    "market_status": "closed_hours"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error checking US trading hours: {e}")
+            # En caso de error, permitir trading para no bloquear el sistema
+            return {
+                "is_trading_hours": True,
+                "reason": f"Error checking hours: {e}",
+                "current_time": datetime.now(),
+                "market_status": "error_default_open"
+            }

@@ -475,33 +475,43 @@ class PaperTrader:
             usd_balance * self.max_position_size  # Corregido: multiplicar por balance
         )
         
-        if max_trade_value < self.min_trade_value:
+        # 🔄 SINCRONIZACIÓN: Usar la misma lógica que el real trader
+        # Considerar apalancamiento típico de Capital.com (1:5 para crypto, 1:10 para forex)
+        # Para simplificar, usamos apalancamiento promedio de 1:5
+        leverage = 5.0
+        required_margin = max_trade_value / leverage
+        
+        # Validar margen requerido en lugar de valor mínimo fijo
+        # Esto sincroniza con la validación del real trader
+        if required_margin > usd_balance:
             return TradeResult(
                 success=False,
                 trade_id=None,
-                message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
+                message=f"Insufficient balance for margin. Required: ${required_margin:,.2f}, Available: ${usd_balance:,.2f} (Position value: ${max_trade_value:,.2f} with {leverage}x leverage)",
                 entry_price=price,
                 quantity=0.0,
                 entry_value=0.0
             )
         
-        # Calcular cantidad y fees
+        # Validar tamaño mínimo de posición (0.01 unidades como en Capital.com)
         quantity = max_trade_value / price
-        fee = max_trade_value * FEE_RATE
-        margin_required = max_trade_value + fee  # Margen requerido para la posición
-        
-        if margin_required > usd_balance:
+        if quantity < 0.01:
             return TradeResult(
                 success=False,
                 trade_id=None,
-                message=f"Insufficient balance: ${margin_required:,.2f} required, ${usd_balance:,.2f} available",
+                message=f"Position size too small: {quantity:.4f} units (minimum: 0.01)",
                 entry_price=price,
                 quantity=0.0,
                 entry_value=0.0
             )
+        
+        # Calcular cantidad y fees (quantity ya calculada arriba)
+        fee = max_trade_value * FEE_RATE
+        total_margin_required = required_margin + fee  # Usar el margen ya calculado con apalancamiento
+        # Nota: La validación principal de margen ya se hizo arriba con apalancamiento
         
         # Actualizar portfolio (reservar margen)
-        self._update_usd_balance(-margin_required)
+        self._update_usd_balance(-total_margin_required)
         self._update_asset_balance(symbol, quantity, price)
         
         # Crear registro de trade
@@ -644,33 +654,44 @@ class PaperTrader:
             usd_balance * self.max_position_size  # Corregido: multiplicar por balance
         )
         
-        if max_trade_value < self.min_trade_value:
+        # 🔄 SINCRONIZACIÓN: Usar la misma lógica que el real trader
+        # Considerar apalancamiento típico de Capital.com (1:5 para crypto, 1:10 para forex)
+        # Para simplificar, usamos apalancamiento promedio de 1:5
+        leverage = 5.0
+        required_margin = max_trade_value / leverage
+        
+        # Validar margen requerido en lugar de valor mínimo fijo
+        # Esto sincroniza con la validación del real trader
+        if required_margin > usd_balance:
             return TradeResult(
                 success=False,
                 trade_id=None,
-                message=f"Insufficient balance for minimum trade value ${self.min_trade_value:,.2f}",
+                message=f"Insufficient balance for margin. Required: ${required_margin:,.2f}, Available: ${usd_balance:,.2f} (Position value: ${max_trade_value:,.2f} with {leverage}x leverage)",
+                entry_price=price,
+                quantity=0.0,
+                entry_value=0.0
+            )
+        
+        # Validar tamaño mínimo de posición (0.01 unidades como en Capital.com)
+        quantity_abs = max_trade_value / price
+        if quantity_abs < 0.01:
+            return TradeResult(
+                success=False,
+                trade_id=None,
+                message=f"Position size too small: {quantity_abs:.4f} units (minimum: 0.01)",
                 entry_price=price,
                 quantity=0.0,
                 entry_value=0.0
             )
         
         # En posición corta, la cantidad es negativa
-        quantity = -(max_trade_value / price)  # Negativo para indicar posición corta
+        quantity = -quantity_abs  # Negativo para indicar posición corta
         fee = max_trade_value * FEE_RATE
-        margin_required = max_trade_value + fee  # Margen requerido para la posición
-        
-        if margin_required > usd_balance:
-            return TradeResult(
-                success=False,
-                trade_id=None,
-                message=f"Insufficient balance: ${margin_required:,.2f} required, ${usd_balance:,.2f} available",
-                entry_price=price,
-                quantity=0.0,
-                entry_value=0.0
-            )
+        # Nota: La validación de margen ya se hizo arriba con apalancamiento
         
         # Actualizar portfolio (reservar margen)
-        self._update_usd_balance(-margin_required)
+        total_margin_required = required_margin + fee
+        self._update_usd_balance(-total_margin_required)
         self._update_asset_balance(symbol, quantity, price)  # Cantidad negativa
         
         # Crear registro de trade

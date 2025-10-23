@@ -97,7 +97,7 @@ class TradingProfiles:
             "atr_default": 1.8,  # Stop loss por defecto más amplio
             "atr_volatile": 2.5,  # Stops amplios en alta volatilidad
             "atr_sideways": 1.5,  # Stops moderados en laterales
-            "trailing_stop_activation": 0.003,  # OPTIMIZADO: Trailing al 0.3% para scalping
+            "trailing_stop_activation": 0.025,  # OPTIMIZADO: Trailing al 2.5% - más agresivo para scalping
             "breakeven_threshold": 0.004,  # OPTIMIZADO: Breakeven al 0.4% para protección rápida
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
@@ -154,6 +154,7 @@ class TradingProfiles:
             "position_monitoring_interval": 5,  # OPTIMIZADO: Monitoreo cada 5 segundos
             "price_cache_duration": 5,  # OPTIMIZADO: Cache ultra-corto
             "max_close_attempts": 2,  # Pocos intentos de cierre
+            "position_timeout_hours": 4,  # OPTIMIZADO: Cerrar posiciones después de 4 horas para scalping
             "profit_scaling_threshold": 0.008,  # OPTIMIZADO: Escalado al 0.8%
             "trailing_stop_sl_pct": 0.006,  # OPTIMIZADO: SL trailing 0.6%
             "trailing_stop_tp_pct": 0.012,  # OPTIMIZADO: TP trailing 1.2%
@@ -215,7 +216,7 @@ class TradingProfiles:
             "max_total_exposure": 0.30,  # OPTIMIZADO: 30% exposición total - mucho más conservador
             "min_trade_value": 15.0,  # OPTIMIZADO: Valor mínimo más alto para mejor calidad
             "paper_min_confidence": 78.0,  # OPTIMIZADO: Confianza consistente con trading real
-            "max_slippage": 0.03,  # OPTIMIZADO: Slippage más estricto
+            "max_slippage": 0.025,  # OPTIMIZADO: Slippage más estricto para intraday
             "min_liquidity": 12.0,  # OPTIMIZADO: Liquidez más alta requerida
             
             # Risk Manager Config - INTRADAY CONSERVADOR
@@ -229,11 +230,11 @@ class TradingProfiles:
             "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad (más alto para intraday)
 
             "atr_multiplier_min": 2.0,  # Stops amplios para intraday
-            "atr_multiplier_max": 3.5,  # Stops amplios optimizados
+            "atr_multiplier_max": 3.0,  # OPTIMIZADO: Stops amplios optimizados para intraday
             "atr_default": 2.2,
             "atr_volatile": 3.0,
             "atr_sideways": 1.8,  # Stops moderados en laterales
-            "trailing_stop_activation": 0.035,  # Trailing al 3.5% - conservador
+            "trailing_stop_activation": 0.030,  # OPTIMIZADO: Trailing al 3% - conservador para intraday
             "breakeven_threshold": 0.008,  # Breakeven al 0.8% - conservador
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
@@ -262,7 +263,7 @@ class TradingProfiles:
             "rsi_overbought": 75,  # REDUCIDO: RSI overbought mucho más estricto
             "rsi_period": 21,  # AUMENTADO: Período RSI más largo para menos ruido
             "min_volume_ratio": 3.0,  # AUMENTADO: Volumen mínimo ultra alto
-            "min_confluence": 6,  # AUMENTADO: Confluencia ultra estricta
+            "min_confluence": 7,  # OPTIMIZADO: Confluencia ultra estricta para intraday
             "trend_strength_threshold": 65,  # AUMENTADO: Fuerza tendencia ultra alta
             "min_atr_ratio": 1.8,  # AUMENTADO: ATR ratio ultra estricto
             "max_spread_threshold": 0.0008,  # REDUCIDO: Spread máximo ultra estricto
@@ -290,7 +291,7 @@ class TradingProfiles:
             "position_monitoring_interval": 20,  # REDUCIDO: Monitoreo más frecuente
             "price_cache_duration": 15,  # REDUCIDO: Cache más fresco
             "max_close_attempts": 3,  # Intentos estándar
-            "position_timeout_hours": 8,  # NUEVO: Cerrar posiciones después de 6 horas sin movimiento significativo
+            "position_timeout_hours": 6,  # OPTIMIZADO: Cerrar posiciones después de 6 horas para intraday
             "min_movement_threshold": 0.005,  # NUEVO: Movimiento mínimo 0.5% para considerar progreso
             "sideways_detection_period": 120,  # NUEVO: Detectar lateral en 2 horas
             "profit_scaling_threshold": 0.015,  # REDUCIDO: Escalado más temprano al 1.5%
