@@ -455,9 +455,7 @@ GLOBAL_SYMBOLS: List[str] = [
     # === Forex (Volatilidad y Liquidez) ===
     "EURUSD",
     # === Índices (Volatilidad de Apertura) ===
-    "US500",
-    # === Acciones/Tech (Volatilidad Intraday) ===
-    "NVDA"
+    "US500"
 ]
 
 # ============================================================================

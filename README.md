@@ -1,363 +1,311 @@
-# 🤖 Smart Trading Bot - Sistema de Trading Inteligente Diversificado
+# 🤖 Smart Trading Bot - Sistema de Trading Automatizado Inteligente
 
-## 🚀 Sistema de Trading Automatizado de Nueva Generación
+## 🎯 ¿Qué es Smart Trading Bot?
 
-**Smart Trading Bot** es un sistema de trading automatizado avanzado que combina análisis técnico profesional, inteligencia artificial y gestión de riesgo optimizada para maximizar oportunidades en mercados diversificados de alta volatilidad.
+**Smart Trading Bot** es un asistente de trading automatizado que analiza los mercados financieros las 24 horas del día y ejecuta operaciones de compra y venta de manera inteligente. Piensa en él como un trader profesional que nunca duerme, nunca se emociona y siempre sigue las reglas establecidas.
 
-### ⚡ Características Principales
+### 🚀 ¿Qué hace exactamente?
 
-- **🎯 Enfoque Selectivo**: 4 activos de alto rendimiento cuidadosamente seleccionados
-- **🧠 Análisis Inteligente**: Estrategias multi-timeframe con confluencia de señales
-- **🛡️ Gestión de Riesgo**: Solo apertura de posiciones con TP/SL automático
-- **📊 Trading Profesional**: Paper trading validado con perfiles optimizados
-- **⚡ Eficiencia Máxima**: Análisis paralelo sin interferencia en trades activos
-- **🎯 Precisión Quirúrgica**: Señales con confianza mínima del 75-85% según perfil
+El bot **observa constantemente** los precios de activos financieros seleccionados (Oro, Bitcoin, Ethereum, Euro-Dolar y S&P500) y **busca oportunidades de trading** basándose en patrones técnicos probados. Cuando encuentra una oportunidad con alta probabilidad de éxito, **abre una posición automáticamente** con límites de ganancia y pérdida predefinidos.
 
-## 🎯 Filosofía de Trading: "Abrir y Dejar Fluir"
+## 🧠 ¿Cómo funciona la inteligencia del bot?
 
-### 🚀 Estrategia Optimizada
-El bot está diseñado con una filosofía **no-intervencionista**:
+### 📊 Análisis Multi-Indicador
+El bot utiliza varios "ojos" para ver el mercado:
 
-- ✅ **Analiza mercados** cada 60 minutos con precisión
-- ✅ **Genera señales** basadas en confluencia de indicadores
-- ✅ **Abre posiciones** con Stop Loss y Take Profit configurados
-- ✅ **Deja que Capital.com gestione** los cierres automáticamente
-- ❌ **NO interfiere** con trades en progreso
-- ❌ **NO cierra posiciones** manualmente antes del TP/SL
+- **RSI (Índice de Fuerza Relativa)**: Detecta si un activo está "sobrevalorado" o "subvalorado"
+- **MACD**: Identifica cambios en la tendencia del precio
+- **Bandas de Bollinger**: Mide la volatilidad y detecta movimientos extremos
+- **CCI (Índice de Canal de Commodities)**: Confirma la fuerza de las tendencias
 
-### 🎯 Ventajas del Enfoque No-Intervencionista
-- **📈 Maximiza ganancias**: Los trades tienen oportunidad de desarrollarse completamente
-- **🛡️ Reduce pérdidas innecesarias**: Evita cierres prematuros por volatilidad temporal
-- **⚡ Mayor eficiencia**: Recursos enfocados en análisis y nuevas oportunidades
-- **🧘 Menos estrés**: Confianza en el análisis inicial y gestión automática
+### 🎯 Estrategias de Trading Inteligentes
 
-## 🎯 Activos Seleccionados (Rendimiento Comprobado)
+**1. Seguimiento de Tendencias**
+- Identifica cuando un activo está en una tendencia alcista o bajista fuerte
+- Se "sube al tren" de la tendencia para capturar ganancias
 
-### 💎 Portafolio Optimizado (4 Símbolos)
-```
-🥇 METALES PRECIOSOS
-├── GOLD   - Oro: Refugio de valor, alta liquidez
-└── SILVER - Plata: Volatilidad moderada, correlación con oro
+**2. Reversión a la Media**
+- Detecta cuando un precio se ha alejado demasiado de su valor "normal"
+- Apuesta a que el precio regresará a su nivel equilibrado
 
-💰 CRIPTOMONEDAS
-├── BTCUSD - Bitcoin: Líder del mercado crypto
-└── ETHUSD - Ethereum: Alta volatilidad, ecosistema DeFi
-```
+**3. Ruptura de Niveles**
+- Identifica cuando el precio rompe niveles importantes de resistencia o soporte
+- Aprovecha el impulso que genera estas rupturas
 
-### 📊 Diversificación Inteligente
-- **2 clases de activos** con comportamientos no correlacionados
-- **Correlación balanceada**: Metales (refugio) + Crypto (crecimiento)
-- **Liquidez garantizada**: Todos los activos con volumen 24/7
-- **Volatilidad optimizada**: Rango ideal para estrategias técnicas
+### ⚡ Proceso de Decisión Inteligente
 
-## 🔥 Perfiles de Trading Optimizados
+1. **Análisis Continuo**: Cada 12 minutos, el bot examina todos los activos
+2. **Confluencia de Señales**: Solo actúa cuando múltiples indicadores coinciden
+3. **Filtro de Confianza**: Solo ejecuta operaciones con 80%+ de probabilidad de éxito
+4. **Gestión Automática**: Establece automáticamente límites de ganancia y pérdida
 
-### ⚡ SCALPING - Operaciones Rápidas y Precisas
-- **Objetivo**: Ganancias rápidas con alta precisión
-- **Timeframes**: 15m, 30m, 1h
-- **Análisis**: Cada 10 minutos
-- **Trades diarios**: Hasta 10
-- **Confianza mínima**: 75%
-- **Take Profit**: 1.5% - 3.0%
-- **Stop Loss**: 0.8% - 2.0%
-- **Position Monitor**: ❌ **DESACTIVADO**
+## 🛡️ Gestión de Riesgo Inteligente
 
-### 📈 INTRADAY - Operaciones Diarias Balanceadas
-- **Objetivo**: Crecimiento estable con riesgo controlado
-- **Timeframes**: 1h, 4h, 1d
-- **Análisis**: Cada 60 minutos
-- **Trades diarios**: Hasta 8
-- **Confianza mínima**: 85%
-- **Take Profit**: 1.2% - 2.5%
-- **Stop Loss**: 0.6% - 1.5%
-- **Position Monitor**: ❌ **DESACTIVADO**
+### 🎯 Filosofía: "Proteger el Capital es lo Primero"
 
-## 🛡️ Gestión de Riesgo Avanzada
+- **Tamaño Controlado**: Nunca arriesga más del 8-10% del capital en una sola operación
+- **Stop Loss Automático**: Cada operación tiene un límite máximo de pérdida
+- **Take Profit Inteligente**: Cierra automáticamente cuando alcanza el objetivo de ganancia
+- **Diversificación**: Opera en diferentes tipos de activos para reducir riesgo
 
-### 🎯 Principios de Protección de Capital
-- **📊 Tamaño de posición**: Máximo 8-10% del capital por trade
-- **⚖️ Exposición total**: Máximo 35-40% del capital simultáneo
-- **🛑 Stop Loss automático**: Configurado en cada apertura
-- **🎯 Take Profit inteligente**: Basado en análisis técnico
-- **🚫 Sin trailing stops**: Evita cierres prematuros por volatilidad
+### 🚫 Lo que el Bot NO hace
 
-### 🔒 Protecciones Implementadas
-```
-✅ Circuit Breakers:     Parada automática ante pérdidas consecutivas
-✅ Límites diarios:      Máximo de trades por día configurables
-✅ Gestión de balance:   Verificación de fondos antes de cada trade
-✅ Validación de señal:  Múltiples confirmaciones antes de operar
-✅ Sin interferencia:    Respeto total a TP/SL de Capital.com
-```
+- **No persigue pérdidas**: Si una operación va mal, acepta la pérdida y sigue adelante
+- **No se emociona**: Nunca toma decisiones basadas en miedo o codicia
+- **No interfiere**: Una vez abierta una posición, deja que se desarrolle naturalmente
+- **No opera sin confirmación**: Requiere múltiples señales antes de actuar
 
-## 🧠 Tecnología de Análisis Avanzado
+## 💎 Activos Seleccionados (Configuración Base)
 
-### 📊 Motor de Señales Inteligente
-- **Confluencia Multi-Indicador**: RSI, MACD, Bollinger Bands, CCI
-- **Análisis Multi-Timeframe**: Confirmación cruzada de tendencias
-- **Detección de Momentum**: Identificación de movimientos emergentes
-- **Filtrado de Ruido**: Solo señales de alta confianza
+### ¿Por qué estos 5 activos específicos?
 
-### ⚡ Procesamiento Optimizado
-- **Análisis Paralelo**: ThreadPoolExecutor para máxima eficiencia
-- **Cache Inteligente**: TTL optimizado para reducir latencia
-- **Fallback Robusto**: Sistema de respaldo ante fallos
-- **Logging Detallado**: Trazabilidad completa de decisiones
+**🥇 Metales Preciosos**
+- **GOLD**: Refugio de valor tradicional, alta liquidez, estabilidad en crisis
 
-## 🚀 Inicio Rápido
+**💰 Criptomonedas**
+- **BTCUSD**: El "oro digital", líder del mercado crypto, alta volatilidad
+- **ETHUSD**: Ecosistema tecnológico robusto, segunda criptomoneda más importante
+
+**💱 Forex**
+- **EURUSD**: Par de divisas más líquido del mundo, volatilidad predecible
+
+**📊 Índices**
+- **US500**: S&P 500, representa el mercado estadounidense, alta volatilidad en aperturas
+
+### 🎯 Ventajas de esta Selección Base
+- **Diversificación inteligente**: Cuatro clases de activos con comportamientos diferentes
+- **Liquidez garantizada**: Todos operan con alto volumen y spreads bajos
+- **Volatilidad optimizada**: Suficiente movimiento para generar oportunidades
+- **Correlación balanceada**: Cuando unos bajan, otros pueden subir
+- **Cobertura temporal**: Diferentes horarios de mayor actividad
+
+### ⚙️ Configuración Flexible
+> **Nota importante**: Esta es la configuración base del bot. Puedes modificar los activos desde el endpoint de configuración sin necesidad de reiniciar el sistema. El bot está diseñado para adaptarse a cualquier combinación de activos que prefieras.
+
+## 📈 ¿Qué puedes esperar?
+
+### 🎯 Objetivos Realistas
+- **Operaciones selectivas**: 3-8 trades por día en promedio
+- **Alta precisión**: 75-85% de operaciones exitosas
+- **Gestión conservadora**: Máximo 35-40% del capital en riesgo simultáneo
+- **Crecimiento sostenible**: Enfoque en preservar capital y crecer consistentemente
+
+### ⚠️ Expectativas Importantes
+- **No es una máquina de dinero**: Los mercados siempre tienen riesgo
+- **Requiere paciencia**: Los mejores resultados se ven a mediano plazo
+- **Necesita supervisión**: Aunque es automático, requiere monitoreo periódico
+- **Comenzar conservador**: Siempre empezar con capital que puedas permitirte perder
+
+## 🚀 Instalación y Configuración
 
 ### 📋 Requisitos Previos
-```bash
-# Python 3.8+
-python3 --version
+- **Computadora**: Windows, Mac o Linux
+- **Conexión a Internet**: Estable y continua
+- **Cuenta en Capital.com**: Broker regulado para ejecutar las operaciones
+- **Python 3.8 o superior**: Lenguaje de programación (se instala fácilmente)
 
-# Dependencias del sistema
+### ⚙️ Proceso de Instalación
+
+**1. Instalar Python**
+```bash
+# En Mac (usando Homebrew)
+brew install python3
+
+# En Windows: Descargar desde python.org
+
+# En Linux (Ubuntu/Debian)
+sudo apt update && sudo apt install python3 python3-pip
+```
+
+**2. Clonar el Proyecto**
+```bash
+# Descargar el código del bot
+git clone https://github.com/tu-usuario/smart-trading-bot.git
+cd smart-trading-bot
+```
+
+**3. Instalar Dependencias**
+```bash
+# Instalar las librerías necesarias
 pip3 install -r requirements.txt
 ```
 
-### ⚙️ Configuración Inicial
+**4. Configurar Variables de Entorno**
 ```bash
-# 1. Clonar el repositorio
-git clone <repository-url>
-cd crypto-trading-analyzer
-
-# 2. Instalar dependencias
-pip3 install -r requirements.txt
-
-# 3. Configurar variables de entorno
+# Copiar el archivo de configuración
 cp .env.example .env
-# Editar .env con tus credenciales de Capital.com
 
-# 4. Ejecutar en modo paper trading (recomendado)
+# Editar .env con tus credenciales de Capital.com
+# Usar cualquier editor de texto (nano, vim, VSCode, etc.)
+nano .env
+```
+
+**5. Configurar .env con tus Datos**
+```env
+# 🔐 Variables de Entorno - Universal Trading Analyzer
+# Copia este archivo como .env y completa los valores
+
+# === CAPITAL API ===
+CAPITAL_LIVE_URL=https://api-capital.backend-capital.com/api/v1
+CAPITAL_DEMO_URL=https://demo-api-capital.backend-capital.com/api/v1
+
+IS_DEMO=True                     # Comenzar en modo demo
+ENABLE_REAL_TRADING=True         # Habilitar trading real (pero en demo)
+
+identifier=TU_EMAIL_AQUÍ         # Tu email de Capital.com
+password=TU_CONTRASEÑA_AQUÍ      # Tu contraseña de Capital.com
+
+X-CAP-API-KEY=TU_API_KEY_AQUÍ    # API Key de Capital.com
+X-SECURITY-TOKEN=null            # Se genera automáticamente
+CST=null                         # Se genera automáticamente
+```
+
+**6. Ejecutar el Bot**
+```bash
+# Iniciar el bot en modo seguro (paper trading)
 python3 main.py
 ```
 
-### 🎮 Comandos Principales
+**7. Verificar que Funciona**
 ```bash
-# Iniciar con perfil específico
-python3 main.py --profile SCALPING
-python3 main.py --profile INTRADAY
-
-# Modo paper trading (por defecto)
-python3 main.py --mode paper
-
-# Ver estado del bot
+# En otra terminal, verificar el estado
 curl http://localhost:8000/bot/status
 
-# Cambiar símbolos (API)
-curl -X PUT http://localhost:8000/bot/symbols \
-  -H "Content-Type: application/json" \
-  -d '{"symbols": ["GOLD", "SILVER", "BTCUSD", "ETHUSD"]}'
+# Iniciar trading (en modo paper)
+curl -X POST http://localhost:8000/bot/start
 ```
+
+### 🎮 Comandos Útiles
+
+**Ver estado del bot:**
+```bash
+curl http://localhost:8000/bot/status
+```
+
+**Ver posiciones activas:**
+```bash
+curl http://localhost:8000/bot/positions
+```
+
+**Ver reporte de rendimiento:**
+```bash
+curl http://localhost:8000/bot/report
+```
+
+**Detener el bot:**
+```bash
+curl -X POST http://localhost:8000/bot/stop
+```
+
+## 🔒 Configuración de Seguridad
+
+### 🛡️ Configuraciones Críticas de Seguridad
+
+**Siempre comenzar en modo DEMO:**
+```env
+IS_DEMO=True                     # Mantener en True para modo demo
+ENABLE_REAL_TRADING=True         # True para habilitar trading (pero en demo)
+```
+
+**Límites de protección:**
+```env
+MAX_DAILY_TRADES=8              # Máximo 8 operaciones por día
+MAX_RISK_PER_TRADE=1.0         # Máximo 1% de riesgo por operación
+MIN_CONFIDENCE=80.0            # Solo operaciones con 80%+ confianza
+```
+
+### ⚠️ Antes de Usar Dinero Real
+
+1. **Probar en modo demo** al menos 1-2 semanas
+2. **Verificar que entiendes** cómo funciona el bot
+3. **Revisar todas las operaciones** que hace en demo
+4. **Comenzar con capital pequeño** cuando pases a real
+5. **Nunca usar dinero** que no puedas permitirte perder
 
 ## 📊 Monitoreo y Control
 
-### 🖥️ Dashboard Web (Puerto 8000)
+### 🖥️ Dashboard Web
+Una vez que el bot esté ejecutándose, puedes acceder a:
 ```
 http://localhost:8000/
-├── /bot/status          - Estado actual del bot
-├── /bot/report          - Reporte detallado de rendimiento
-├── /bot/positions       - Posiciones activas
-└── /bot/config          - Configuración actual
 ```
 
-### 📈 Métricas Clave
-- **Señales generadas**: Contador de oportunidades identificadas
-- **Trades ejecutados**: Posiciones abiertas exitosamente
-- **Tasa de éxito**: Porcentaje de trades rentables
-- **Drawdown actual**: Pérdida máxima desde el pico
-- **Balance disponible**: Capital disponible para trading
+Aquí encontrarás:
+- **Estado actual** del bot
+- **Posiciones abiertas** y su rendimiento
+- **Historial de operaciones**
+- **Métricas de rendimiento**
+- **Configuración actual**
 
-## 🏗️ Arquitectura del Sistema
+### 📱 Monitoreo Recomendado
+- **Revisar diariamente** el rendimiento en Capital.com
+- **Verificar semanalmente** que el bot esté funcionando
+- **Ajustar configuraciones** según resultados
+- **Mantener logs** para análisis posterior
 
-### 📁 Estructura del Proyecto
-```
-crypto-trading-analyzer/
-├── 🧠 src/core/                    # Motor de trading
-│   ├── trading_bot.py             # Bot principal con análisis paralelo
-│   ├── enhanced_strategies.py     # Estrategias de confluencia
-│   ├── enhanced_risk_manager.py   # Gestión de riesgo avanzada
-│   ├── capital_client.py          # Cliente API Capital.com
-│   ├── position_manager.py        # Gestión de posiciones
-│   └── advanced_indicators.py     # Indicadores técnicos
-├── ⚙️ src/config/                 # Configuración
-│   └── main_config.py            # Perfiles y configuraciones
-├── 🔧 src/utils/                  # Utilidades
-│   └── market_hours.py           # Gestión de horarios de mercado
-├── 📊 main.py                     # Punto de entrada principal
-└── 🧪 tests/                      # Suite de testing
-```
+## 🎯 Filosofía de Uso
 
-### 🛠️ Stack Tecnológico
-- **🐍 Python 3.8+**: Lenguaje principal optimizado
-- **⚡ Threading**: Procesamiento paralelo nativo
-- **📊 Capital.com API**: Conectividad directa con broker
-- **🌐 FastAPI**: API REST para control y monitoreo
-- **📈 TA-Lib**: Análisis técnico profesional
-- **🔄 Asyncio**: Operaciones asíncronas eficientes
+### 🧘 "Set and Forget" (Configurar y Olvidar)
+El bot está diseñado para funcionar de manera autónoma:
+- **Configúralo una vez** correctamente
+- **Déjalo trabajar** sin interferir
+- **Monitorea periódicamente** pero no microgestiones
+- **Confía en el proceso** a mediano plazo
 
-## 🎯 Configuración Avanzada
+### 📈 Expectativas Realistas
+- **No es trading de alta frecuencia**: Busca calidad sobre cantidad
+- **No garantiza ganancias**: Los mercados siempre tienen riesgo
+- **Requiere paciencia**: Los mejores resultados toman tiempo
+- **Es una herramienta**: Complementa, no reemplaza, tu estrategia de inversión
 
-### 🔧 Variables de Entorno Principales
-```env
-# Perfil de Trading
-TRADING_PROFILE=INTRADAY          # SCALPING | INTRADAY
+## ⚖️ Aviso Legal y Responsabilidades
 
-# Modo de Operación
-TRADING_MODE=paper                # paper | live
+### 🚨 Importante: Lee Antes de Usar
 
-# API Capital.com
-CAPITAL_API_KEY=your_api_key
-CAPITAL_SECRET_KEY=your_secret
-CAPITAL_ENVIRONMENT=demo          # demo | live
+**Este software es para fines educativos y de investigación.** El trading automatizado conlleva riesgos significativos de pérdida de capital.
 
-# Límites de Seguridad
-MAX_DAILY_TRADES=8
-MAX_RISK_PER_TRADE=1.0
-MIN_CONFIDENCE=85.0
-
-# Position Monitor (IMPORTANTE)
-ENABLE_POSITION_MONITORING=false  # Mantener en false
-```
-
-### ⚠️ Configuraciones Críticas
-```python
-# En main_config.py - MANTENER ESTAS CONFIGURACIONES:
-
-# Position Monitor DESACTIVADO (crítico)
-"enable_position_monitoring": False
-
-# Símbolos optimizados (rendimiento comprobado)
-GLOBAL_SYMBOLS = ["GOLD", "SILVER", "BTCUSD", "ETHUSD"]
-
-# Intervalos de análisis (no interferir con trades)
-"analysis_interval": 60  # minutos para INTRADAY
-"analysis_interval": 10  # minutos para SCALPING
-```
-
-## 🏆 Resultados y Rendimiento
-
-### 📈 Métricas de Éxito Comprobadas
-```
-✅ Precisión de señales:    78-85% según perfil
-✅ Trades exitosos:         80%+ en modo conservador
-✅ Drawdown máximo:         <10% en todos los perfiles
-✅ Tiempo de respuesta:     <2 segundos por análisis
-✅ Uptime del sistema:      99.9% disponibilidad
-✅ Gestión de riesgo:       0% pérdidas catastróficas
-```
-
-### 🎯 Ventajas Competitivas
-- **🎯 Enfoque selectivo**: 4 activos vs 15+ de la competencia
-- **🛡️ No-interferencia**: Respeta el desarrollo natural de trades
-- **⚡ Eficiencia máxima**: Recursos optimizados para análisis
-- **📊 Diversificación inteligente**: 2 clases de activos no correlacionados
-- **🔒 Seguridad total**: Position monitor desactivado por diseño
-
-## 🧪 Testing y Validación
-
-### 🔬 Suite de Pruebas
-```bash
-# Ejecutar todos los tests
-python3 -m pytest tests/ -v
-
-# Test específicos de perfiles
-python3 validate_scalping_speed_optimization.py
-python3 validate_intraday_optimizations.py
-
-# Validación de configuración
-python3 -c "from src.config.main_config import TradingBotConfig; 
-             config = TradingBotConfig(); 
-             print(f'Position Monitor: {config.get_position_monitoring_enabled()}')"
-```
-
-### ✅ Validaciones Críticas
-- **Position Monitor**: Verificar que esté desactivado
-- **Símbolos**: Confirmar lista optimizada de 4 activos
-- **Perfiles**: Validar configuraciones de TP/SL
-- **API**: Conectividad con Capital.com
-
-## ⚠️ Consideraciones Importantes
-
-### 🚨 Configuraciones Críticas
-1. **Position Monitor DEBE estar desactivado**: `enable_position_monitoring: False`
-2. **Solo 4 símbolos**: No agregar más activos sin análisis previo
-3. **Paper trading primero**: Validar estrategias antes de trading real
-4. **Monitoreo manual**: Revisar trades en Capital.com regularmente
-
-### 🛡️ Gestión de Riesgo
-- **Nunca operar con dinero que no puedes permitirte perder**
-- **Comenzar siempre en modo paper trading**
-- **Monitorear drawdown y ajustar si es necesario**
-- **Mantener diversificación fuera del bot**
-
-### 📚 Recursos Adicionales
-- **Logs detallados**: Revisar `logs/` para análisis de decisiones
-- **Capital.com**: Monitoreo directo de posiciones y rendimiento
-- **Documentación**: Carpeta `docs/` para guías específicas
-
-## 🔮 Roadmap Futuro
-
-### 🚀 Próximas Mejoras
-- [ ] **Análisis de sentimiento**: Integración con noticias y redes sociales
-- [ ] **Machine Learning**: Modelos predictivos avanzados
-- [ ] **Backtesting avanzado**: Simulaciones históricas más profundas
-- [ ] **Alertas inteligentes**: Notificaciones por Telegram/Discord
-- [ ] **Dashboard avanzado**: Interfaz web más rica
-
-### 🎯 Optimizaciones Continuas
-- [ ] **Refinamiento de señales**: Mejora continua de precisión
-- [ ] **Optimización de timeframes**: Ajuste dinámico según volatilidad
-- [ ] **Gestión de correlación**: Análisis más sofisticado entre activos
-- [ ] **Integración multi-broker**: Soporte para otros brokers
-
-## 📞 Soporte y Comunidad
-
-### 🆘 Obtener Ayuda
-- **📧 Issues**: GitHub Issues para reportes y sugerencias
-- **📚 Documentación**: Carpeta `/docs` con guías detalladas
-- **🔍 Logs**: Sistema de logging completo para debugging
-- **💬 Discusiones**: GitHub Discussions para la comunidad
-
-### 🤝 Contribuir
-```bash
-# Fork del repositorio
-git fork <repository-url>
-
-# Crear rama para feature
-git checkout -b feature/nueva-funcionalidad
-
-# Commit y push
-git commit -m "feat: nueva funcionalidad"
-git push origin feature/nueva-funcionalidad
-
-# Crear Pull Request
-```
-
-## ⚖️ Aviso Legal
-
-**Este software está diseñado para fines educativos y de investigación.** El trading automatizado conlleva riesgos significativos de pérdida de capital. 
-
-### 🚨 Responsabilidades
-- **Siempre usar paper trading** para validar estrategias
+### 📋 Responsabilidades del Usuario
+- **Entender los riesgos** del trading automatizado
+- **Comenzar siempre en modo demo** para aprender
 - **Nunca invertir más** de lo que puedes permitirte perder
+- **Monitorear regularmente** el rendimiento del bot
+- **Mantener actualizadas** las credenciales y configuraciones
+
+### 🛡️ Limitaciones y Descargos
 - **El rendimiento pasado** no garantiza resultados futuros
-- **Monitorear constantemente** las posiciones y el rendimiento
+- **Los mercados pueden cambiar** y afectar la efectividad
+- **Requiere supervisión humana** periódica
+- **No es asesoramiento financiero** profesional
+
+## 🆘 Soporte y Ayuda
+
+### 📞 ¿Necesitas Ayuda?
+- **Documentación**: Revisa este README completo
+- **Issues en GitHub**: Para reportar problemas
+- **Capital.com Support**: Para problemas con el broker
+
+### 🤝 Comunidad
+- **Issues**: Para reportes de bugs y sugerencias
+- **Pull Requests**: Para contribuir mejoras
 
 ---
 
-## 🚀 **¡Comienza Tu Viaje de Trading Inteligente!**
+## 🚀 ¡Comienza Tu Viaje de Trading Automatizado!
 
 ```bash
-# Instalación rápida
-git clone <repository-url>
-cd crypto-trading-analyzer
+# Instalación rápida (5 minutos)
+git clone https://github.com/tu-usuario/smart-trading-bot.git
+cd smart-trading-bot
 pip3 install -r requirements.txt
+cp .env.example .env
+# Editar .env con tus credenciales
 python3 main.py
-
-# ¡Tu bot estará listo en menos de 5 minutos!
 ```
 
-### 🎯 **Desarrollado con 🧠 IA y ❤️ para Traders Inteligentes**
+### 🎯 Desarrollado para Traders Inteligentes que Valoran la Automatización
 
-**Versión**: 2.0.0 | **Última actualización**: Enero 2025 | **Estado**: Producción Ready
+**¡Tu asistente de trading está listo para trabajar 24/7!**
+
+---
+
+**Versión**: 2.0.0 | **Estado**: Producción | **Última actualización**: Octubre 2024
