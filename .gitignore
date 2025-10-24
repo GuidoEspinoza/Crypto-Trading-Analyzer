@@ -43,6 +43,8 @@ MANIFEST
 config.ini
 secrets.json
 api_keys.json
+.capital_session_demo.json
+.capital_session_live.json
 
 # ========================================
 # 💰 DATOS FINANCIEROS SENSIBLES
