@@ -51,10 +51,66 @@ def _get_env_bool(var_name: str, default: bool) -> bool:
         return default
 
 # ============================================================================
+# 🎯 LISTA DE ACTIVOS
+# ============================================================================
+
+# Lista de símbolos con nombres exactos como aparecen en Capital.com
+GLOBAL_SYMBOLS: List[str] = [
+    # === Criptomonedas más populares ===
+    "BTCUSD", # Bitcoin - Base de la cadena de bloques más grande
+    "ETHUSD", # Ethereum - Desarrollo de contratos inteligentes
+    "XRPUSD", # Ripple - Liquidez alta y volatilidad
+    "SOLUSD", # Solana - Alta volatilidad y movimientos frecuentes
+    "ADAUSD", # Cardano - Movimientos consistentes
+    "BNBUSD",    # Binance Coin - Alta liquidez y volatilidad
+    "DOTUSD",    # Polkadot - Buena para scalping
+    "AVAXUSD",   # Avalanche - Alta volatilidad
+    "MATICUSD",  # Polygon - Movimientos frecuentes
+    "LINKUSD",   # Chainlink - Volatilidad consistente
+    
+    # === Forex (Volatilidad y Liquidez) ===
+    # "EURUSD",    # Par más líquido del forex
+    # "GBPUSD",    # Alta volatilidad intraday
+    # "USDJPY",    # Movimientos consistentes
+    # "AUDUSD",    # Buena volatilidad
+    
+    # === Índices (Volatilidad de Apertura) ===
+    # "US500",     # S&P 500 - Excelente para scalping
+    # "NDAQ",    # NASDAQ - Alta volatilidad tech
+    # "US30"       # Dow Jones - Movimientos amplios
+
+    # === Metales Preciosos (Base) ===
+    # "GOLD",      # Precio histórico - Movimientos consistentes
+    # "SILVER",    # Precio histórico - Movimientos consistentes
+    # "PLATINUM",  # Precio histórico - Movimientos consistentes
+    # "PALLADIUM"  # Precio histórico - Movimientos consistentes
+]
+
+# ============================================================================
+# 📅 CONFIGURACIÓN DE HORARIOS DE TRADING POR DÍAS Y PERFIL
+# ============================================================================
+
+# Configuración general de días de trading
+TRADING_SCHEDULE = {
+    "monday": True,
+    "tuesday": True,
+    "wednesday": True,
+    "thursday": True,
+    "friday": True,
+    "saturday": False,  # Configurable - Por defecto desactivado
+    "sunday": False     # Configurable - Por defecto desactivado
+}
+
+# Configuración específica por perfil para fines de semana
+SCALPING_WEEKEND_TRADING = False    # Scalping más agresivo - desactivado fines de semana
+INTRADAY_WEEKEND_TRADING = False     # Intraday más conservador - puede operar fines de semana
+
+# ============================================================================
 # 🎯 SELECTOR DE PERFIL DE TRADING - CAMBIAR AQUÍ
 # ============================================================================
 
 # 🔥 CAMBIAR ESTE VALOR PARA CAMBIAR TODO EL COMPORTAMIENTO DEL BOT
+# TRADING_PROFILE = "SCALPING"  # Opciones: "SCALPING", "INTRADAY"
 TRADING_PROFILE = "INTRADAY"  # Opciones: "SCALPING", "INTRADAY"
 
 # ============================================================================
@@ -71,25 +127,28 @@ class TradingProfiles:
             "timeframes": ["1m", "3m", "5m"],  # OPTIMIZADO: Timeframes ultra-rápidos para scalping
             "analysis_interval": 1,  # OPTIMIZADO: Análisis cada minuto para trades rápidos
             "min_confidence": 75.0,  # CRÍTICO: Confianza alta para reducir señales falsas
-            "max_daily_trades": 30,  # CRÍTICO: Reducir trades para mejor gestión
-            "max_positions": 6,  # CRÍTICO: Máximo 6 posiciones simultáneas
+            "max_daily_trades": 20,  # OPTIMIZADO: Límite base reducido para mejor calidad
+            "max_daily_trades_adaptive": True,  # NUEVO: Permite trades adicionales con alta confianza
+            "daily_trades_quality_threshold": 80.0,  # NUEVO: Umbral para trades adicionales (>80% confianza)
+            "max_daily_trades_bonus": 8,  # NUEVO: Máximo 8 trades adicionales con alta confianza
+            "max_positions": 10,  # CRÍTICO: Máximo 10 posiciones simultáneas
 
             # Paper Trader Config - SCALPING CFD CONSERVADOR
-            "max_position_size": 0.06,  # 6% por posición - más conservador
-            "max_total_exposure": 0.40,  # 40% exposición total - más seguro
+            "max_position_size_percent": 6,  # 6% por posición - más conservador
+            "max_total_exposure_percent": 40,  # 40% exposición total - más seguro
             "min_trade_value": 5.0,  # Valor mínimo más alto para calidad
             "paper_min_confidence": 75.0,  # Confianza alta consistente
             "max_slippage": 0.03,  # Slippage más controlado
             "min_liquidity": 8.0,  # Liquidez mínima más alta
             
             # Risk Manager Config - SCALPING CONTROLADO
-            "max_risk_per_trade": 0.8,  # CRÍTICO: 0.8% riesgo por trade - más conservador
-            "max_daily_risk": 3.0,  # 3% riesgo diario máximo - más seguro
-            "max_drawdown_threshold": 0.08,  # 8% drawdown máximo - más estricto
+            "max_risk_per_trade_percent": 0.6,  # CORREGIDO: 0.6% riesgo por trade - ultra conservador para alta frecuencia
+            "max_daily_risk_percent": 2.0,  # CORREGIDO: 2% riesgo diario máximo - conservador para 30 trades
+            "max_drawdown_threshold_percent": 8,  # 8% drawdown máximo - más estricto
             "correlation_threshold": 0.70,  # Correlación más estricta
             "min_position_size": 5.0,  # Posición mínima más alta
-            "risk_max_position_size": 0.06,  # Consistente con max_position_size
-            "kelly_fraction": 0.25,  # Kelly más conservador
+            "risk_max_position_size_percent": 6,  # Consistente con max_position_size
+            "kelly_fraction": 0.20,  # CORREGIDO: Kelly ultra conservador para alta frecuencia
             "volatility_adjustment_factor": 1.0,  # Factor de ajuste por volatilidad
 
             "atr_multiplier_min": 1.5,  # CRÍTICO: Stops más amplios para scalping
@@ -98,7 +157,7 @@ class TradingProfiles:
             "atr_volatile": 2.5,  # Stops amplios en alta volatilidad
             "atr_sideways": 1.5,  # Stops moderados en laterales
             "trailing_stop_activation": 0.025,  # OPTIMIZADO: Trailing al 2.5% - más agresivo para scalping
-            "breakeven_threshold": 0.004,  # OPTIMIZADO: Breakeven al 0.4% para protección rápida
+            "breakeven_threshold_percent": 0.4,  # OPTIMIZADO: Breakeven al 0.4% para protección rápida
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
             
@@ -106,17 +165,17 @@ class TradingProfiles:
             "use_trailing_stop": True,  # Activado por defecto para scalping (mayor dinamismo)
             
             # Take Profit y Stop Loss Config - SCALPING ROI-BASED (% del balance invertido)
-            "tp_min_percentage": 0.0035,  # ROI: TP mínimo 0.35% del balance para trades ultra-rápidos
-            "tp_max_percentage": 0.015,  # ROI: TP máximo 1.5% del balance para cierre rápido
-            "sl_min_percentage": 0.003,  # ROI: SL mínimo 0.3% del balance para scalping
-            "sl_max_percentage": 0.008,  # ROI: SL máximo 0.8% del balance para control estricto
-            "tp_increment_percentage": 1.2,  # Factor TP agresivo
+            "tp_min_percent": 0.35,  # ROI: TP mínimo 0.35% del balance para trades ultra-rápidos
+            "tp_max_percent": 1.5,  # ROI: TP máximo 1.5% del balance para cierre rápido
+            "sl_min_percent": 0.3,  # ROI: SL mínimo 0.3% del balance para scalping
+            "sl_max_percent": 0.8,  # ROI: SL máximo 0.8% del balance para control estricto
+            "tp_increment_percent": 1.2,  # Factor TP agresivo
             "tp_confidence_threshold": 0.65,  # Umbral bajo para ajustar TP
             
             # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria alta
-            "min_confidence_threshold": 0.50,  # Confianza mínima más flexible
-            "position_size_multiplier": 1.2,  # Multiplicador agresivo
+            "max_daily_loss_percent": 3.0,  # CORREGIDO: Pérdida máxima diaria conservadora para alta frecuencia
+            "min_confidence_threshold": 0.78,  # CORREGIDO: Confianza mínima alta para trades rápidos
+            "position_size_multiplier": 0.8,  # CORREGIDO: Multiplicador conservador para alta frecuencia
             
             # Strategy Config - SCALPING CONTROLADO Y SELECTIVO
             "default_min_confidence": 70.0,  # CRÍTICO: Confianza alta para señales de calidad
@@ -155,7 +214,7 @@ class TradingProfiles:
             "price_cache_duration": 5,  # OPTIMIZADO: Cache ultra-corto
             "max_close_attempts": 2,  # Pocos intentos de cierre
             "position_timeout_hours": 4,  # OPTIMIZADO: Cerrar posiciones después de 4 horas para scalping
-            "profit_scaling_threshold": 0.008,  # OPTIMIZADO: Escalado al 0.8%
+            "profit_scaling_threshold_percent": 0.8,  # OPTIMIZADO: Escalado al 0.8%
             "trailing_stop_sl_pct": 0.006,  # OPTIMIZADO: SL trailing 0.6%
             "trailing_stop_tp_pct": 0.012,  # OPTIMIZADO: TP trailing 1.2%
             "profit_protection_sl_pct": 0.004,  # OPTIMIZADO: Protección ganancias 0.4%
@@ -200,33 +259,40 @@ class TradingProfiles:
             # Error Handling Config
             "error_cooldown_seconds": 30,  # Cooldown corto
             "max_consecutive_errors": 3,  # Tolerancia media
+            
+            # Trade Cooldown Config - SCALPING
+            "min_time_between_trades_minutes": 3,  # CRÍTICO: 3 minutos mínimo entre trades del mismo símbolo
+            "min_time_between_opposite_signals_minutes": 5,  # CRÍTICO: 5 minutos entre señales opuestas para evitar cancelaciones
 
         },
         "INTRADAY": {
             "name": "Intraday",
             "description": "Timeframes 15m-1h, operaciones diarias balanceadas CFD con TP/SL basado en ROI del balance",
-            "timeframes": ["30m", "1h", "4h"],  # CAMBIADO: eliminado 15m, agregado 4h para mejor calidad
+            "timeframes": ["15m", "30m", "1h"],  # AJUSTADO: timeframes verdaderamente intraday, eliminado 4h
             "analysis_interval": 12,  # AUMENTADO: Análisis cada 12 minutos - mucho más selectivo
-            "min_confidence": 80.0,  # AUMENTADO: Confianza aún más estricta para máxima precisión
-            "max_daily_trades": 10,  # Máximo 10 operaciones diarias
-            "max_positions": 4,  # Máximo 4 posiciones - control total de riesgo
+            "min_confidence": 75.0,  # AJUSTADO: Confianza más balanceada para intraday
+            "max_daily_trades": 12,  # OPTIMIZADO: Límite base optimizado para calidad
+            "max_daily_trades_adaptive": True,  # NUEVO: Permite trades adicionales con alta confianza
+            "daily_trades_quality_threshold": 80.0,  # NUEVO: Umbral para trades adicionales (>80% confianza)
+            "max_daily_trades_bonus": 6,  # NUEVO: Máximo 6 trades adicionales con alta confianza
+            "max_positions": 6,  # AJUSTADO: Más posiciones para diversificar riesgo
 
             # Paper Trader Config - INTRADAY CFD OPTIMIZADO
-            "max_position_size": 0.06,  # OPTIMIZADO: 6% por posición - más conservador
-            "max_total_exposure": 0.30,  # OPTIMIZADO: 30% exposición total - mucho más conservador
+            "max_position_size_percent": 6,  # OPTIMIZADO: 6% por posición - más conservador
+            "max_total_exposure_percent": 30,  # OPTIMIZADO: 30% exposición total - mucho más conservador
             "min_trade_value": 15.0,  # OPTIMIZADO: Valor mínimo más alto para mejor calidad
             "paper_min_confidence": 78.0,  # OPTIMIZADO: Confianza consistente con trading real
             "max_slippage": 0.025,  # OPTIMIZADO: Slippage más estricto para intraday
             "min_liquidity": 12.0,  # OPTIMIZADO: Liquidez más alta requerida
             
-            # Risk Manager Config - INTRADAY CONSERVADOR
-            "max_risk_per_trade": 1.0,  # OPTIMIZADO: 1% riesgo por trade - más conservador
-            "max_daily_risk": 2.5,  # OPTIMIZADO: 2.5% riesgo diario máximo - más estricto
-            "max_drawdown_threshold": 0.08,  # 8% drawdown máximo
+            # Risk Manager Config - INTRADAY BALANCEADO
+            "max_risk_per_trade_percent": 1.5,  # CORREGIDO: 1.5% riesgo por trade - agresivo para trades selectivos
+            "max_daily_risk_percent": 4.0,  # CORREGIDO: 4% riesgo diario máximo - balanceado para 12 trades
+            "max_drawdown_threshold_percent": 8,  # 8% drawdown máximo
             "correlation_threshold": 0.65,  # Correlación moderada
             "min_position_size": 10.0,  # Posición mínima moderada
-            "risk_max_position_size": 0.06,  # OPTIMIZADO: Consistente con max_position_size
-            "kelly_fraction": 0.25,  # Kelly moderado
+            "risk_max_position_size_percent": 6,  # OPTIMIZADO: Consistente con max_position_size
+            "kelly_fraction": 0.30,  # CORREGIDO: Kelly más agresivo para trades selectivos
             "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad (más alto para intraday)
 
             "atr_multiplier_min": 2.0,  # Stops amplios para intraday
@@ -235,7 +301,7 @@ class TradingProfiles:
             "atr_volatile": 3.0,
             "atr_sideways": 1.8,  # Stops moderados en laterales
             "trailing_stop_activation": 0.030,  # OPTIMIZADO: Trailing al 3% - conservador para intraday
-            "breakeven_threshold": 0.008,  # Breakeven al 0.8% - conservador
+            "breakeven_threshold_percent": 0.8,  # Breakeven al 0.8% - conservador
             "intelligent_trailing": True,
             "dynamic_position_sizing": True,
             
@@ -243,39 +309,39 @@ class TradingProfiles:
             "use_trailing_stop": True,  # Activado por defecto para intraday
             
             # Take Profit y Stop Loss Config - INTRADAY ROI-based R:R 2:1 OPTIMIZADO
-            "tp_min_percentage": 0.012,  # OPTIMIZADO: TP mínimo 1.2% ROI - más dinámico
-            "tp_max_percentage": 0.025,  # OPTIMIZADO: TP máximo 2.5% ROI - más realista
-            "sl_min_percentage": 0.006,  # OPTIMIZADO: SL mínimo 0.6% ROI - más dinámico
-            "sl_max_percentage": 0.015,  # OPTIMIZADO: SL máximo 1.5% ROI - mejor control
-            "tp_increment_percentage": 1.0,  # Factor TP balanceado
+            "tp_min_percent": 1.5,  # AJUSTADO: TP mínimo 1.5% ROI - más realista para crypto
+            "tp_max_percent": 3.5,  # AJUSTADO: TP máximo 3.5% ROI - mejor para volatilidad crypto
+            "sl_min_percent": 1.2,  # AJUSTADO: SL mínimo 1.2% ROI - más apropiado para crypto
+            "sl_max_percent": 2.5,  # AJUSTADO: SL máximo 2.5% ROI - evita stops prematuros
+            "tp_increment_percent": 1.0,  # Factor TP balanceado
             "tp_confidence_threshold": 0.72,  # Umbral moderado para ajustar TP
             
             # Umbrales y Límites Adicionales
-            "max_daily_loss_percent": 2.5,  # OPTIMIZADO: Pérdida máxima diaria más conservadora
-            "min_confidence_threshold": 0.78,  # OPTIMIZADO: Confianza mínima mucho más estricta
-            "position_size_multiplier": 0.8,  # OPTIMIZADO: Multiplicador más conservador
+            "max_daily_loss_percent": 4.0,  # CORREGIDO: Pérdida máxima diaria balanceada para trades selectivos
+            "min_confidence_threshold": 0.72,  # CORREGIDO: Confianza mínima balanceada para intraday
+            "position_size_multiplier": 1.2,  # CORREGIDO: Multiplicador agresivo para trades selectivos
             
-            # Strategy Config - INTRADAY ULTRA-OPTIMIZADO ANTI-LATERAL
-            "default_min_confidence": 80.0,  # AUMENTADO: Confianza ultra estricta
-            "default_atr_period": 21,  # AUMENTADO: Período más largo para señales más suaves
-            "rsi_min_confidence": 85.0,  # AUMENTADO: RSI confianza extrema
-            "rsi_oversold": 25,  # AUMENTADO: RSI oversold mucho más estricto
-            "rsi_overbought": 75,  # REDUCIDO: RSI overbought mucho más estricto
-            "rsi_period": 21,  # AUMENTADO: Período RSI más largo para menos ruido
-            "min_volume_ratio": 3.0,  # AUMENTADO: Volumen mínimo ultra alto
-            "min_confluence": 7,  # OPTIMIZADO: Confluencia ultra estricta para intraday
-            "trend_strength_threshold": 65,  # AUMENTADO: Fuerza tendencia ultra alta
+            # Strategy Config - INTRADAY BALANCEADO PARA CRYPTO
+            "default_min_confidence": 75.0,  # AJUSTADO: Confianza balanceada para crypto
+            "default_atr_period": 14,  # AJUSTADO: Período estándar más responsivo
+            "rsi_min_confidence": 78.0,  # AJUSTADO: RSI confianza más realista
+            "rsi_oversold": 30,  # AJUSTADO: RSI oversold estándar para crypto
+            "rsi_overbought": 70,  # AJUSTADO: RSI overbought estándar para crypto
+            "rsi_period": 14,  # AJUSTADO: Período RSI estándar más responsivo
+            "min_volume_ratio": 2.0,  # AJUSTADO: Volumen mínimo más realista
+            "min_confluence": 5,  # AJUSTADO: Confluencia más balanceada para intraday
+            "trend_strength_threshold": 55,  # AJUSTADO: Fuerza tendencia más accesible
             "min_atr_ratio": 1.8,  # AUMENTADO: ATR ratio ultra estricto
             "max_spread_threshold": 0.0008,  # REDUCIDO: Spread máximo ultra estricto
             "volume_weight": 0.35,  # AUMENTADO: Peso máximo al volumen
             "confluence_threshold": 0.80,  # AUMENTADO: Umbral confluencia ultra estricto
             
             # Multi-Timeframe Config - INTRADAY
-            "mtf_enhanced_confidence": 82.0,  # OPTIMIZADO: Confianza MTF muy alta
-            "mtf_min_confidence": 80.0,  # OPTIMIZADO: Confianza mínima MTF muy estricta
-            "mtf_min_consensus": 0.80,  # OPTIMIZADO: Consenso mucho más estricto MTF
+            "mtf_enhanced_confidence": 78.0,  # AJUSTADO: Confianza MTF más balanceada
+            "mtf_min_confidence": 75.0,  # AJUSTADO: Confianza mínima MTF coherente
+            "mtf_min_consensus": 0.67,  # AJUSTADO: Consenso más realista (2 de 3 timeframes)
             "mtf_require_trend_alignment": True,  # Requiere alineación
-            "mtf_min_timeframe_consensus": 3,  # OPTIMIZADO: Consenso en los 3 timeframes
+            "mtf_min_timeframe_consensus": 2,  # AJUSTADO: Consenso en 2 de 3 timeframes
             "mtf_trend_alignment_required": True,
             "volume_timeframe": "15m",  # Timeframe volumen moderado
             
@@ -294,7 +360,7 @@ class TradingProfiles:
             "position_timeout_hours": 6,  # OPTIMIZADO: Cerrar posiciones después de 6 horas para intraday
             "min_movement_threshold": 0.005,  # NUEVO: Movimiento mínimo 0.5% para considerar progreso
             "sideways_detection_period": 120,  # NUEVO: Detectar lateral en 2 horas
-            "profit_scaling_threshold": 0.015,  # REDUCIDO: Escalado más temprano al 1.5%
+            "profit_scaling_threshold_percent": 1.5,  # REDUCIDO: Escalado más temprano al 1.5%
             "trailing_stop_sl_pct": 0.012,  # REDUCIDO: SL trailing más agresivo 1.2%
             "trailing_stop_tp_pct": 0.030,  # REDUCIDO: TP trailing más conservador 3.0%
             "profit_protection_sl_pct": 0.008,  # REDUCIDO: Protección ganancias más temprana 0.8%
@@ -339,6 +405,10 @@ class TradingProfiles:
             # Error Handling Config
             "error_cooldown_seconds": 45,  # Cooldown moderado
             "max_consecutive_errors": 4,  # Tolerancia moderada
+            
+            # Trade Cooldown Config - INTRADAY
+            "min_time_between_trades_minutes": 10,  # CRÍTICO: 10 minutos mínimo entre trades del mismo símbolo
+            "min_time_between_opposite_signals_minutes": 15,  # CRÍTICO: 15 minutos entre señales opuestas para evitar cancelaciones
 
         }
     }
@@ -354,6 +424,41 @@ class TradingProfiles:
     def get_current_profile(cls) -> Dict[str, Any]:
         """Obtiene el perfil actualmente configurado."""
         return cls.get_profile(TRADING_PROFILE)
+    
+    @classmethod
+    def get_max_daily_trades(cls) -> int:
+        """Máximo de trades diarios según perfil activo."""
+        return cls.get_current_profile()["max_daily_trades"]
+    
+    @classmethod
+    def get_adaptive_daily_trades_limit(cls, current_trades_count: int = 0, signal_confidence: float = 0.0) -> int:
+        """
+        Calcula el límite adaptativo de trades diarios basado en la confianza de la señal.
+        
+        Args:
+            current_trades_count: Número actual de trades realizados hoy
+            signal_confidence: Confianza de la señal actual (0-100)
+            
+        Returns:
+            Límite máximo de trades permitidos para el día
+        """
+        profile = cls.get_current_profile()
+        base_limit = profile["max_daily_trades"]
+        
+        # Si el perfil no tiene configuración adaptativa, usar límite base
+        if not profile.get("max_daily_trades_adaptive", False):
+            return base_limit
+            
+        # Obtener configuración adaptativa
+        quality_threshold = profile.get("daily_trades_quality_threshold", 80.0)
+        bonus_trades = profile.get("max_daily_trades_bonus", 0)
+        
+        # Si la señal tiene alta confianza, permitir trades adicionales
+        if signal_confidence >= quality_threshold:
+            return base_limit + bonus_trades
+        
+        # Para señales de confianza normal, usar límite base
+        return base_limit
 
 
 # ============================================================================
@@ -443,22 +548,6 @@ GLOBAL_INITIAL_BALANCE = PAPER_GLOBAL_INITIAL_BALANCE  # Por defecto paper tradi
 USD_BASE_PRICE = 1.0
 
 # ============================================================================
-# 🎯 LISTA DE ACTIVOS
-# ============================================================================
-
-# Lista de símbolos con nombres exactos como aparecen en Capital.com
-GLOBAL_SYMBOLS: List[str] = [
-    # === Metales Preciosos (Base) ===
-    "GOLD",
-    # === Criptomonedas (Base) ===
-    "BTCUSD", "ETHUSD",
-    # === Forex (Volatilidad y Liquidez) ===
-    "EURUSD",
-    # === Índices (Volatilidad de Apertura) ===
-    "US500"
-]
-
-# ============================================================================
 # ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
 # ============================================================================
 
@@ -502,10 +591,7 @@ class TradingBotConfig:
         """Umbral mínimo de confianza según perfil activo."""
         return TradingProfiles.get_current_profile()["min_confidence"]
     
-    @classmethod
-    def get_max_daily_trades(cls) -> int:
-        """Máximo de trades diarios según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_daily_trades"]
+
     
     @classmethod
     def get_max_concurrent_positions(cls) -> int:
@@ -597,10 +683,7 @@ class TradingBotConfig:
     
 
     
-    @classmethod
-    def get_max_drawdown_threshold(cls) -> float:
-        """Umbral máximo de drawdown según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
+
 
 
 # ============================================================================
@@ -621,12 +704,12 @@ class PaperTraderConfig:
     @classmethod
     def get_max_position_size(cls) -> float:
         """Obtiene el tamaño máximo de posición según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_position_size"]
-    
+        return TradingProfiles.get_current_profile()["max_position_size_percent"] / 100
+
     @classmethod
     def get_max_total_exposure(cls) -> float:
         """Obtiene la exposición total máxima según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_total_exposure"]
+        return TradingProfiles.get_current_profile()["max_total_exposure_percent"] / 100
     
     @classmethod
     def get_min_trade_value(cls) -> float:
@@ -670,17 +753,17 @@ class RiskManagerConfig:
     @classmethod
     def get_max_risk_per_trade(cls) -> float:
         """Obtiene el riesgo máximo por trade según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_risk_per_trade"]
+        return TradingProfiles.get_current_profile()["max_risk_per_trade_percent"] / 100
     
     @classmethod
     def get_max_daily_risk(cls) -> float:
         """Obtiene el riesgo máximo diario según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_daily_risk"]
+        return TradingProfiles.get_current_profile()["max_daily_risk_percent"] / 100
     
     @classmethod
     def get_max_drawdown_threshold(cls) -> float:
         """Obtiene el umbral de drawdown máximo según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
+        return TradingProfiles.get_current_profile()["max_drawdown_threshold_percent"] / 100
     
     @classmethod
     def get_correlation_threshold(cls) -> float:
@@ -695,7 +778,7 @@ class RiskManagerConfig:
     @classmethod
     def get_max_position_size(cls) -> float:
         """Obtiene el tamaño máximo de posición según perfil activo."""
-        return TradingProfiles.get_current_profile()["risk_max_position_size"]
+        return TradingProfiles.get_current_profile()["risk_max_position_size_percent"] / 100
     
     @classmethod
     def get_kelly_fraction(cls) -> float:
@@ -737,32 +820,32 @@ class RiskManagerConfig:
     @classmethod
     def get_breakeven_threshold(cls) -> float:
         """Obtiene el umbral de breakeven según perfil activo."""
-        return TradingProfiles.get_current_profile()["breakeven_threshold"]
+        return TradingProfiles.get_current_profile()["breakeven_threshold_percent"] / 100
     
     @classmethod
     def get_tp_min_percentage(cls) -> float:
         """Obtiene el porcentaje mínimo de Take Profit según perfil activo."""
-        return TradingProfiles.get_current_profile()["tp_min_percentage"]
+        return TradingProfiles.get_current_profile()["tp_min_percent"] / 100
     
     @classmethod
     def get_tp_max_percentage(cls) -> float:
         """Obtiene el porcentaje máximo de Take Profit según perfil activo."""
-        return TradingProfiles.get_current_profile()["tp_max_percentage"]
+        return TradingProfiles.get_current_profile()["tp_max_percent"] / 100
     
     @classmethod
     def get_sl_min_percentage(cls) -> float:
         """Obtiene el porcentaje mínimo de Stop Loss según perfil activo."""
-        return TradingProfiles.get_current_profile()["sl_min_percentage"]
+        return TradingProfiles.get_current_profile()["sl_min_percent"] / 100
     
     @classmethod
     def get_sl_max_percentage(cls) -> float:
         """Obtiene el porcentaje máximo de Stop Loss según perfil activo."""
-        return TradingProfiles.get_current_profile()["sl_max_percentage"]
+        return TradingProfiles.get_current_profile()["sl_max_percent"] / 100
     
     @classmethod
     def get_tp_increment_percentage(cls) -> float:
         """Obtiene el porcentaje de incremento de TP según perfil activo."""
-        return TradingProfiles.get_current_profile()["tp_increment_percentage"]
+        return TradingProfiles.get_current_profile()["tp_increment_percent"]
     
 
     
@@ -777,9 +860,7 @@ class RiskManagerConfig:
         return TradingProfiles.get_current_profile()["max_daily_loss_percent"]
     
     @classmethod
-    def get_max_drawdown_threshold(cls) -> float:
-        """Obtiene el umbral máximo de drawdown según perfil activo."""
-        return TradingProfiles.get_current_profile()["max_drawdown_threshold"]
+
     
     @classmethod
     def get_min_confidence_threshold(cls) -> float:
@@ -794,12 +875,12 @@ class RiskManagerConfig:
 
     
     # Propiedades dinámicas para compatibilidad con código existente
-    MAX_RISK_PER_TRADE: float = property(lambda self: TradingProfiles.get_current_profile()["max_risk_per_trade"])
-    MAX_DAILY_RISK: float = property(lambda self: TradingProfiles.get_current_profile()["max_daily_risk"])
-    MAX_DRAWDOWN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["max_drawdown_threshold"])
+    MAX_RISK_PER_TRADE: float = property(lambda self: TradingProfiles.get_current_profile()["max_risk_per_trade_percent"])
+    MAX_DAILY_RISK: float = property(lambda self: TradingProfiles.get_current_profile()["max_daily_risk_percent"])
+    MAX_DRAWDOWN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["max_drawdown_threshold_percent"])
     CORRELATION_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["correlation_threshold"])
     MIN_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["min_position_size"])
-    MAX_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["risk_max_position_size"])
+    MAX_POSITION_SIZE: float = property(lambda self: TradingProfiles.get_current_profile()["risk_max_position_size_percent"])
     KELLY_FRACTION: float = property(lambda self: TradingProfiles.get_current_profile()["kelly_fraction"])
 
     ATR_MULTIPLIER_MIN: float = property(lambda self: TradingProfiles.get_current_profile()["atr_multiplier_min"])
@@ -808,7 +889,7 @@ class RiskManagerConfig:
     ATR_VOLATILE: float = property(lambda self: TradingProfiles.get_current_profile()["atr_volatile"])
     ATR_SIDEWAYS: float = property(lambda self: TradingProfiles.get_current_profile()["atr_sideways"])
     TRAILING_STOP_ACTIVATION: float = property(lambda self: TradingProfiles.get_current_profile()["trailing_stop_activation"])
-    BREAKEVEN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["breakeven_threshold"])
+    BREAKEVEN_THRESHOLD: float = property(lambda self: TradingProfiles.get_current_profile()["breakeven_threshold_percent"])
     
     # Valor inicial del portfolio para cálculos de riesgo en USD - Se alimenta del PaperTrader para consistencia
     INITIAL_PORTFOLIO_VALUE: float = PaperTraderConfig.INITIAL_BALANCE  # Mantiene consistencia automática
@@ -1512,6 +1593,163 @@ def initialize_config() -> bool:
     logger.info("✅ Configuración inicializada correctamente")
     return True
 
+# ============================================================================
+# ⏰ CONFIGURACIÓN DE HORARIOS INTELIGENTES DE TRADING
+# ============================================================================
+
+# Horarios óptimos de trading en hora chilena (America/Santiago)
+# Basado en análisis de superposición de sesiones Londres-NY y apertura Wall Street
+SMART_TRADING_HOURS = {
+    "enabled": True,
+    # OPCIÓN 2 - BALANCEADA (RECOMENDADA): Horario optimizado para todos los activos
+    # Cubre: Forex (superposición Londres-NY), Índices (apertura US), Criptos y Metales
+    "start_time": "09:30",    # Inicio optimizado para máxima volatilidad
+    "end_time": "13:00",      # Fin después de apertura Wall Street (10:30)
+    "timezone": "America/Santiago",
+    
+    # OPCIÓN 3 - EXTENDIDA (para pruebas): Descomenta las siguientes líneas para horario extendido
+    # "start_time": "09:00",    # Horario extendido para máxima cobertura de criptomonedas
+    # "end_time": "17:00",      # Cubre completamente mercados US (8 horas)
+    
+    # Configuración por tipo de mercado
+    "market_specific": {
+        "crypto": {
+            "enabled": True,
+            "start_time": "09:30",
+            "end_time": "13:00",
+            "reason": "Máxima actividad durante mercados US abiertos"
+            # Para horario extendido: "start_time": "09:00", "end_time": "17:00"
+        },
+        "forex": {
+            "enabled": True,
+            "start_time": "09:30",
+            "end_time": "13:00",
+            "reason": "Superposición Londres-NY + apertura Wall Street"
+            # Para horario extendido: "start_time": "09:00", "end_time": "17:00"
+        },
+        "stocks_us": {
+            "enabled": True,
+            "start_time": "10:30",   # 10:30 Chile = 09:30 EST (apertura US)
+            "end_time": "13:00",     # Primeras 2.5 horas de mayor volatilidad
+            "reason": "Apertura y primeras horas de Wall Street (máxima volatilidad)"
+        }
+    },
+    
+    # Configuración por perfil de trading
+    "profile_adjustments": {
+        "SCALPING": {
+            "start_time": "10:00",    # Más conservador, evita volatilidad extrema de apertura
+            "end_time": "12:30",      # Ventana más corta para scalping intensivo
+        },
+        "INTRADAY": {
+            "start_time": "09:30",    # Aprovecha toda la ventana optimizada
+            "end_time": "13:00",      # Máximo rango del horario balanceado
+        }
+    }
+}
+
+# Configuración avanzada de horarios por perfil
+PROFILE_TRADING_SCHEDULE = {
+    "SCALPING": {
+        "monday": True,
+        "tuesday": True,
+        "wednesday": True,
+        "thursday": True,
+        "friday": True,
+        "saturday": SCALPING_WEEKEND_TRADING,
+        "sunday": SCALPING_WEEKEND_TRADING,
+        "weekend_params": {
+            # Parámetros más conservadores para fines de semana en scalping
+            "min_confidence_multiplier": 1.2,  # 20% más confianza requerida
+            "max_daily_trades_multiplier": 0.5,  # 50% menos trades
+            "max_position_size_multiplier": 0.8   # 20% menos tamaño de posición
+        }
+    },
+    "INTRADAY": {
+        "monday": True,
+        "tuesday": True,
+        "wednesday": True,
+        "thursday": True,
+        "friday": True,
+        "saturday": INTRADAY_WEEKEND_TRADING,
+        "sunday": INTRADAY_WEEKEND_TRADING,
+        "weekend_params": {
+            # Parámetros ligeramente más conservadores para fines de semana
+            "min_confidence_multiplier": 1.1,  # 10% más confianza requerida
+            "max_daily_trades_multiplier": 0.7,  # 30% menos trades
+            "max_position_size_multiplier": 0.9   # 10% menos tamaño de posición
+        }
+    }
+}
+
+def is_trading_day_allowed(profile_name: str = None) -> bool:
+    """
+    Verifica si el trading está permitido en el día actual según la configuración.
+    
+    Args:
+        profile_name: Nombre del perfil (opcional, usa el actual si no se especifica)
+    
+    Returns:
+        bool: True si el trading está permitido hoy
+    """
+    from datetime import datetime
+    
+    # Obtener el día actual
+    current_day = datetime.now().strftime("%A").lower()
+    
+    # Si no se especifica perfil, usar el actual
+    if profile_name is None:
+        profile_name = TRADING_PROFILE
+    
+    # Verificar configuración específica del perfil
+    if profile_name in PROFILE_TRADING_SCHEDULE:
+        return PROFILE_TRADING_SCHEDULE[profile_name].get(current_day, False)
+    
+    # Fallback a configuración general
+    return TRADING_SCHEDULE.get(current_day, False)
+
+def get_weekend_trading_params(profile_name: str = None) -> dict:
+    """
+    Obtiene los parámetros de trading ajustados para fines de semana.
+    
+    Args:
+        profile_name: Nombre del perfil (opcional, usa el actual si no se especifica)
+    
+    Returns:
+        dict: Parámetros de trading para fines de semana
+    """
+    from datetime import datetime
+    
+    # Si no se especifica perfil, usar el actual
+    if profile_name is None:
+        profile_name = TRADING_PROFILE
+    
+    # Verificar si es fin de semana
+    current_day = datetime.now().strftime("%A").lower()
+    is_weekend = current_day in ["saturday", "sunday"]
+    
+    if not is_weekend:
+        # No es fin de semana, retornar parámetros normales (sin modificadores)
+        return {
+            "min_confidence_multiplier": 1.0,
+            "max_daily_trades_multiplier": 1.0,
+            "max_position_size_multiplier": 1.0
+        }
+    
+    # Es fin de semana, obtener parámetros específicos del perfil
+    if profile_name in PROFILE_TRADING_SCHEDULE:
+        return PROFILE_TRADING_SCHEDULE[profile_name].get("weekend_params", {
+            "min_confidence_multiplier": 1.0,
+            "max_daily_trades_multiplier": 1.0,
+            "max_position_size_multiplier": 1.0
+        })
+    
+    # Fallback a parámetros conservadores por defecto
+    return {
+        "min_confidence_multiplier": 1.15,
+        "max_daily_trades_multiplier": 0.6,
+        "max_position_size_multiplier": 0.85
+    }
 
 # ============================================================================
 # 🔄 FUNCIONES UTILITARIAS PARA SÍMBOLOS
@@ -1552,3 +1790,200 @@ try:
     
 except Exception as e:
     logger.error(f"❌ Error al inicializar configuración: {e}")
+
+# ============================================================================
+# ⏰ FUNCIONES DE VALIDACIÓN DE HORARIOS INTELIGENTES
+# ============================================================================
+
+def is_smart_trading_hours_allowed(symbol: str = None, profile_name: str = None) -> dict:
+    """
+    🕘 Verifica si estamos dentro de los horarios inteligentes de trading para Chile.
+    Usa UTC internamente para comparaciones precisas, evitando problemas con cambios de horario.
+    
+    Args:
+        symbol: Símbolo del activo (opcional, para validación específica por mercado)
+        profile_name: Nombre del perfil (opcional, usa el actual si no se especifica)
+    
+    Returns:
+        dict: Información detallada sobre el estado del horario de trading
+    """
+    from datetime import datetime, time
+    import pytz
+    
+    # Si los horarios inteligentes están deshabilitados, permitir siempre
+    if not SMART_TRADING_HOURS.get("enabled", True):
+        return {
+            "is_allowed": True,
+            "reason": "Smart trading hours disabled - 24/7 trading",
+            "current_time_chile": datetime.now(),
+            "market_status": "always_open"
+        }
+    
+    try:
+        # Obtener zonas horarias
+        chile_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
+        utc_tz = pytz.UTC
+        
+        # Obtener hora actual en Chile y UTC
+        current_time_chile = datetime.now(chile_tz)
+        current_time_utc = datetime.now(utc_tz)
+        
+        # Si no se especifica perfil, usar el actual
+        if profile_name is None:
+            profile_name = TRADING_PROFILE
+        
+        # Obtener horarios base (formato HH:MM en hora Chile)
+        start_time_str = SMART_TRADING_HOURS["start_time"]
+        end_time_str = SMART_TRADING_HOURS["end_time"]
+        
+        # Aplicar ajustes por perfil si existen
+        profile_adjustments = SMART_TRADING_HOURS.get("profile_adjustments", {})
+        if profile_name in profile_adjustments:
+            start_time_str = profile_adjustments[profile_name].get("start_time", start_time_str)
+            end_time_str = profile_adjustments[profile_name].get("end_time", end_time_str)
+        
+        # Aplicar configuración específica por mercado si se proporciona símbolo
+        market_type = _detect_market_type(symbol) if symbol else "general"
+        market_config = SMART_TRADING_HOURS.get("market_specific", {}).get(market_type)
+        
+        if market_config and market_config.get("enabled", True):
+            start_time_str = market_config.get("start_time", start_time_str)
+            end_time_str = market_config.get("end_time", end_time_str)
+            market_reason = market_config.get("reason", "Market-specific hours")
+        else:
+            market_reason = "General trading hours"
+        
+        # Convertir horarios de Chile a UTC para comparaciones precisas
+        start_hour, start_minute = map(int, start_time_str.split(':'))
+        end_hour, end_minute = map(int, end_time_str.split(':'))
+        
+        # Crear datetime en Chile para hoy con los horarios configurados
+        today_chile = current_time_chile.date()
+        start_datetime_chile = chile_tz.localize(datetime.combine(today_chile, time(start_hour, start_minute)))
+        end_datetime_chile = chile_tz.localize(datetime.combine(today_chile, time(end_hour, end_minute)))
+        
+        # Convertir a UTC para comparaciones precisas
+        start_datetime_utc = start_datetime_chile.astimezone(utc_tz)
+        end_datetime_utc = end_datetime_chile.astimezone(utc_tz)
+        
+        # Verificar si estamos dentro del horario (comparación en UTC)
+        is_within_hours = start_datetime_utc.time() <= current_time_utc.time() < end_datetime_utc.time()
+        
+        # Información adicional para debugging
+        debug_info = {
+            "start_chile": start_datetime_chile.strftime('%H:%M %Z'),
+            "end_chile": end_datetime_chile.strftime('%H:%M %Z'),
+            "start_utc": start_datetime_utc.strftime('%H:%M %Z'),
+            "end_utc": end_datetime_utc.strftime('%H:%M %Z'),
+            "current_chile": current_time_chile.strftime('%H:%M %Z'),
+            "current_utc": current_time_utc.strftime('%H:%M %Z')
+        }
+        
+        if is_within_hours:
+            return {
+                "is_allowed": True,
+                "reason": f"Within smart trading hours ({start_time_str}-{end_time_str} Chile) - {market_reason}",
+                "current_time_chile": current_time_chile,
+                "current_time_utc": current_time_utc,
+                "market_status": "open",
+                "market_type": market_type,
+                "active_hours": f"{start_time_str}-{end_time_str}",
+                "profile": profile_name,
+                "debug": debug_info
+            }
+        else:
+            return {
+                "is_allowed": False,
+                "reason": f"Outside smart trading hours ({start_time_str}-{end_time_str} Chile) - Current: {current_time_chile.strftime('%H:%M')}",
+                "current_time_chile": current_time_chile,
+                "current_time_utc": current_time_utc,
+                "market_status": "closed_hours",
+                "market_type": market_type,
+                "active_hours": f"{start_time_str}-{end_time_str}",
+                "profile": profile_name,
+                "next_open_time": start_time_str,
+                "debug": debug_info
+            }
+            
+    except Exception as e:
+        # En caso de error, permitir trading para no bloquear el sistema
+        return {
+            "is_allowed": True,
+            "reason": f"Error checking smart hours: {e} - Defaulting to allow",
+            "current_time_chile": datetime.now(),
+            "market_status": "error_default_open",
+            "error": str(e)
+        }
+
+def _detect_market_type(symbol: str) -> str:
+    """
+    🔍 Detecta el tipo de mercado basado en el símbolo.
+    
+    Args:
+        symbol: Símbolo del activo
+        
+    Returns:
+        str: Tipo de mercado ('crypto', 'forex', 'stocks_us', 'general')
+    """
+    if not symbol:
+        return "general"
+    
+    symbol_upper = symbol.upper()
+    
+    # Detectar criptomonedas
+    crypto_indicators = ['USDT', 'USDC', 'BTC', 'ETH', 'BNB', 'ADA', 'DOT', 'LINK', 'UNI']
+    if any(indicator in symbol_upper for indicator in crypto_indicators):
+        return "crypto"
+    
+    # Detectar forex
+    forex_pairs = ['EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD', 'USD']
+    if len(symbol_upper) == 6 and any(pair in symbol_upper for pair in forex_pairs):
+        return "forex"
+    
+    # Detectar acciones estadounidenses
+    us_stocks = ['NVDA', 'US500', 'SPY', 'QQQ', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
+    if any(stock in symbol_upper for stock in us_stocks):
+        return "stocks_us"
+    
+    return "general"
+
+def get_smart_trading_status_summary() -> dict:
+    """
+    📊 Obtiene un resumen del estado actual de los horarios inteligentes.
+    
+    Returns:
+        dict: Resumen completo del estado de trading
+    """
+    from datetime import datetime
+    import pytz
+    
+    try:
+        chile_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
+        current_time_chile = datetime.now(chile_tz)
+        
+        # Estado general
+        general_status = is_smart_trading_hours_allowed()
+        
+        # Estado por tipo de mercado
+        market_statuses = {}
+        for market_type in ["crypto", "forex", "stocks_us"]:
+            market_statuses[market_type] = is_smart_trading_hours_allowed(f"sample_{market_type}")
+        
+        return {
+            "current_time_chile": current_time_chile.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "smart_hours_enabled": SMART_TRADING_HOURS.get("enabled", True),
+            "general_status": general_status,
+            "market_statuses": market_statuses,
+            "active_profile": TRADING_PROFILE,
+            "configuration": {
+                "base_hours": f"{SMART_TRADING_HOURS['start_hour']:02d}:00-{SMART_TRADING_HOURS['end_hour']:02d}:00",
+                "timezone": SMART_TRADING_HOURS["timezone"]
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Error getting smart trading status: {e}",
+            "current_time_chile": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "smart_hours_enabled": False
+        }

@@ -15,7 +15,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.main_config import PaperTraderConfig, TradingBotConfig, USD_BASE_PRICE, TRADING_FEES, PRODUCTION_MODE, PAPER_TRADING_ONLY, ENABLE_REAL_TRADING, VERBOSE_LOGGING
+from src.config.main_config import PaperTraderConfig, TradingBotConfig, USD_BASE_PRICE, TRADING_FEES, PRODUCTION_MODE, PAPER_TRADING_ONLY, ENABLE_REAL_TRADING, VERBOSE_LOGGING, is_smart_trading_hours_allowed, _detect_market_type
 
 # Asegurar conversión a float consistente desde configuración
 FEE_RATE: float = float(TRADING_FEES)
@@ -270,6 +270,21 @@ class PaperTrader:
                     success=False,
                     trade_id=None,
                     message="Signal validation failed",
+                    entry_price=signal.price,
+                    quantity=0.0,
+                    entry_value=0.0
+                )
+            
+            # 🕐 Validar horarios inteligentes por tipo de mercado
+            market_type = _detect_market_type(signal.symbol)
+            is_allowed, reason = is_smart_trading_hours_allowed(signal.symbol)
+            
+            if not is_allowed:
+                self.logger.info(f"⏰ {signal.symbol} ({market_type}): {reason}")
+                return TradeResult(
+                    success=False,
+                    trade_id=None,
+                    message=f"Trading not allowed: {reason}",
                     entry_price=signal.price,
                     quantity=0.0,
                     entry_value=0.0

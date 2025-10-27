@@ -85,10 +85,19 @@ El bot utiliza varios "ojos" para ver el mercado:
 ## 📈 ¿Qué puedes esperar?
 
 ### 🎯 Objetivos Realistas
-- **Operaciones selectivas**: 3-8 trades por día en promedio
+- **Operaciones selectivas**: 3-12 trades por día en promedio (con límites adaptativos)
 - **Alta precisión**: 75-85% de operaciones exitosas
 - **Gestión conservadora**: Máximo 35-40% del capital en riesgo simultáneo
 - **Crecimiento sostenible**: Enfoque en preservar capital y crecer consistentemente
+
+### 🧠 Sistema de Límites Adaptativos Inteligente
+
+**Innovación Clave**: El bot ajusta automáticamente el número máximo de trades diarios basándose en la calidad de las señales:
+
+- **Límite Base**: 12 trades diarios máximo (configurable por perfil)
+- **Límites Adaptativos**: Cuando las señales tienen muy alta confianza (≥90%), el bot puede ejecutar trades adicionales de "bonificación"
+- **Protección Inteligente**: Nunca excede los límites de seguridad, incluso con señales de alta confianza
+- **Optimización Automática**: Se adapta a las condiciones del mercado sin intervención manual
 
 ### ⚠️ Expectativas Importantes
 - **No es una máquina de dinero**: Los mercados siempre tienen riesgo
@@ -209,9 +218,14 @@ ENABLE_REAL_TRADING=True         # True para habilitar trading (pero en demo)
 
 **Límites de protección:**
 ```env
-MAX_DAILY_TRADES=8              # Máximo 8 operaciones por día
+MAX_DAILY_TRADES=12             # Máximo 12 operaciones por día (límite base)
 MAX_RISK_PER_TRADE=1.0         # Máximo 1% de riesgo por operación
 MIN_CONFIDENCE=80.0            # Solo operaciones con 80%+ confianza
+
+# Configuración de Límites Adaptativos
+ADAPTIVE_TRADES_ENABLED=True    # Habilitar trades adaptativos
+BONUS_CONFIDENCE_THRESHOLD=90.0 # Umbral para trades de bonificación (90%+)
+MAX_BONUS_TRADES=3             # Máximo trades adicionales por día
 ```
 
 ### ⚠️ Antes de Usar Dinero Real

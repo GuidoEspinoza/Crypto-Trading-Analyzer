@@ -136,10 +136,16 @@ http://localhost:8000
   "configuration": {
     "basic_settings": {
       "analysis_interval_minutes": 60,
-      "max_daily_trades": 10,
+      "max_daily_trades": 12,
       "min_confidence_threshold": 50,
       "enable_trading": true,
       "symbols": ["GOLD", "SILVER", "BTCUSD"]
+    },
+    "adaptive_limits": {
+      "adaptive_trades_enabled": true,
+      "bonus_confidence_threshold": 90.0,
+      "max_bonus_trades": 3,
+      "current_adaptive_limit": 12
     },
     "position_management": {
       "max_concurrent_positions": 5,
@@ -181,11 +187,14 @@ http://localhost:8000
 ```json
 {
   "analysis_interval_minutes": 15,
-  "max_daily_trades": 10,
+  "max_daily_trades": 12,
   "min_confidence_threshold": 65,
   "enable_trading": true,
   "symbols": ["GOLD", "SILVER", "BTCUSD", "ETHUSD"],
   "trading_mode": "paper",
+  "adaptive_trades_enabled": true,
+  "bonus_confidence_threshold": 90.0,
+  "max_bonus_trades": 3,
   "max_concurrent_positions": 5,
   "max_position_size": 0.15,
   "max_total_exposure": 0.6,
@@ -608,12 +617,43 @@ print(f"Bot running: {dashboard['bot_status']['is_running']}")
 # Actualizar configuración
 config = {
     "analysis_interval_minutes": 15,
-    "max_daily_trades": 20,
-    "min_confidence_threshold": 65
+    "max_daily_trades": 12,
+    "min_confidence_threshold": 65,
+    "adaptive_trades_enabled": True,
+    "bonus_confidence_threshold": 90.0,
+    "max_bonus_trades": 3
 }
 response = requests.put(f"{BASE_URL}/bot/config", json=config)
 print(response.json())
 ```
+
+## 🎯 Sistema de Límites Adaptativos
+
+### Funcionalidad Inteligente
+El sistema incluye límites adaptativos que permiten trades adicionales basados en la confianza de las señales:
+
+**Configuración de Límites**:
+- `max_daily_trades`: Límite base (12 por defecto)
+- `adaptive_trades_enabled`: Habilita límites adaptativos
+- `bonus_confidence_threshold`: Umbral de confianza para trades bonus (90%)
+- `max_bonus_trades`: Máximo de trades adicionales permitidos (3)
+
+**Cálculo Dinámico**:
+```json
+{
+  "base_limit": 12,
+  "current_trades": 8,
+  "signal_confidence": 95.0,
+  "adaptive_limit": 15,
+  "bonus_available": true
+}
+```
+
+**Beneficios**:
+- 🎯 Aprovecha señales de alta calidad
+- 🛡️ Mantiene protección contra overtrading
+- 📊 Se adapta automáticamente a las condiciones del mercado
+- ⚡ Optimiza oportunidades sin comprometer la gestión de riesgo
 
 ## 📈 Monitoreo y Métricas
 
@@ -628,6 +668,7 @@ print(response.json())
 - **Total P&L**: Ganancia/pérdida total
 - **Win Rate**: Porcentaje de trades exitosos
 - **Daily Trades**: Trades ejecutados hoy
+- **Adaptive Limit**: Límite dinámico actual
 - **Active Positions**: Posiciones abiertas
 
 ## 🔧 Configuración del Servidor

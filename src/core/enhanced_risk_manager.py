@@ -98,8 +98,8 @@ class EnhancedRiskManager:
         else:
             print("🔧 DEBUG: ❌ Capital client es None!")
             logger.warning("🔧 ❌ Capital client es None!")
-        self.max_portfolio_risk = self.config.get_max_risk_per_trade() / 100  # Convertir de % a decimal
-        self.max_daily_risk = self.config.get_max_daily_risk() / 100  # Convertir de % a decimal
+        self.max_portfolio_risk = self.config.get_max_risk_per_trade()  # Ya en decimal
+        self.max_daily_risk = self.config.get_max_daily_risk()  # Ya en decimal
         self.max_drawdown_threshold = self.config.get_max_drawdown_threshold()  # Ya en decimal
         self.correlation_threshold = self.config.get_correlation_threshold()
         
@@ -215,7 +215,7 @@ class EnhancedRiskManager:
             
             # Determinar si el trade está aprobado
             profile = TradingProfiles.get_current_profile()
-            min_confidence = profile['min_confidence_threshold'] * 100  # Convertir a porcentaje
+            min_confidence = profile['min_confidence_threshold']  # Ya está en formato decimal (0.0-1.0)
             is_approved = (
                 risk_level not in [RiskLevel.EXTREME, RiskLevel.VERY_HIGH] and
                 not max_dd_alert and
@@ -310,8 +310,13 @@ class EnhancedRiskManager:
             
             # Paso 1: Calcular monto de operación (% del balance)
             print(f"🔧 DEBUG: max_position_size configurado: {self.max_position_size} ({self.max_position_size*100:.1f}%)")
-            monto_operacion = self.portfolio_value * self.max_position_size
-            print(f"🔧 DEBUG: Monto operación ({self.max_position_size*100:.1f}% del balance): ${monto_operacion:.2f}")
+            
+            # Aplicar position_size_multiplier del perfil activo
+            position_multiplier = self.config.get_position_size_multiplier()
+            print(f"🔧 DEBUG: position_size_multiplier del perfil: {position_multiplier}")
+            
+            monto_operacion = self.portfolio_value * self.max_position_size * position_multiplier
+            print(f"🔧 DEBUG: Monto operación ({self.max_position_size*100:.1f}% * {position_multiplier} del balance): ${monto_operacion:.2f}")
             
             # Paso 2: Calcular valor de negociación (monto * apalancamiento)
             valor_negociacion = monto_operacion * dynamic_leverage
@@ -372,7 +377,7 @@ class EnhancedRiskManager:
             print(f"🔧 DEBUG: Nivel de riesgo: {risk_level.value} (ratio: {position_risk_ratio:.3f})")
             
             # Reasoning actualizado para nueva estrategia con ajuste de volatilidad
-            reasoning = f"Balance: ${self.portfolio_value:.2f}, Monto operación ({self.max_position_size*100:.1f}%): ${monto_operacion:.2f}, " \
+            reasoning = f"Balance: ${self.portfolio_value:.2f}, Monto operación ({self.max_position_size*100:.1f}% * {position_multiplier}): ${monto_operacion:.2f}, " \
                        f"Apalancamiento: {dynamic_leverage}x, Valor negociación: ${valor_negociacion:.2f}, " \
                        f"Precio: ${precio_actual:.2f}, Tamaño final: {tamano_posicion:.6f}"
             
@@ -1042,10 +1047,10 @@ class EnhancedRiskManager:
                 "alerts": alerts,
                 "recommendations": recommendations,
                 "risk_metrics": {
-                    "max_portfolio_risk": self.max_portfolio_risk * 100,
-                    "max_daily_risk": self.max_daily_risk * 100,
-                    "max_drawdown_threshold": self.max_drawdown_threshold * 100,
-                    "risk_budget_used": round(len(self.open_positions) * self.max_portfolio_risk * 100, 2)
+                    "max_portfolio_risk": self.max_portfolio_risk,
+                    "max_daily_risk": self.max_daily_risk,
+                    "max_drawdown_threshold": self.max_drawdown_threshold,
+                    "risk_budget_used": round(len(self.open_positions) * self.max_portfolio_risk, 2)
                 }
             }
             

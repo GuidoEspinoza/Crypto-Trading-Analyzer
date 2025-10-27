@@ -31,14 +31,82 @@ Los módulos core constituyen el núcleo del sistema de trading automático, pro
 
 ### Funcionalidades Clave
 
-#### Inicialización y Configuración
+#### Configuración desde archivo centralizado
 ```python
 # Configuración desde archivo centralizado
 self.config = TradingBotConfig()
 self.min_confidence_threshold = self.config.get_min_confidence_threshold()
-self.max_daily_trades = self.config.get_max_daily_trades()
+self.max_daily_trades = TradingProfiles.get_max_daily_trades()
 self.max_concurrent_positions = self.config.get_max_concurrent_positions()
 ```
+
+### 🧠 Sistema de Límites Adaptativos
+
+#### Características Principales
+
+- **Límites Dinámicos**: Ajuste automático basado en calidad de señales
+- **Protección Inteligente**: Nunca excede límites de seguridad
+- **Configuración por Perfil**: Diferentes configuraciones según estrategia
+- **Trades de Bonificación**: Trades adicionales para señales de alta confianza
+
+#### Funcionalidades Clave
+
+##### Cálculo de Límites Adaptativos
+```python
+@classmethod
+def get_adaptive_daily_trades_limit(cls, signal_confidence: float) -> int:
+    """
+    Calcula el límite adaptativo de trades diarios basado en la confianza de la señal.
+    
+    Args:
+        signal_confidence: Confianza de la señal (0.0 a 1.0)
+        
+    Returns:
+        int: Límite de trades para el día actual
+    """
+    profile = cls.get_current_profile()
+    base_limit = profile.get('max_daily_trades', 12)
+    
+    # Configuración de trades adaptativos
+    adaptive_config = profile.get('adaptive_daily_trades', {})
+    if not adaptive_config.get('enabled', False):
+        return base_limit
+    
+    confidence_threshold = adaptive_config.get('bonus_confidence_threshold', 0.9)
+    max_bonus_trades = adaptive_config.get('max_bonus_trades', 3)
+    
+    # Si la confianza supera el umbral, permitir trades adicionales
+    if signal_confidence >= confidence_threshold:
+        return base_limit + max_bonus_trades
+    
+    return base_limit
+```
+
+##### Configuración por Perfil
+```python
+# Ejemplo de configuración en perfil Intraday
+"adaptive_daily_trades": {
+    "enabled": True,
+    "bonus_confidence_threshold": 0.9,  # 90% confianza mínima
+    "max_bonus_trades": 3,              # Máximo 3 trades adicionales
+    "description": "Permite trades adicionales con señales de muy alta confianza"
+}
+```
+
+#### Algoritmo de Decisión
+
+1. **Evaluación de Señal**: Análisis de confianza de la señal de trading
+2. **Verificación de Límite Base**: Comprobación del límite diario estándar
+3. **Evaluación de Bonificación**: Si confianza ≥ 90%, evaluar trades adicionales
+4. **Aplicación de Límites**: Nunca exceder límites máximos de seguridad
+5. **Logging**: Registro detallado de decisiones para auditoría
+
+#### Beneficios del Sistema
+
+- **Optimización Automática**: Aprovecha oportunidades de alta calidad
+- **Gestión de Riesgo**: Mantiene límites de protección
+- **Flexibilidad**: Adaptación a condiciones cambiantes del mercado
+- **Transparencia**: Logging completo de decisiones
 
 #### Estrategias Disponibles
 - **TrendFollowingProfessional**: Seguimiento de tendencia institucional
