@@ -21,11 +21,20 @@ import weakref
 
 # Importar todos nuestros componentes
 from src.config.main_config import (
-    TradingBotConfig, TradingProfiles, APIConfig, CacheConfig, 
-    TIMEZONE, DAILY_RESET_HOUR, DAILY_RESET_MINUTE,
-    GLOBAL_SYMBOLS, is_trading_day_allowed, get_weekend_trading_params,
-    is_smart_trading_hours_allowed, get_smart_trading_status_summary
+    TradingBotConfig,
+    TradingProfiles,
+    APIConfig,
+    CacheConfig,
+    TIMEZONE,
+    DAILY_RESET_HOUR,
+    DAILY_RESET_MINUTE,
+    GLOBAL_SYMBOLS,
+    is_trading_day_allowed,
+    get_weekend_trading_params,
+    is_smart_trading_hours_allowed,
+    get_smart_trading_status_summary,
 )
+
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -45,11 +54,13 @@ from src.utils.market_hours import market_hours_checker
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class BotStatus:
     """
     📊 Estado del trading bot
     """
+
     is_running: bool
     uptime: str
     total_signals_generated: int
@@ -61,10 +72,11 @@ class BotStatus:
     last_analysis_time: datetime
     next_analysis_time: datetime
 
+
 class TradingBot:
     """
     🤖 Trading Bot Principal con optimizaciones de rendimiento
-    
+
     Características:
     - Ejecuta múltiples estrategias automáticamente
     - Análisis cada X minutos (configurable)
@@ -75,110 +87,131 @@ class TradingBot:
     - Cache inteligente para mejor rendimiento
     - Procesamiento paralelo de estrategias
     """
-    
+
     # Cache compartido entre instancias
     _cache = {}
     _cache_timestamps = {}
+
     # Cache TTL se obtiene de la configuración del perfil
     @classmethod
     def _get_cache_ttl(cls):
         return CacheConfig.get_ttl_for_operation("price_data")
-    
+
     def __init__(self, analysis_interval_minutes: int = None):
         """
         Inicializar Trading Bot Profesional
-        
+
         Args:
             analysis_interval_minutes: Intervalo entre análisis (usa configuración centralizada si no se especifica)
         """
         # Configuración centralizada del bot
         self.config = TradingBotConfig()
-        
-        self.analysis_interval = analysis_interval_minutes or self.config.get_analysis_interval()
+
+        self.analysis_interval = (
+            analysis_interval_minutes or self.config.get_analysis_interval()
+        )
         self.is_running = False
         self.start_time = None
         self.last_analysis_time = None
         self.next_analysis_time = None  # Tiempo del próximo análisis programado
-        
+
         # Configurar logger PRIMERO
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
+
         # Cliente de Capital.com
         self.capital_client = None
         self._initialize_capital_client()
-        
+
         # Obtener balance real para sincronizar con paper trader
         real_balance = self._get_real_balance()
-        
+
         # Obtener posiciones existentes de Capital.com para sincronizar
         initial_positions = self._get_capital_positions_for_sync()
-        
+
         # Componentes principales
-        self.paper_trader = PaperTrader(initial_balance=real_balance, initial_positions=initial_positions, capital_client=self.capital_client)
+        self.paper_trader = PaperTrader(
+            initial_balance=real_balance,
+            initial_positions=initial_positions,
+            capital_client=self.capital_client,
+        )
         self.risk_manager = EnhancedRiskManager(capital_client=self.capital_client)
-        
+
         # Sistema de monitoreo de posiciones
         self.position_monitor = PositionMonitor(
             price_fetcher=self._get_current_price,
             paper_trader=self.paper_trader,
-            capital_client=self.capital_client
+            capital_client=self.capital_client,
         )
-        
 
-        
         # Sistema de eventos para comunicación con LiveTradingBot
         profile_config = TradingProfiles.get_current_profile()
-        self.event_queue = queue.Queue(maxsize=profile_config.get('event_queue_maxsize', 1000))
+        self.event_queue = queue.Queue(
+            maxsize=profile_config.get("event_queue_maxsize", 1000)
+        )
         self.adjustment_thread = None
         self.trade_event_callback = None  # Callback para eventos de trades
-        
+
         # ThreadPool para procesamiento paralelo
-        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="TradingBot")
-        
+        self.executor = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="TradingBot"
+        )
+
         # Estrategias disponibles (Enhanced)
         self.strategies = {}
         self._initialize_strategies()
-        
+
         # Símbolos a analizar - usar configuración centralizada
         self.symbols = GLOBAL_SYMBOLS.copy()
-        
+
         # Configuración de trading profesional desde configuración centralizada
         self.min_confidence_threshold = self.config.get_min_confidence_threshold()
         self.max_daily_trades = TradingProfiles.get_max_daily_trades()
         self.max_concurrent_positions = self.config.get_max_concurrent_positions()
         self.enable_trading = True  # Activar/desactivar ejecución de trades
-        
+
         # Configuración de trading real vs paper trading
-        self.enable_real_trading = os.getenv('ENABLE_REAL_TRADING', 'false').lower() == 'true'
-        self.real_trading_size_multiplier = float(os.getenv('REAL_TRADING_SIZE_MULTIPLIER', '0.1'))  # 10% del tamaño de paper trading por defecto
-        
+        self.enable_real_trading = (
+            os.getenv("ENABLE_REAL_TRADING", "false").lower() == "true"
+        )
+        self.real_trading_size_multiplier = float(
+            os.getenv("REAL_TRADING_SIZE_MULTIPLIER", "0.1")
+        )  # 10% del tamaño de paper trading por defecto
+
         # Configuración de timeframes profesional desde configuración centralizada
         self.primary_timeframe = self.config.get_primary_timeframe()
         self.confirmation_timeframe = self.config.get_confirmation_timeframe()
         self.trend_timeframe = self.config.get_trend_timeframe()
-        
+
         # Inicializar zona horaria y referencia de último reset
         try:
             tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
         except Exception:
             tz = None
         now_local = datetime.now(tz) if tz else datetime.now()
-        reset_dt = datetime(
-            now_local.year,
-            now_local.month,
-            now_local.day,
-            DAILY_RESET_HOUR,
-            DAILY_RESET_MINUTE,
-            tzinfo=tz
-        ) if tz else datetime(
-            now_local.year,
-            now_local.month,
-            now_local.day,
-            DAILY_RESET_HOUR,
-            DAILY_RESET_MINUTE
+        reset_dt = (
+            datetime(
+                now_local.year,
+                now_local.month,
+                now_local.day,
+                DAILY_RESET_HOUR,
+                DAILY_RESET_MINUTE,
+                tzinfo=tz,
+            )
+            if tz
+            else datetime(
+                now_local.year,
+                now_local.month,
+                now_local.day,
+                DAILY_RESET_HOUR,
+                DAILY_RESET_MINUTE,
+            )
         )
-        initial_last_reset_day = now_local.date() if now_local >= reset_dt else (now_local.date() - timedelta(days=1))
-        
+        initial_last_reset_day = (
+            now_local.date()
+            if now_local >= reset_dt
+            else (now_local.date() - timedelta(days=1))
+        )
+
         # Estadísticas
         self.stats = {
             "signals_generated": 0,
@@ -195,21 +228,25 @@ class TradingBot:
             "weekday_successful_trades": 0,
             "weekend_successful_trades": 0,
             "weekday_pnl": 0.0,
-            "weekend_pnl": 0.0
+            "weekend_pnl": 0.0,
         }
-        
+
         # Tracking de pérdidas consecutivas para estadísticas
         self.consecutive_losses = 0
-        
+
         # Sistema de tracking de trades para cooldown
         self.last_trade_times = {}  # {symbol: datetime} - último trade por símbolo
-        self.last_signal_types = {}  # {symbol: signal_type} - último tipo de señal por símbolo
-        
+        self.last_signal_types = (
+            {}
+        )  # {symbol: signal_type} - último tipo de señal por símbolo
+
         # Thread para ejecución
         self.analysis_thread = None
         self.stop_event = threading.Event()
-        
-        self.logger.info("🤖 Trading Bot initialized with Position Monitor and Trade Cooldown System")
+
+        self.logger.info(
+            "🤖 Trading Bot initialized with Position Monitor and Trade Cooldown System"
+        )
 
     def _initialize_capital_client(self):
         """🔌 Inicializar cliente de Capital.com"""
@@ -221,52 +258,63 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize Capital.com client: {e}")
             self.capital_client = None
-    
+
     def _get_real_balance(self) -> float:
         """💰 Obtener balance real de Capital.com"""
         try:
-            if self.capital_client and hasattr(self.capital_client, 'get_accounts'):
+            if self.capital_client and hasattr(self.capital_client, "get_accounts"):
                 accounts_response = self.capital_client.get_accounts()
                 self.logger.debug(f"🔍 Accounts response: {accounts_response}")
-                
+
                 # Manejar la estructura correcta de la respuesta
-                if accounts_response and accounts_response.get('success'):
-                    accounts_data = accounts_response.get('accounts', {})
-                    accounts_list = accounts_data.get('accounts', [])
-                    
+                if accounts_response and accounts_response.get("success"):
+                    accounts_data = accounts_response.get("accounts", {})
+                    accounts_list = accounts_data.get("accounts", [])
+
                     if accounts_list and len(accounts_list) > 0:
                         # Usar el primer account disponible
                         account = accounts_list[0]
                         self.logger.debug(f"🔍 First account structure: {account}")
-                        balance_info = account.get('balance', {})
+                        balance_info = account.get("balance", {})
                         self.logger.debug(f"🔍 Balance info: {balance_info}")
-                        available_balance = balance_info.get('available', 0.0)
+                        available_balance = balance_info.get("available", 0.0)
                         balance = float(available_balance)
-                        self.logger.info(f"💰 Balance real obtenido de Capital.com: ${balance:.2f}")
+                        self.logger.info(
+                            f"💰 Balance real obtenido de Capital.com: ${balance:.2f}"
+                        )
                         return balance
                     else:
-                        self.logger.warning("⚠️ No se encontraron cuentas en la respuesta de Capital.com")
+                        self.logger.warning(
+                            "⚠️ No se encontraron cuentas en la respuesta de Capital.com"
+                        )
                         self.logger.debug(f"🔍 Accounts list was: {accounts_list}")
                 else:
                     self.logger.warning("⚠️ Respuesta de cuentas no exitosa o vacía")
                     self.logger.debug(f"🔍 Full response was: {accounts_response}")
             else:
-                self.logger.warning("⚠️ Cliente de Capital.com no disponible para obtener balance")
-                self.logger.debug(f"🔍 capital_client: {self.capital_client}, has get_accounts: {hasattr(self.capital_client, 'get_accounts') if self.capital_client else 'N/A'}")
+                self.logger.warning(
+                    "⚠️ Cliente de Capital.com no disponible para obtener balance"
+                )
+                self.logger.debug(
+                    f"🔍 capital_client: {self.capital_client}, has get_accounts: {hasattr(self.capital_client, 'get_accounts') if self.capital_client else 'N/A'}"
+                )
         except Exception as e:
-            self.logger.error(f"❌ Error obteniendo balance real: {type(e).__name__}: {str(e)}")
+            self.logger.error(
+                f"❌ Error obteniendo balance real: {type(e).__name__}: {str(e)}"
+            )
             import traceback
+
             self.logger.debug(f"🔍 Traceback completo: {traceback.format_exc()}")
-        
+
         # Fallback: usar balance por defecto de configuración
         default_balance = 1000.0  # Balance por defecto
         self.logger.info(f"💰 Usando balance por defecto: ${default_balance:.2f}")
         return default_balance
-    
+
     def _get_capital_positions_for_sync(self) -> Dict:
         """
         🔄 Obtener posiciones de Capital.com para sincronizar con paper trader
-        
+
         Returns:
             Diccionario con posiciones en formato compatible con paper trader
         """
@@ -274,44 +322,54 @@ class TradingBot:
             if not self.capital_client:
                 self.logger.info("ℹ️ Capital client not available, no positions to sync")
                 return {}
-            
+
             positions_result = self.capital_client.get_positions()
             if not positions_result.get("success"):
-                self.logger.warning(f"⚠️ Failed to get positions: {positions_result.get('error')}")
+                self.logger.warning(
+                    f"⚠️ Failed to get positions: {positions_result.get('error')}"
+                )
                 return {}
-            
+
             positions_data = {}
             capital_positions = positions_result.get("positions", [])
-            
+
             for position in capital_positions:
                 # Extraer información de la posición
                 market_info = position.get("market", {})
                 position_info = position.get("position", {})
-                
-                symbol = market_info.get("epic", "").replace("_", "")  # ETHUSD, BTCUSD, etc.
+
+                symbol = market_info.get("epic", "").replace(
+                    "_", ""
+                )  # ETHUSD, BTCUSD, etc.
                 direction = position_info.get("direction", "").upper()  # BUY o SELL
                 size = float(position_info.get("size", 0))
                 level = float(position_info.get("level", 0))  # Precio promedio
                 currency = position_info.get("currency", "USD")
-                
+
                 # Solo incluir posiciones activas
                 if size > 0 and level > 0 and symbol:
                     positions_data[symbol] = {
-                        'direction': direction,
-                        'size': size,
-                        'level': level,
-                        'currency': currency
+                        "direction": direction,
+                        "size": size,
+                        "level": level,
+                        "currency": currency,
                     }
-                    
-                    self.logger.debug(f"🔄 Posición encontrada: {direction} {size} {symbol} @ ${level:.2f}")
-            
+
+                    self.logger.debug(
+                        f"🔄 Posición encontrada: {direction} {size} {symbol} @ ${level:.2f}"
+                    )
+
             if positions_data:
-                self.logger.info(f"📊 Encontradas {len(positions_data)} posiciones activas en Capital.com para sincronizar")
+                self.logger.info(
+                    f"📊 Encontradas {len(positions_data)} posiciones activas en Capital.com para sincronizar"
+                )
             else:
-                self.logger.info("ℹ️ No hay posiciones activas en Capital.com para sincronizar")
-            
+                self.logger.info(
+                    "ℹ️ No hay posiciones activas en Capital.com para sincronizar"
+                )
+
             return positions_data
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error getting Capital.com positions for sync: {e}")
             return {}
@@ -319,17 +377,17 @@ class TradingBot:
     def set_trade_event_callback(self, callback):
         """
         🔗 Configurar callback para eventos de trades
-        
+
         Args:
             callback: Función que será llamada cuando se ejecute un trade
         """
         self.trade_event_callback = callback
         self.logger.info("✅ Trade event callback configured")
-    
+
     def _emit_trade_event(self, signal, trade_result, risk_assessment):
         """
         📡 Emitir evento de trade ejecutado
-        
+
         Args:
             signal: Señal de trading que generó el trade
             trade_result: Resultado de la ejecución del trade
@@ -338,51 +396,53 @@ class TradingBot:
         try:
             if self.trade_event_callback:
                 trade_event = {
-                    'type': 'TRADE_EXECUTED',
-                    'timestamp': datetime.now(),
-                    'symbol': signal.symbol,
-                    'signal_type': signal.signal_type,
-                    'confidence': signal.confidence_score,
-                    'entry_price': trade_result.entry_price,
-                    'quantity': trade_result.quantity,
-                    'trade_value': trade_result.entry_value,
-                    'success': trade_result.success,
-                    'message': trade_result.message,
-                    'risk_score': risk_assessment.overall_risk_score,
-                    'risk_level': risk_assessment.risk_level.value,
-                    'position_size': risk_assessment.position_sizing.recommended_size,
-                    'stop_loss': getattr(trade_result, 'stop_loss_price', None),
-                    'take_profit': getattr(trade_result, 'take_profit_price', None)
+                    "type": "TRADE_EXECUTED",
+                    "timestamp": datetime.now(),
+                    "symbol": signal.symbol,
+                    "signal_type": signal.signal_type,
+                    "confidence": signal.confidence_score,
+                    "entry_price": trade_result.entry_price,
+                    "quantity": trade_result.quantity,
+                    "trade_value": trade_result.entry_value,
+                    "success": trade_result.success,
+                    "message": trade_result.message,
+                    "risk_score": risk_assessment.overall_risk_score,
+                    "risk_level": risk_assessment.risk_level.value,
+                    "position_size": risk_assessment.position_sizing.recommended_size,
+                    "stop_loss": getattr(trade_result, "stop_loss_price", None),
+                    "take_profit": getattr(trade_result, "take_profit_price", None),
                 }
-                
+
                 # Llamar al callback
                 self.trade_event_callback(trade_event)
-                
+
                 # También agregar al queue para compatibilidad
                 if not self.event_queue.full():
                     self.event_queue.put(trade_event)
-                    
+
         except Exception as e:
             self.logger.error(f"❌ Error emitting trade event: {e}")
-    
+
     def _initialize_strategies(self):
         """🔧 Inicializar estrategias de trading"""
         try:
             # Solo estrategias profesionales avanzadas
             self.strategies = {
-                "TrendFollowingProfessional": ProfessionalStrategyAdapter(self.capital_client),
+                "TrendFollowingProfessional": ProfessionalStrategyAdapter(
+                    self.capital_client
+                ),
                 "MeanReversionProfessional": MeanReversionAdapter(self.capital_client),
-                "BreakoutProfessional": BreakoutAdapter(self.capital_client)
+                "BreakoutProfessional": BreakoutAdapter(self.capital_client),
             }
             # Inyectar referencia del bot en las estrategias para delegar operaciones comunes
             for s in self.strategies.values():
-                if hasattr(s, 'set_trading_bot'):
+                if hasattr(s, "set_trading_bot"):
                     s.set_trading_bot(self)
             self.logger.info(f"✅ {len(self.strategies)} strategies initialized")
         except Exception as e:
             self.logger.error(f"❌ Error initializing strategies: {e}")
             self.strategies = {}
-    
+
     @classmethod
     def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
         """Generar clave de cache única para método y parámetros"""
@@ -391,39 +451,42 @@ class TradingBot:
             return hashlib.md5(key_data.encode()).hexdigest()
         except Exception:
             return f"{method_name}_{time.time()}"
-    
+
     @classmethod
     def _get_from_cache(cls, cache_key: str):
         """Obtener valor del cache si es válido"""
         current_time = time.time()
-        if (cache_key in cls._cache and 
-            cache_key in cls._cache_timestamps and
-            current_time - cls._cache_timestamps[cache_key] < cls._get_cache_ttl()):
+        if (
+            cache_key in cls._cache
+            and cache_key in cls._cache_timestamps
+            and current_time - cls._cache_timestamps[cache_key] < cls._get_cache_ttl()
+        ):
             return cls._cache[cache_key]
         return None
-    
+
     @classmethod
     def _store_in_cache(cls, cache_key: str, value):
         """Almacenar valor en cache con timestamp"""
         cls._cache[cache_key] = value
         cls._cache_timestamps[cache_key] = time.time()
-        
+
         # Limpiar cache viejo si es necesario
         if len(cls._cache) > 500:  # Límite de entradas
             cls._cleanup_cache()
-    
+
     @classmethod
     def _cleanup_cache(cls):
         """Limpiar entradas viejas del cache"""
         current_time = time.time()
         expired_keys = [
-            key for key, timestamp in cls._cache_timestamps.items()
+            key
+            for key, timestamp in cls._cache_timestamps.items()
             if current_time - timestamp >= cls._get_cache_ttl()
         ]
         for key in expired_keys:
             cls._cache.pop(key, None)
             cls._cache_timestamps.pop(key, None)
-        
+
     def start(self):
         """
         🚀 Iniciar el trading bot
@@ -431,46 +494,53 @@ class TradingBot:
         if self.is_running:
             self.logger.warning("⚠️ Bot is already running")
             return
-        
+
         self.is_running = True
         self.start_time = datetime.now()
         self.stop_event.clear()
-        
+
         # Inicializar próximo análisis
-        self.next_analysis_time = datetime.now() + timedelta(minutes=self.analysis_interval)
-        
+        self.next_analysis_time = datetime.now() + timedelta(
+            minutes=self.analysis_interval
+        )
+
         # Configurar schedule para análisis periódico
         schedule.clear()
         schedule.every(self.analysis_interval).minutes.do(self._run_analysis_cycle)
-        
+
         # Programar reset diario exacto a la hora configurada (usa hora local del sistema)
         try:
             reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
-            schedule.every().day.at(reset_time_str).do(self._reset_daily_stats_if_needed).tag('daily_reset')
-            self.logger.info(f"⏰ Daily reset scheduled at {reset_time_str} ({TIMEZONE})")
+            schedule.every().day.at(reset_time_str).do(
+                self._reset_daily_stats_if_needed
+            ).tag("daily_reset")
+            self.logger.info(
+                f"⏰ Daily reset scheduled at {reset_time_str} ({TIMEZONE})"
+            )
         except Exception as e:
             self.logger.warning(f"⚠️ Could not schedule daily reset: {e}")
-        
+
         # Programar cierre automático de posiciones rentables 15 minutos antes del reset
         try:
             self.schedule_pre_reset_profit_taking()
         except Exception as e:
             self.logger.warning(f"⚠️ Could not schedule pre-reset profit taking: {e}")
-        
+
         # Iniciar thread de ejecución (sin análisis inicial inmediato)
         self.analysis_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.analysis_thread.start()
-        
+
         # Iniciar monitoreo de posiciones solo si está habilitado en configuración
         if self.config.get_position_monitoring_enabled():
             self.position_monitor.start_monitoring()
             self.logger.info("🔍 Position monitoring started")
         else:
-            self.logger.info("🔍 Position monitoring disabled - Bot will only open positions with TP/SL")
-        
+            self.logger.info(
+                "🔍 Position monitoring disabled - Bot will only open positions with TP/SL"
+            )
+
         # Sistema de ajuste TP/SL desactivado (Opción A): no se inicia monitoreo
 
-        
         # Ejecutar primer análisis inmediatamente (sin delay)
         self.logger.info("🔄 Running immediate initial analysis...")
         try:
@@ -478,16 +548,20 @@ class TradingBot:
             self.logger.info("✅ Initial analysis completed successfully")
         except Exception as e:
             self.logger.error(f"❌ Error in initial analysis: {e}")
-        
-        self.logger.info(f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes")
+
+        self.logger.info(
+            f"🚀 Trading Bot started - Analysis every {self.analysis_interval} minutes"
+        )
         self.logger.info(f"📊 Monitoring symbols: {', '.join(self.symbols)}")
         self.logger.info(f"🧠 Active strategies: {', '.join(self.strategies.keys())}")
         if self.config.get_position_monitoring_enabled():
             self.logger.info("🔍 Position monitoring started")
         else:
-            self.logger.info("🔍 Position monitoring disabled - Bot will only open positions with TP/SL")
+            self.logger.info(
+                "🔍 Position monitoring disabled - Bot will only open positions with TP/SL"
+            )
         self.logger.info("🎯 TP/SL adjustment monitoring disabled")
-    
+
     def stop(self):
         """
         🛑 Detener el trading bot y limpiar recursos
@@ -495,43 +569,41 @@ class TradingBot:
         if not self.is_running:
             self.logger.warning("⚠️ Bot is not running")
             return
-        
+
         self.is_running = False
         self.stop_event.set()
         schedule.clear()
-        
+
         # Resetear tiempo del próximo análisis
         self.next_analysis_time = None
-        
+
         # Detener monitoreo de posiciones solo si está habilitado
         if self.config.get_position_monitoring_enabled():
             self.position_monitor.stop_monitoring()
             self.logger.info("🔍 Position monitoring stopped")
         else:
             self.logger.info("🔍 Position monitoring was disabled")
-        
 
-        
         # Limpiar ThreadPoolExecutor
-        if hasattr(self, 'executor') and self.executor:
+        if hasattr(self, "executor") and self.executor:
             profile_config = TradingProfiles.get_current_profile()
             timeout = self.config.get_executor_shutdown_timeout()
             self.executor.shutdown(wait=True, timeout=timeout)
             self.logger.info("🧹 ThreadPoolExecutor cleaned up")
-        
+
         if self.analysis_thread and self.analysis_thread.is_alive():
             profile_config = TradingProfiles.get_current_profile()
             timeout = self.config.get_thread_join_timeout()
             self.analysis_thread.join(timeout=timeout)
-            
+
         if self.adjustment_thread and self.adjustment_thread.is_alive():
             profile_config = TradingProfiles.get_current_profile()
             timeout = self.config.get_thread_join_timeout()
             self.adjustment_thread.join(timeout=timeout)
-        
+
         # Limpiar cache si es necesario
         self._cleanup_cache()
-        
+
         self.logger.info("🛑 Trading Bot stopped")
         if self.config.get_position_monitoring_enabled():
             self.logger.info("🔍 Position monitoring stopped")
@@ -539,44 +611,52 @@ class TradingBot:
             self.logger.info("🔍 Position monitoring was disabled")
         self.logger.info("🎯 TP/SL adjustment monitoring disabled")
         self.logger.info("💾 Cache cleaned up")
-    
+
     def _get_current_price(self, symbol: str) -> float:
         """💰 Obtener precio actual del símbolo usando Capital.com con cache"""
         import math
-        
+
         # Validar que el símbolo no esté vacío
         if not symbol or not symbol.strip():
-            self.logger.error(f"🚨 CRÍTICO: Símbolo vacío o inválido proporcionado a _get_current_price: '{symbol}'")
+            self.logger.error(
+                f"🚨 CRÍTICO: Símbolo vacío o inválido proporcionado a _get_current_price: '{symbol}'"
+            )
             return 0.0
-        
+
         def _validate_price(price: float, source: str) -> bool:
             """Validar que el precio sea válido y seguro para trading"""
             if price is None:
                 self.logger.warning(f"⚠️ Precio None recibido de {source} para {symbol}")
                 return False
             if math.isnan(price):
-                self.logger.error(f"🚨 Precio NaN recibido de {source} para {symbol} - CRÍTICO")
+                self.logger.error(
+                    f"🚨 Precio NaN recibido de {source} para {symbol} - CRÍTICO"
+                )
                 return False
             if math.isinf(price):
-                self.logger.error(f"🚨 Precio Infinity recibido de {source} para {symbol} - CRÍTICO")
+                self.logger.error(
+                    f"🚨 Precio Infinity recibido de {source} para {symbol} - CRÍTICO"
+                )
                 return False
             if price <= 0:
-                self.logger.warning(f"⚠️ Precio inválido ({price}) de {source} para {symbol}")
+                self.logger.warning(
+                    f"⚠️ Precio inválido ({price}) de {source} para {symbol}"
+                )
                 return False
             return True
-        
+
         try:
             # Normalizar símbolo para Capital.com (Gold, Silver, etc.)
             capital_symbol = self._normalize_symbol_for_capital(symbol)
-            
+
             # Generar clave de cache para precio basada en símbolo normalizado
             cache_key = self._get_cache_key("current_price", capital_symbol)
-            
+
             # Verificar cache (TTL más corto para precios)
             cached_price = self._get_from_cache(cache_key)
             if cached_price is not None and _validate_price(cached_price, "cache"):
                 return cached_price
-            
+
             # Usar Capital.com client si está disponible
             if self.capital_client:
                 try:
@@ -585,52 +665,67 @@ class TradingBot:
                         # Intentar obtener bid, offer o mid price
                         price_data = market_data[capital_symbol]
                         current_price = None
-                        
+
                         # Prioridad: bid > offer > mid
-                        for price_key in ['bid', 'offer', 'mid']:
-                            if price_key in price_data and price_data[price_key] is not None:
+                        for price_key in ["bid", "offer", "mid"]:
+                            if (
+                                price_key in price_data
+                                and price_data[price_key] is not None
+                            ):
                                 try:
                                     current_price = float(price_data[price_key])
-                                    if _validate_price(current_price, f"Capital.com-{price_key}"):
+                                    if _validate_price(
+                                        current_price, f"Capital.com-{price_key}"
+                                    ):
                                         # Almacenar en cache solo precios válidos
                                         self._store_in_cache(cache_key, current_price)
                                         return current_price
                                 except (ValueError, TypeError) as e:
-                                    self.logger.warning(f"⚠️ Error convirtiendo precio {price_key}: {e}")
+                                    self.logger.warning(
+                                        f"⚠️ Error convirtiendo precio {price_key}: {e}"
+                                    )
                                     continue
-                        
-                        self.logger.warning(f"⚠️ Capital.com no retornó precios válidos para {capital_symbol}")
-                        
+
+                        self.logger.warning(
+                            f"⚠️ Capital.com no retornó precios válidos para {capital_symbol}"
+                        )
+
                 except Exception as e:
-                    self.logger.error(f"🚨 Capital.com connection failed for {capital_symbol}: {e}")
-            
+                    self.logger.error(
+                        f"🚨 Capital.com connection failed for {capital_symbol}: {e}"
+                    )
+
             # Fallback: intentar obtener desde estrategias
             try:
                 if self.strategies:
                     strategy = next(iter(self.strategies.values()))
                     df = strategy.get_market_data(symbol, "1m", limit=1)
                     if not df.empty:
-                        fallback_price = float(df['close'].iloc[-1])
+                        fallback_price = float(df["close"].iloc[-1])
                         if _validate_price(fallback_price, "strategy-fallback"):
                             # Cache del fallback también
                             cache_key = self._get_cache_key("current_price", symbol)
                             self._store_in_cache(cache_key, fallback_price)
                             return fallback_price
-                    
-                    self.logger.warning(f"⚠️ Strategy fallback no retornó datos válidos para {symbol}")
+
+                    self.logger.warning(
+                        f"⚠️ Strategy fallback no retornó datos válidos para {symbol}"
+                    )
             except Exception as e:
                 self.logger.error(f"🚨 Strategy fallback failed for {symbol}: {e}")
-            
+
             # CRÍTICO: No retornar 0.0 - lanzar excepción para evitar trades peligrosos
             error_msg = f"🚨 CRÍTICO: No se pudo obtener precio válido para {symbol} de ninguna fuente"
             self.logger.error(error_msg)
             raise ValueError(error_msg)
-            
+
         except ValueError:
             # Re-lanzar errores de validación
             raise
         except Exception as e:
-            error_msg = f"🚨 CRÍTICO: Error inesperado obteniendo precio para {symbol}: {e}"
+            error_msg = (
+                f"🚨 CRÍTICO: Error inesperado obteniendo precio para {symbol}: {e}"
+            )
             self.logger.error(error_msg)
             raise ValueError(error_msg)
 
@@ -645,52 +740,71 @@ class TradingBot:
     def _check_max_positions_limit(self) -> bool:
         """
         🛡️ Verificar si se puede abrir una nueva posición según el límite max_positions
-        
+
         Returns:
             bool: True si se puede abrir nueva posición, False si se alcanzó el límite
         """
         try:
             # Obtener configuración actual
             current_profile = TradingProfiles.get_current_profile()
-            max_positions = current_profile.get('max_positions', 8)  # Default 8 si no está configurado
-            
+            max_positions = current_profile.get(
+                "max_positions", 8
+            )  # Default 8 si no está configurado
+
             # Contar posiciones abiertas usando Capital.com
             if self.capital_client and self.enable_real_trading:
                 # Usar endpoint /positions de Capital.com para trading real
                 positions_result = self.capital_client.get_positions()
-                
+
                 if positions_result.get("success"):
                     open_positions = positions_result.get("positions", [])
                     current_positions_count = len(open_positions)
-                    
-                    self.logger.info(f"📊 Posiciones abiertas: {current_positions_count}/{max_positions}")
-                    
+
+                    self.logger.info(
+                        f"📊 Posiciones abiertas: {current_positions_count}/{max_positions}"
+                    )
+
                     # Log detalle de posiciones si hay alguna
                     if open_positions:
                         self.logger.info("📋 Posiciones actuales:")
-                        for pos in open_positions[:5]:  # Mostrar máximo 5 para no saturar logs
+                        for pos in open_positions[
+                            :5
+                        ]:  # Mostrar máximo 5 para no saturar logs
                             # Usar 'epic' como símbolo principal, con fallback a instrumentName
-                            symbol = pos.get("market", {}).get("epic", pos.get("market", {}).get("instrumentName", "Unknown"))
+                            symbol = pos.get("market", {}).get(
+                                "epic",
+                                pos.get("market", {}).get("instrumentName", "Unknown"),
+                            )
                             size = pos.get("position", {}).get("size", 0)
-                            direction = pos.get("position", {}).get("direction", "Unknown")
+                            direction = pos.get("position", {}).get(
+                                "direction", "Unknown"
+                            )
                             pnl = pos.get("position", {}).get("upl", 0)
-                            self.logger.info(f"   • {symbol}: {direction} {size} (PnL: ${pnl:.2f})")
-                        
+                            self.logger.info(
+                                f"   • {symbol}: {direction} {size} (PnL: ${pnl:.2f})"
+                            )
+
                         if len(open_positions) > 5:
-                            self.logger.info(f"   ... y {len(open_positions) - 5} posiciones más")
-                    
+                            self.logger.info(
+                                f"   ... y {len(open_positions) - 5} posiciones más"
+                            )
+
                     return current_positions_count < max_positions
                 else:
-                    self.logger.warning(f"⚠️ No se pudo obtener posiciones de Capital.com: {positions_result.get('error')}")
+                    self.logger.warning(
+                        f"⚠️ No se pudo obtener posiciones de Capital.com: {positions_result.get('error')}"
+                    )
                     # En caso de error, permitir trading (fail-safe)
                     return True
             else:
                 # Para paper trading, usar el paper trader
                 paper_positions = self.paper_trader.get_open_positions()
                 current_positions_count = len(paper_positions)
-                
-                self.logger.info(f"📊 Posiciones paper: {current_positions_count}/{max_positions}")
-                
+
+                self.logger.info(
+                    f"📊 Posiciones paper: {current_positions_count}/{max_positions}"
+                )
+
                 # Log detalle de posiciones paper si hay alguna
                 if paper_positions:
                     self.logger.info("📋 Posiciones paper actuales:")
@@ -698,47 +812,55 @@ class TradingBot:
                         symbol = pos.get("symbol", "Unknown")
                         quantity = pos.get("quantity", 0)
                         pnl_pct = pos.get("unrealized_pnl_percentage", 0)
-                        self.logger.info(f"   • {symbol}: {quantity:.4f} (PnL: {pnl_pct:+.2f}%)")
-                    
+                        self.logger.info(
+                            f"   • {symbol}: {quantity:.4f} (PnL: {pnl_pct:+.2f}%)"
+                        )
+
                     if len(paper_positions) > 5:
-                        self.logger.info(f"   ... y {len(paper_positions) - 5} posiciones más")
-                
+                        self.logger.info(
+                            f"   ... y {len(paper_positions) - 5} posiciones más"
+                        )
+
                 return current_positions_count < max_positions
-                
+
         except Exception as e:
             self.logger.error(f"❌ Error verificando límite de posiciones: {e}")
             # En caso de error, permitir trading (fail-safe)
             return True
 
-    def _check_trade_cooldown(self, signal: 'TradingSignal') -> bool:
+    def _check_trade_cooldown(self, signal: "TradingSignal") -> bool:
         """
         🕐 Verificar si una señal debe ser filtrada por cooldown
-        
+
         Args:
             signal: Señal de trading a verificar
-            
+
         Returns:
             bool: True si la señal pasa el filtro de cooldown, False si debe ser filtrada
         """
         try:
             # Obtener configuración de cooldown del perfil actual
             current_profile = TradingProfiles.get_current_profile()
-            min_time_between_trades = current_profile.get('min_time_between_trades_minutes', 0)
-            min_time_between_opposite_signals = current_profile.get('min_time_between_opposite_signals_minutes', 0)
-            
+            min_time_between_trades = current_profile.get(
+                "min_time_between_trades_minutes", 0
+            )
+            min_time_between_opposite_signals = current_profile.get(
+                "min_time_between_opposite_signals_minutes", 0
+            )
+
             symbol = signal.symbol
             signal_type = signal.signal_type
             current_time = datetime.now()
-            
+
             # Verificar si hay un trade previo para este símbolo
             if symbol in self.last_trade_times:
                 last_trade_time = self.last_trade_times[symbol]
                 last_signal_type = self.last_signal_types.get(symbol)
-                
+
                 # Calcular tiempo transcurrido desde el último trade
                 time_diff = current_time - last_trade_time
                 time_diff_minutes = time_diff.total_seconds() / 60
-                
+
                 # Verificar cooldown general entre trades del mismo símbolo
                 if time_diff_minutes < min_time_between_trades:
                     remaining_time = min_time_between_trades - time_diff_minutes
@@ -749,11 +871,13 @@ class TradingBot:
                         f"tiempo restante: {remaining_time:.1f}min"
                     )
                     return False
-                
+
                 # Verificar cooldown específico para señales opuestas
                 if last_signal_type and last_signal_type != signal_type:
                     if time_diff_minutes < min_time_between_opposite_signals:
-                        remaining_time = min_time_between_opposite_signals - time_diff_minutes
+                        remaining_time = (
+                            min_time_between_opposite_signals - time_diff_minutes
+                        )
                         self.logger.info(
                             f"🚫 COOLDOWN OPUESTO: Señal {signal_type} para {symbol} filtrada. "
                             f"Última señal: {last_signal_type}, tiempo transcurrido: {time_diff_minutes:.1f}min, "
@@ -761,19 +885,21 @@ class TradingBot:
                             f"tiempo restante: {remaining_time:.1f}min"
                         )
                         return False
-            
+
             # La señal pasa todos los filtros de cooldown
             return True
-            
+
         except Exception as e:
-            self.logger.error(f"❌ Error verificando cooldown para {signal.symbol}: {e}")
+            self.logger.error(
+                f"❌ Error verificando cooldown para {signal.symbol}: {e}"
+            )
             # En caso de error, permitir la señal (fail-safe)
             return True
 
-    def _update_trade_tracking(self, signal: 'TradingSignal'):
+    def _update_trade_tracking(self, signal: "TradingSignal"):
         """
         📝 Actualizar el tracking de trades después de ejecutar una operación
-        
+
         Args:
             signal: Señal de trading ejecutada
         """
@@ -781,15 +907,19 @@ class TradingBot:
             current_time = datetime.now()
             symbol = signal.symbol
             signal_type = signal.signal_type
-            
+
             # Actualizar tracking
             self.last_trade_times[symbol] = current_time
             self.last_signal_types[symbol] = signal_type
-            
-            self.logger.debug(f"📝 Trade tracking actualizado: {symbol} -> {signal_type} a las {current_time.strftime('%H:%M:%S')}")
-            
+
+            self.logger.debug(
+                f"📝 Trade tracking actualizado: {symbol} -> {signal_type} a las {current_time.strftime('%H:%M:%S')}"
+            )
+
         except Exception as e:
-            self.logger.error(f"❌ Error actualizando trade tracking para {signal.symbol}: {e}")
+            self.logger.error(
+                f"❌ Error actualizando trade tracking para {signal.symbol}: {e}"
+            )
 
     def _is_weekend_trading(self) -> bool:
         """🗓️ Determinar si estamos en modo de trading de fin de semana"""
@@ -804,29 +934,37 @@ class TradingBot:
         """📊 Mostrar estado de los mercados al inicio del análisis"""
         try:
             market_status = market_hours_checker.get_general_market_status()
-            
-            if market_status['open_markets']:
-                self.logger.info(f"🟢 Mercados abiertos: {', '.join(market_status['open_markets'])}")
-            
-            if market_status['closed_markets']:
-                self.logger.info(f"🔴 Mercados cerrados: {', '.join(market_status['closed_markets'])}")
-                
+
+            if market_status["open_markets"]:
+                self.logger.info(
+                    f"🟢 Mercados abiertos: {', '.join(market_status['open_markets'])}"
+                )
+
+            if market_status["closed_markets"]:
+                self.logger.info(
+                    f"🔴 Mercados cerrados: {', '.join(market_status['closed_markets'])}"
+                )
+
             # Mostrar estado específico de los símbolos que estamos monitoreando
             tradeable_symbols = []
             non_tradeable_symbols = []
-            
+
             for symbol in self.symbols:
                 if market_hours_checker.should_trade(symbol)[0]:
                     tradeable_symbols.append(symbol)
                 else:
                     non_tradeable_symbols.append(symbol)
-            
+
             if tradeable_symbols:
-                self.logger.info(f"✅ Símbolos operables: {', '.join(tradeable_symbols)}")
-            
+                self.logger.info(
+                    f"✅ Símbolos operables: {', '.join(tradeable_symbols)}"
+                )
+
             if non_tradeable_symbols:
-                self.logger.info(f"⏸️ Símbolos no operables: {', '.join(non_tradeable_symbols)}")
-                
+                self.logger.info(
+                    f"⏸️ Símbolos no operables: {', '.join(non_tradeable_symbols)}"
+                )
+
         except Exception as e:
             self.logger.warning(f"⚠️ Error al verificar estado de mercados: {e}")
 
@@ -841,107 +979,150 @@ class TradingBot:
             except Exception as e:
                 self.logger.error(f"❌ Error in scheduler: {e}")
                 time.sleep(APIConfig.ERROR_RECOVERY_SLEEP)
-    
+
     def _run_analysis_cycle(self):
         """
         🔄 Ejecutar un ciclo completo de análisis con cache y procesamiento paralelo
         """
         try:
             self.logger.info("🔄 Starting optimized analysis cycle...")
-            
+
             # Verificar si el trading está permitido hoy
             if not is_trading_day_allowed():
                 current_day = datetime.now().strftime("%A")
-                self.logger.info(f"📅 Trading not allowed on {current_day} - skipping analysis cycle")
+                self.logger.info(
+                    f"📅 Trading not allowed on {current_day} - skipping analysis cycle"
+                )
                 return
-            
+
             # Verificar horarios inteligentes de trading (08:00 - 22:00 Chile)
             smart_hours_status = is_smart_trading_hours_allowed()
-            
+
             # Manejo robusto del resultado de smart_hours_status
             if isinstance(smart_hours_status, bool):
                 # Si devuelve un booleano (caso de error o configuración simple)
                 if not smart_hours_status:
-                    self.logger.info("🕘 Outside smart trading hours - skipping analysis cycle")
+                    self.logger.info(
+                        "🕘 Outside smart trading hours - skipping analysis cycle"
+                    )
                     return
                 else:
                     self.logger.info("🕘 Within smart trading hours")
             elif isinstance(smart_hours_status, dict):
                 # Si devuelve un diccionario (caso normal)
                 if not smart_hours_status.get("is_allowed", False):
-                    self.logger.info(f"🕘 {smart_hours_status.get('reason', 'Outside trading hours')} - skipping analysis cycle")
+                    self.logger.info(
+                        f"🕘 {smart_hours_status.get('reason', 'Outside trading hours')} - skipping analysis cycle"
+                    )
                     return
                 else:
-                    self.logger.info(f"🕘 {smart_hours_status.get('reason', 'Within trading hours')}")
+                    self.logger.info(
+                        f"🕘 {smart_hours_status.get('reason', 'Within trading hours')}"
+                    )
             else:
                 # Caso inesperado - permitir trading por defecto
-                self.logger.warning(f"🕘 Unexpected smart_hours_status type: {type(smart_hours_status)} - allowing trading")
-                smart_hours_status = {"is_allowed": True, "reason": "Default allow due to unexpected status"}
-                
+                self.logger.warning(
+                    f"🕘 Unexpected smart_hours_status type: {type(smart_hours_status)} - allowing trading"
+                )
+                smart_hours_status = {
+                    "is_allowed": True,
+                    "reason": "Default allow due to unexpected status",
+                }
+
                 # Log detallado sobre configuración de horarios por mercado
                 from src.config.main_config import SMART_TRADING_HOURS
+
                 current_time = datetime.now(ZoneInfo(TIMEZONE))
                 current_hour = current_time.hour
-                
-                self.logger.info(f"🌍 Hora actual Chile: {current_time.strftime('%H:%M:%S CLT')}")
-                
+
+                self.logger.info(
+                    f"🌍 Hora actual Chile: {current_time.strftime('%H:%M:%S CLT')}"
+                )
+
                 # Mostrar estado de cada tipo de mercado
                 for market_type, config in SMART_TRADING_HOURS.items():
-                    start_hour = config['start_hour']
-                    end_hour = config['end_hour']
+                    start_hour = config["start_hour"]
+                    end_hour = config["end_hour"]
                     is_active = start_hour <= current_hour < end_hour
                     status_icon = "🟢" if is_active else "🔴"
                     status_text = "ACTIVO" if is_active else "INACTIVO"
-                    
-                    self.logger.info(f"📊 {market_type.upper()}: {start_hour:02d}:00-{end_hour:02d}:00 CLT {status_icon} {status_text}")
-                
+
+                    self.logger.info(
+                        f"📊 {market_type.upper()}: {start_hour:02d}:00-{end_hour:02d}:00 CLT {status_icon} {status_text}"
+                    )
+
                 # Mostrar resumen de estado de horarios inteligentes
                 smart_summary = get_smart_trading_status_summary()
                 self.logger.info(f"📈 {smart_summary}")
-            
+
             # Obtener parámetros de trading para fines de semana (si aplica)
             weekend_params = get_weekend_trading_params()
             is_weekend = datetime.now().strftime("%A").lower() in ["saturday", "sunday"]
-            
+
             if is_weekend:
-                self.logger.info(f"🏖️ Weekend trading mode active with adjusted parameters:")
-                self.logger.info(f"   - Min confidence multiplier: {weekend_params['min_confidence_multiplier']}")
-                self.logger.info(f"   - Max daily trades multiplier: {weekend_params['max_daily_trades_multiplier']}")
-                self.logger.info(f"   - Max position size multiplier: {weekend_params['max_position_size_multiplier']}")
-            
+                self.logger.info(
+                    f"🏖️ Weekend trading mode active with adjusted parameters:"
+                )
+                self.logger.info(
+                    f"   - Min confidence multiplier: {weekend_params['min_confidence_multiplier']}"
+                )
+                self.logger.info(
+                    f"   - Max daily trades multiplier: {weekend_params['max_daily_trades_multiplier']}"
+                )
+                self.logger.info(
+                    f"   - Max position size multiplier: {weekend_params['max_position_size_multiplier']}"
+                )
+
             # Mostrar estado de mercados
             self._log_market_status()
-            
+
             # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
-            
+
             # Verificar si podemos hacer más trades hoy (aplicando multiplicador de fin de semana y lógica adaptativa)
-            base_max_trades = int(self.max_daily_trades * weekend_params['max_daily_trades_multiplier'])
+            base_max_trades = int(
+                self.max_daily_trades * weekend_params["max_daily_trades_multiplier"]
+            )
             # Usar límite adaptativo que permite trades adicionales para señales de alta confianza
-            adaptive_max_trades = int(TradingProfiles.get_adaptive_daily_trades_limit(
-                current_trades_count=self.stats["daily_trades"], 
-                signal_confidence=85.0  # Usar confianza alta como referencia para el límite máximo
-            ) * weekend_params['max_daily_trades_multiplier'])
-            
+            adaptive_max_trades = int(
+                TradingProfiles.get_adaptive_daily_trades_limit(
+                    current_trades_count=self.stats["daily_trades"],
+                    signal_confidence=85.0,  # Usar confianza alta como referencia para el límite máximo
+                )
+                * weekend_params["max_daily_trades_multiplier"]
+            )
+
             if self.stats["daily_trades"] >= base_max_trades:
                 if self.stats["daily_trades"] >= adaptive_max_trades:
                     if is_weekend:
-                        self.logger.info(f"⏸️ Weekend adaptive daily trade limit reached ({adaptive_max_trades}, base: {base_max_trades})")
+                        self.logger.info(
+                            f"⏸️ Weekend adaptive daily trade limit reached ({adaptive_max_trades}, base: {base_max_trades})"
+                        )
                     else:
-                        self.logger.info(f"⏸️ Adaptive daily trade limit reached ({adaptive_max_trades}, base: {base_max_trades})")
+                        self.logger.info(
+                            f"⏸️ Adaptive daily trade limit reached ({adaptive_max_trades}, base: {base_max_trades})"
+                        )
                     return
                 else:
-                    self.logger.info(f"📈 Base limit reached ({base_max_trades}), but high-confidence trades still allowed (max: {adaptive_max_trades})")
+                    self.logger.info(
+                        f"📈 Base limit reached ({base_max_trades}), but high-confidence trades still allowed (max: {adaptive_max_trades})"
+                    )
             elif self.stats["daily_trades"] >= adaptive_max_trades:
                 if is_weekend:
-                    self.logger.info(f"⏸️ Weekend daily trade limit reached ({adaptive_max_trades})")
+                    self.logger.info(
+                        f"⏸️ Weekend daily trade limit reached ({adaptive_max_trades})"
+                    )
                 else:
-                    self.logger.info(f"⏸️ Daily trade limit reached ({adaptive_max_trades})")
+                    self.logger.info(
+                        f"⏸️ Daily trade limit reached ({adaptive_max_trades})"
+                    )
                 return
-            
+
             # Generar clave de cache para este ciclo
-            cache_key = self._get_cache_key("analysis_cycle", tuple(self.symbols), tuple(self.strategies.keys()))
-            
+            cache_key = self._get_cache_key(
+                "analysis_cycle", tuple(self.symbols), tuple(self.strategies.keys())
+            )
+
             # Verificar cache
             cached_signals = self._get_from_cache(cache_key)
             if cached_signals is not None:
@@ -950,49 +1131,53 @@ class TradingBot:
             else:
                 # Analizar en paralelo usando ThreadPoolExecutor
                 all_signals = self._analyze_symbols_parallel()
-                
+
                 # Almacenar en cache
                 self._store_in_cache(cache_key, all_signals)
-            
+
             # Procesar señales con trading
             if all_signals:
                 self._process_signals(all_signals)
             else:
                 self.logger.info("⚪ No trading signals generated this cycle")
-            
+
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
-            
+
             # Actualizar tiempo del último análisis
             self.last_analysis_time = datetime.now()
-            
+
             # Actualizar tiempo del próximo análisis
-            self.next_analysis_time = self.last_analysis_time + timedelta(minutes=self.analysis_interval)
-            
+            self.next_analysis_time = self.last_analysis_time + timedelta(
+                minutes=self.analysis_interval
+            )
+
             self.logger.info("✅ Optimized analysis cycle completed")
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error in analysis cycle: {e}")
-    
+
     def _analyze_symbols_parallel(self) -> List[TradingSignal]:
         """
         🚀 Analizar símbolos en paralelo para mejor rendimiento
         """
         all_signals = []
-        
+
         # Crear tareas para el pool de hilos
         tasks = []
         for symbol in self.symbols:
             for strategy_name, strategy in self.strategies.items():
                 tasks.append((symbol, strategy_name, strategy))
-        
+
         # Ejecutar análisis en paralelo
         try:
             futures = []
             for symbol, strategy_name, strategy in tasks:
-                future = self.executor.submit(self._analyze_single_symbol, symbol, strategy_name, strategy)
+                future = self.executor.submit(
+                    self._analyze_single_symbol, symbol, strategy_name, strategy
+                )
                 futures.append(future)
-            
+
             # Recopilar resultados
             profile_config = TradingProfiles.get_current_profile()
             timeout = self.config.get_analysis_future_timeout()
@@ -1008,30 +1193,34 @@ class TradingBot:
                         else:
                             self.stats["weekday_signals"] += 1
                         weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
-                    self.logger.info(f"{weekend_indicator} Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%")
+                    self.logger.info(
+                        f"{weekend_indicator} Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%"
+                    )
                 except Exception as e:
                     self.logger.error(f"❌ Error in parallel analysis: {e}")
-        
+
         except Exception as e:
             self.logger.error(f"❌ Error in parallel execution: {e}")
             # Fallback a análisis secuencial
             all_signals = self._analyze_symbols_sequential()
-        
+
         return all_signals
-    
-    def _analyze_single_symbol(self, symbol: str, strategy_name: str, strategy) -> Optional[TradingSignal]:
+
+    def _analyze_single_symbol(
+        self, symbol: str, strategy_name: str, strategy
+    ) -> Optional[TradingSignal]:
         """
         📈 Analizar un símbolo con una estrategia específica
         """
         try:
             signal = strategy.analyze(symbol)
-            if hasattr(signal, 'strategy_name'):
+            if hasattr(signal, "strategy_name"):
                 signal.strategy_name = strategy_name
             return signal
         except Exception as e:
             self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
             return None
-    
+
     def _analyze_symbols_sequential(self) -> List[TradingSignal]:
         """
         🐌 Análisis secuencial como fallback
@@ -1050,129 +1239,185 @@ class TradingBot:
                         else:
                             self.stats["weekday_signals"] += 1
                         weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
-                    self.logger.info(f"{weekend_indicator} Signal: {signal.signal_type} {symbol} ({strategy_name}) - Confidence: {signal.confidence_score}%")
+                    self.logger.info(
+                        f"{weekend_indicator} Signal: {signal.signal_type} {symbol} ({strategy_name}) - Confidence: {signal.confidence_score}%"
+                    )
                 except Exception as e:
-                    self.logger.error(f"❌ Error analyzing {symbol} with {strategy_name}: {e}")
+                    self.logger.error(
+                        f"❌ Error analyzing {symbol} with {strategy_name}: {e}"
+                    )
         return all_signals
-    
+
     def _process_signals(self, signals: List[TradingSignal]):
         """
         🎯 Procesar y ejecutar señales de trading con flujo secuencial
-        
+
         FLUJO OPTIMIZADO:
         1. Obtener balance disponible
         2. Analizar una señal -> ejecutar trade
         3. Actualizar balance disponible
         4. Repetir para la siguiente señal
-        
+
         Args:
             signals: Lista de señales generadas
         """
-        
+
         # Obtener parámetros de fin de semana para ajustar confianza mínima
         weekend_params = get_weekend_trading_params()
-        adjusted_min_confidence = self.min_confidence_threshold * weekend_params['min_confidence_multiplier']
-        
+        adjusted_min_confidence = (
+            self.min_confidence_threshold * weekend_params["min_confidence_multiplier"]
+        )
+
         # Filtrar señales por confianza mínima (ajustada para fines de semana)
         high_confidence_signals = [
-            signal for signal in signals 
+            signal
+            for signal in signals
             if signal.confidence_score >= adjusted_min_confidence
         ]
-        
+
         if not high_confidence_signals:
             is_weekend = datetime.now().strftime("%A").lower() in ["saturday", "sunday"]
             if is_weekend and adjusted_min_confidence != self.min_confidence_threshold:
-                self.logger.info(f"📉 No signals above weekend confidence threshold ({adjusted_min_confidence:.1f}%, adjusted from {self.min_confidence_threshold}%)")
+                self.logger.info(
+                    f"📉 No signals above weekend confidence threshold ({adjusted_min_confidence:.1f}%, adjusted from {self.min_confidence_threshold}%)"
+                )
             else:
-                self.logger.info(f"📉 No signals above confidence threshold ({adjusted_min_confidence:.1f}%)")
+                self.logger.info(
+                    f"📉 No signals above confidence threshold ({adjusted_min_confidence:.1f}%)"
+                )
             return
-        
+
         # Ordenar por confianza (mayor primero)
         high_confidence_signals.sort(key=lambda x: x.confidence_score, reverse=True)
-        
+
         weekend_indicator = "🏖️" if self._is_weekend_trading() else "🎯"
-        self.logger.info(f"{weekend_indicator} Processing {len(high_confidence_signals)} high-confidence signals sequentially...")
-        
+        self.logger.info(
+            f"{weekend_indicator} Processing {len(high_confidence_signals)} high-confidence signals sequentially..."
+        )
+
         # Inicializar portfolio_summary antes del bucle para evitar errores
         portfolio_summary = self.get_portfolio_summary()
-        
+
         # Procesar cada señal de forma secuencial con balance actualizado
         for i, signal in enumerate(high_confidence_signals, 1):
             try:
                 weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
-                self.logger.info(f"{weekend_indicator} Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}")
-                
+                self.logger.info(
+                    f"{weekend_indicator} Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}"
+                )
+
                 # Verificar límite diario adaptativo (aplicando multiplicador de fin de semana)
                 weekend_params_loop = get_weekend_trading_params()
-                base_max_trades_loop = int(self.max_daily_trades * weekend_params_loop['max_daily_trades_multiplier'])
+                base_max_trades_loop = int(
+                    self.max_daily_trades
+                    * weekend_params_loop["max_daily_trades_multiplier"]
+                )
                 # Usar la confianza específica de esta señal para determinar el límite
-                adaptive_max_trades_loop = int(TradingProfiles.get_adaptive_daily_trades_limit(
-                    current_trades_count=self.stats["daily_trades"], 
-                    signal_confidence=signal.confidence_score
-                ) * weekend_params_loop['max_daily_trades_multiplier'])
-                
+                adaptive_max_trades_loop = int(
+                    TradingProfiles.get_adaptive_daily_trades_limit(
+                        current_trades_count=self.stats["daily_trades"],
+                        signal_confidence=signal.confidence_score,
+                    )
+                    * weekend_params_loop["max_daily_trades_multiplier"]
+                )
+
                 if self.stats["daily_trades"] >= adaptive_max_trades_loop:
-                    if signal.confidence_score >= TradingProfiles.get_current_profile().get("daily_trades_quality_threshold", 80.0):
-                        self.logger.info(f"⏸️ Adaptive daily trade limit reached for high-confidence signal ({adaptive_max_trades_loop})")
+                    if (
+                        signal.confidence_score
+                        >= TradingProfiles.get_current_profile().get(
+                            "daily_trades_quality_threshold", 80.0
+                        )
+                    ):
+                        self.logger.info(
+                            f"⏸️ Adaptive daily trade limit reached for high-confidence signal ({adaptive_max_trades_loop})"
+                        )
                     else:
-                        self.logger.info(f"⏸️ Daily trade limit reached ({base_max_trades_loop})")
+                        self.logger.info(
+                            f"⏸️ Daily trade limit reached ({base_max_trades_loop})"
+                        )
                     break
-                
+
                 # CRÍTICO: Verificar límite de posiciones simultáneas
                 if not self._check_max_positions_limit():
                     self.logger.info("⏸️ Maximum positions limit reached")
                     break
-                
+
                 # Verificar cooldown entre trades del mismo símbolo
                 if not self._check_trade_cooldown(signal):
                     continue  # El método ya registra el mensaje de log
-                
+
                 # Verificar horarios de mercado
-                should_trade, market_reason = market_hours_checker.should_trade(signal.symbol)
+                should_trade, market_reason = market_hours_checker.should_trade(
+                    signal.symbol
+                )
                 if not should_trade:
                     self.logger.info(f"⏰ {signal.symbol}: {market_reason}")
                     continue
-                
+
                 self.logger.info(f"✅ {signal.symbol}: {market_reason}")
-                
+
                 # 🔄 PASO 1: Obtener balance actualizado antes de cada análisis
                 portfolio_summary = self.get_portfolio_summary()
                 portfolio_value = portfolio_summary.get("total_value", 1000.0)
-                available_balance = portfolio_summary.get("available_balance", portfolio_value)
-                
-                self.logger.info(f"💰 Updated balance for {signal.symbol}: Total=${portfolio_value:,.2f}, Available=${available_balance:,.2f}")
-                
+                available_balance = portfolio_summary.get(
+                    "available_balance", portfolio_value
+                )
+
+                self.logger.info(
+                    f"💰 Updated balance for {signal.symbol}: Total=${portfolio_value:,.2f}, Available=${available_balance:,.2f}"
+                )
+
                 # 🔄 PASO 2: Análisis de riesgo con balance actualizado
-                risk_assessment = self.risk_manager.assess_trade_risk(signal, portfolio_value)
-                
+                risk_assessment = self.risk_manager.assess_trade_risk(
+                    signal, portfolio_value
+                )
+
                 # Aplicar multiplicador de tamaño de posición para fines de semana
                 weekend_params = get_weekend_trading_params()
-                original_position_size = risk_assessment.position_sizing.recommended_size
-                adjusted_position_size = original_position_size * weekend_params['max_position_size_multiplier']
-                
+                original_position_size = (
+                    risk_assessment.position_sizing.recommended_size
+                )
+                adjusted_position_size = (
+                    original_position_size
+                    * weekend_params["max_position_size_multiplier"]
+                )
+
                 # Actualizar el tamaño de posición en el risk assessment
-                risk_assessment.position_sizing.recommended_size = adjusted_position_size
-                
-                is_weekend = datetime.now().strftime("%A").lower() in ["saturday", "sunday"]
+                risk_assessment.position_sizing.recommended_size = (
+                    adjusted_position_size
+                )
+
+                is_weekend = datetime.now().strftime("%A").lower() in [
+                    "saturday",
+                    "sunday",
+                ]
                 self.logger.info(f"🛡️ Risk assessment for {signal.symbol}:")
-                self.logger.info(f"   - Risk Score: {risk_assessment.overall_risk_score:.1f}/100")
-                if is_weekend and weekend_params['max_position_size_multiplier'] != 1.0:
-                    self.logger.info(f"   - Position Size: {adjusted_position_size:.2f} (weekend adjusted from {original_position_size:.2f})")
+                self.logger.info(
+                    f"   - Risk Score: {risk_assessment.overall_risk_score:.1f}/100"
+                )
+                if is_weekend and weekend_params["max_position_size_multiplier"] != 1.0:
+                    self.logger.info(
+                        f"   - Position Size: {adjusted_position_size:.2f} (weekend adjusted from {original_position_size:.2f})"
+                    )
                 else:
-                    self.logger.info(f"   - Position Size: {adjusted_position_size:.2f}")
+                    self.logger.info(
+                        f"   - Position Size: {adjusted_position_size:.2f}"
+                    )
                 self.logger.info(f"   - Approved: {risk_assessment.is_approved}")
                 self.logger.info(f"   - Risk Level: {risk_assessment.risk_level.value}")
-                
+
                 # 🔄 PASO 3: Ejecutar trade si está aprobado
                 if risk_assessment.is_approved and self.enable_trading:
                     # Ejecutar paper trade siempre
                     trade_result = self.paper_trader.execute_signal(signal)
-                    
+
                     # Ejecutar trade real si está habilitado
                     real_trade_result = None
                     if self.enable_real_trading and self.capital_client:
-                        real_trade_result = self._execute_real_trade(signal, risk_assessment)
-                    
+                        real_trade_result = self._execute_real_trade(
+                            signal, risk_assessment
+                        )
+
                     if trade_result.success:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
@@ -1181,15 +1426,20 @@ class TradingBot:
                             self.stats["weekend_trades"] += 1
                         else:
                             self.stats["weekday_trades"] += 1
-                        
+
                         # Determinar si fue exitoso basándose en el tipo de trade y PnL real
                         trade_was_profitable = False
                         if signal.signal_type == "SELL":
                             # Para ventas, verificar si hay PnL positivo en el mensaje
-                            if "PnL:" in trade_result.message and "$" in trade_result.message:
+                            if (
+                                "PnL:" in trade_result.message
+                                and "$" in trade_result.message
+                            ):
                                 try:
                                     # Extraer PnL del mensaje: "PnL: $X.XX"
-                                    pnl_part = trade_result.message.split("PnL: $")[1].split(")")[0]
+                                    pnl_part = trade_result.message.split("PnL: $")[
+                                        1
+                                    ].split(")")[0]
                                     pnl_value = float(pnl_part)
                                     trade_was_profitable = pnl_value > 0
                                 except:
@@ -1198,7 +1448,7 @@ class TradingBot:
                             # Para compras, solo contar como exitoso si se ejecutó correctamente
                             # El éxito real se determinará cuando se venda
                             trade_was_profitable = trade_result.success
-                        
+
                         if trade_was_profitable:
                             self.stats["successful_trades"] += 1
                             # Tracking separado para fines de semana
@@ -1206,13 +1456,13 @@ class TradingBot:
                                 self.stats["weekend_successful_trades"] += 1
                             else:
                                 self.stats["weekday_successful_trades"] += 1
-                        
+
                         # Actualizar tracking de pérdidas consecutivas para estadísticas
                         if trade_was_profitable:
                             self.consecutive_losses = 0
                         else:
                             self.consecutive_losses += 1
-                        
+
                         # Mensaje de log combinado
                         log_message = f"✅ Paper Trade executed: {trade_result.message}"
                         if real_trade_result:
@@ -1220,48 +1470,52 @@ class TradingBot:
                                 log_message += f" | 🔴 Real Trade: SUCCESS - Deal ID: {real_trade_result.get('deal_id', 'N/A')}"
                             else:
                                 log_message += f" | 🔴 Real Trade: FAILED - {real_trade_result.get('error', 'Unknown error')}"
-                        
+
                         self.logger.info(log_message)
-                        
+
                         # Actualizar tracking de cooldown para el símbolo
                         self._update_trade_tracking(signal)
-                        
+
                         # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
-                        self.logger.info(f"🔄 Trade completed for {signal.symbol}. Balance will be refreshed for next signal.")
-                        
+                        self.logger.info(
+                            f"🔄 Trade completed for {signal.symbol}. Balance will be refreshed for next signal."
+                        )
+
                         # Emitir evento de trade ejecutado
                         self._emit_trade_event(signal, trade_result, risk_assessment)
                     else:
                         # Trade falló en ejecución - no contar como pérdida consecutiva
                         self.logger.warning(f"❌ Trade failed: {trade_result.message}")
-                
+
                 elif not risk_assessment.is_approved:
                     rejection_reason = f"Risk level: {risk_assessment.risk_level.value}"
                     self.logger.info(f"🚫 Trade rejected: {rejection_reason}")
-                    
+
                     # Mostrar recomendaciones
                     for rec in risk_assessment.recommendations:
                         self.logger.info(f"   💡 {rec}")
-                
+
             except Exception as e:
                 self.logger.error(f"❌ Error processing signal {signal.symbol}: {e}")
-        
+
         # Actualizar P&L total
         current_pnl = portfolio_summary.get("total_pnl", 0)
         previous_pnl = self.stats["total_pnl"]
         pnl_change = current_pnl - previous_pnl
-        
+
         self.stats["total_pnl"] = current_pnl
-        
+
         # Tracking separado de PnL para fines de semana
         if self._is_weekend_trading() and pnl_change != 0:
             self.stats["weekend_pnl"] += pnl_change
         elif not self._is_weekend_trading() and pnl_change != 0:
             self.stats["weekday_pnl"] += pnl_change
-        
+
         # Emitir evento de análisis completado
-        self._emit_analysis_event(len(high_confidence_signals), self.stats["daily_trades"])
-    
+        self._emit_analysis_event(
+            len(high_confidence_signals), self.stats["daily_trades"]
+        )
+
     def _reset_daily_stats_if_needed(self):
         """
         📅 Resetear estadísticas diarias a las 11:00 AM hora Chile (America/Santiago)
@@ -1272,19 +1526,23 @@ class TradingBot:
             tz = None
         now_local = datetime.now(tz) if tz else datetime.now()
         current_day = now_local.date()
-        reset_dt = datetime(
-            current_day.year,
-            current_day.month,
-            current_day.day,
-            DAILY_RESET_HOUR,
-            DAILY_RESET_MINUTE,
-            tzinfo=tz
-        ) if tz else datetime(
-            current_day.year,
-            current_day.month,
-            current_day.day,
-            DAILY_RESET_HOUR,
-            DAILY_RESET_MINUTE
+        reset_dt = (
+            datetime(
+                current_day.year,
+                current_day.month,
+                current_day.day,
+                DAILY_RESET_HOUR,
+                DAILY_RESET_MINUTE,
+                tzinfo=tz,
+            )
+            if tz
+            else datetime(
+                current_day.year,
+                current_day.month,
+                current_day.day,
+                DAILY_RESET_HOUR,
+                DAILY_RESET_MINUTE,
+            )
         )
 
         # Realizar reset solo una vez por día cuando la hora local haya alcanzado o superado el reset
@@ -1295,13 +1553,13 @@ class TradingBot:
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
             self.circuit_breaker_activated_at = None
-            self.logger.info(f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset")
+            self.logger.info(
+                f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset"
+            )
         else:
             # Sin acción antes del horario de reset o si ya se realizó en el día
             pass
-    
 
-    
     def _update_strategy_stats(self):
         """
         📈 Estadísticas de estrategias disponibles en Capital.com
@@ -1309,7 +1567,7 @@ class TradingBot:
         # Las estadísticas se pueden ver directamente en Capital.com
         # No necesitamos mantener una base de datos local para esto
         pass
-    
+
     def get_status(self) -> BotStatus:
         """
         📊 Obtener estado actual del bot
@@ -1317,15 +1575,15 @@ class TradingBot:
         uptime = "Not running"
         next_analysis = self.next_analysis_time  # Usar variable de instancia
         last_analysis = self.last_analysis_time  # No usar datetime.now() como fallback
-        
+
         if self.is_running and self.start_time:
             uptime_delta = datetime.now() - self.start_time
             hours, remainder = divmod(int(uptime_delta.total_seconds()), 3600)
             minutes, seconds = divmod(remainder, 60)
             uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        
+
         portfolio_summary = self.get_portfolio_summary()
-        
+
         status = BotStatus(
             is_running=self.is_running,
             uptime=uptime,
@@ -1336,34 +1594,36 @@ class TradingBot:
             total_pnl=portfolio_summary.get("total_pnl", 0),
             active_strategies=list(self.strategies.keys()),
             last_analysis_time=last_analysis,
-            next_analysis_time=next_analysis
+            next_analysis_time=next_analysis,
         )
-        
+
         return status
-    
+
     def get_portfolio_summary(self) -> Dict:
         """
         📊 Obtener resumen del portfolio directamente de Capital.com
-        
+
         Returns:
             Dict: Resumen del portfolio
         """
         try:
             logger.info(f"🔧 DEBUG: get_portfolio_summary iniciado")
-            logger.info(f"🔧 DEBUG: capital_client disponible: {self.capital_client is not None}")
-            
+            logger.info(
+                f"🔧 DEBUG: capital_client disponible: {self.capital_client is not None}"
+            )
+
             if self.capital_client is None:
                 raise Exception("Capital client no está inicializado")
-            
+
             # Obtener balance disponible de Capital.com
             logger.info(f"🔧 DEBUG: llamando get_available_balance()")
             balance_info = self.capital_client.get_available_balance()
-            
+
             if isinstance(balance_info, dict):
-                available_balance = float(balance_info.get('available', 0.0))
+                available_balance = float(balance_info.get("available", 0.0))
                 # El balance total (equity) incluye posiciones abiertas
-                total_balance = float(balance_info.get('balance', available_balance))
-                total_pnl = float(balance_info.get('profit_loss', 0.0))
+                total_balance = float(balance_info.get("balance", available_balance))
+                total_pnl = float(balance_info.get("profit_loss", 0.0))
             elif isinstance(balance_info, (str, int, float)):
                 available_balance = float(balance_info)
                 total_balance = available_balance
@@ -1372,48 +1632,53 @@ class TradingBot:
                 available_balance = 0.0
                 total_balance = 0.0
                 total_pnl = 0.0
-            
+
             logger.info(f"🔧 DEBUG: available_balance: ${available_balance:.2f}")
             logger.info(f"🔧 DEBUG: total_balance (equity): ${total_balance:.2f}")
             logger.info(f"🔧 DEBUG: profit_loss: ${total_pnl:.2f}")
-            
+
             # Obtener posiciones abiertas de Capital.com (solo para contar)
             logger.info(f"🔧 DEBUG: llamando get_positions()")
             positions_response = self.capital_client.get_positions()
-            logger.info(f"🔧 DEBUG: positions_response from Capital.com: {positions_response}")
-            
+            logger.info(
+                f"🔧 DEBUG: positions_response from Capital.com: {positions_response}"
+            )
+
             # Extraer la lista de posiciones de la respuesta
             positions = []
-            if positions_response.get('success') and positions_response.get('positions'):
-                positions = positions_response.get('positions', [])
+            if positions_response.get("success") and positions_response.get(
+                "positions"
+            ):
+                positions = positions_response.get("positions", [])
                 logger.info(f"🔧 DEBUG: extracted positions: {positions}")
                 logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
-            
+
             # El valor total del portfolio es el balance total (equity) que ya incluye las posiciones
             total_value = total_balance
-            
+
             logger.info(f"🔧 DEBUG: final total_value (equity): ${total_value:.2f}")
-            
+
             result = {
-                'total_value': total_value,
-                'available_balance': available_balance,
-                'total_pnl': total_pnl,
-                'open_positions': len(positions) if positions else 0,
-                'source': 'capital_com'
+                "total_value": total_value,
+                "available_balance": available_balance,
+                "total_pnl": total_pnl,
+                "open_positions": len(positions) if positions else 0,
+                "source": "capital_com",
             }
-            
+
             logger.info(f"🔧 DEBUG: get_portfolio_summary returning: {result}")
             return result
-            
+
         except Exception as e:
             import traceback
+
             logger.error(f"❌ Error obteniendo portfolio de Capital.com: {e}")
             logger.error(f"❌ Traceback completo: {traceback.format_exc()}")
             # Fallback: usar paper trader si hay error
             fallback_result = self.paper_trader.get_portfolio_summary()
             logger.info(f"🔧 DEBUG: using paper trader fallback: {fallback_result}")
             return fallback_result
-    
+
     def get_detailed_report(self) -> Dict:
         """
         📋 Obtener reporte detallado del bot
@@ -1422,141 +1687,196 @@ class TradingBot:
         portfolio_summary = self.get_portfolio_summary()
         risk_report = self.risk_manager.generate_risk_report()
         open_positions = self.paper_trader.get_open_positions()
-        
+
         return {
             "bot_status": {
                 "is_running": status.is_running,
                 "uptime": status.uptime,
                 "analysis_interval_minutes": self.analysis_interval,
                 "next_analysis": status.next_analysis_time.isoformat(),
-                "enable_trading": self.enable_trading
+                "enable_trading": self.enable_trading,
             },
             "trading_stats": {
                 "total_signals_generated": status.total_signals_generated,
                 "total_trades_executed": status.total_trades_executed,
                 "successful_trades": status.successful_trades,
-                "win_rate": (status.successful_trades / max(1, status.total_trades_executed)) * 100,
+                "win_rate": (
+                    status.successful_trades / max(1, status.total_trades_executed)
+                )
+                * 100,
                 "daily_trades": self.stats["daily_trades"],
                 "daily_limit": self.max_daily_trades,
                 "weekday_stats": {
                     "signals_generated": self.stats.get("weekday_signals", 0),
                     "trades_executed": self.stats.get("weekday_trades", 0),
                     "successful_trades": self.stats.get("weekday_successful_trades", 0),
-                    "win_rate": (self.stats.get("weekday_successful_trades", 0) / max(1, self.stats.get("weekday_trades", 0))) * 100,
-                    "total_pnl": self.stats.get("weekday_pnl", 0.0)
+                    "win_rate": (
+                        self.stats.get("weekday_successful_trades", 0)
+                        / max(1, self.stats.get("weekday_trades", 0))
+                    )
+                    * 100,
+                    "total_pnl": self.stats.get("weekday_pnl", 0.0),
                 },
                 "weekend_stats": {
                     "signals_generated": self.stats.get("weekend_signals", 0),
                     "trades_executed": self.stats.get("weekend_trades", 0),
                     "successful_trades": self.stats.get("weekend_successful_trades", 0),
-                    "win_rate": (self.stats.get("weekend_successful_trades", 0) / max(1, self.stats.get("weekend_trades", 0))) * 100,
-                    "total_pnl": self.stats.get("weekend_pnl", 0.0)
-                }
+                    "win_rate": (
+                        self.stats.get("weekend_successful_trades", 0)
+                        / max(1, self.stats.get("weekend_trades", 0))
+                    )
+                    * 100,
+                    "total_pnl": self.stats.get("weekend_pnl", 0.0),
+                },
             },
             "portfolio": {
                 "current_value": status.current_portfolio_value,
                 "total_pnl": status.total_pnl,
-                "total_return_percentage": ((status.current_portfolio_value - self.config.DEFAULT_PORTFOLIO_VALUE) / self.config.DEFAULT_PORTFOLIO_VALUE) * 100,
-                "assets": portfolio_summary.get("assets", [])
+                "total_return_percentage": (
+                    (
+                        status.current_portfolio_value
+                        - self.config.DEFAULT_PORTFOLIO_VALUE
+                    )
+                    / self.config.DEFAULT_PORTFOLIO_VALUE
+                )
+                * 100,
+                "assets": portfolio_summary.get("assets", []),
             },
             "strategies": {
                 "active": status.active_strategies,
                 "symbols_monitored": self.symbols,
-                "min_confidence_threshold": self.min_confidence_threshold
+                "min_confidence_threshold": self.min_confidence_threshold,
             },
             "risk_management": risk_report,
             "open_positions": open_positions,
             "position_monitor": {
                 "enabled": self.config.get_position_monitoring_enabled(),
-                "status": self.position_monitor.get_monitoring_status() if self.config.get_position_monitoring_enabled() else "disabled",
-                "active_positions": len(open_positions)
+                "status": (
+                    self.position_monitor.get_monitoring_status()
+                    if self.config.get_position_monitoring_enabled()
+                    else "disabled"
+                ),
+                "active_positions": len(open_positions),
             },
             "configuration": {
                 "analysis_interval_minutes": self.analysis_interval,
                 "max_daily_trades": self.max_daily_trades,
                 "min_confidence_threshold": self.min_confidence_threshold,
-                "enable_trading": self.enable_trading
+                "enable_trading": self.enable_trading,
             },
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     def get_configuration(self) -> Dict:
         """
         📋 Obtener configuración actual del bot
         """
         try:
             active_strategies = [name for name, strategy in self.strategies.items()]
-            
+
             config = {
                 # Configuraciones básicas
-                'analysis_interval_minutes': self.analysis_interval,
-                'active_strategies': active_strategies,
-                'is_running': self.is_running,
-                'total_strategies': len(self.strategies),
-                'uptime_hours': (datetime.now() - self.start_time).total_seconds() / 3600 if self.start_time else 0,
-                'max_daily_trades': self.max_daily_trades,
-                'min_confidence_threshold': self.min_confidence_threshold,
-                'enable_trading': self.enable_trading,
-                'symbols': self.symbols,
-                
+                "analysis_interval_minutes": self.analysis_interval,
+                "active_strategies": active_strategies,
+                "is_running": self.is_running,
+                "total_strategies": len(self.strategies),
+                "uptime_hours": (
+                    (datetime.now() - self.start_time).total_seconds() / 3600
+                    if self.start_time
+                    else 0
+                ),
+                "max_daily_trades": self.max_daily_trades,
+                "min_confidence_threshold": self.min_confidence_threshold,
+                "enable_trading": self.enable_trading,
+                "symbols": self.symbols,
                 # Configuraciones de posiciones
-                'max_concurrent_positions': getattr(self, 'max_concurrent_positions', None),
-                
+                "max_concurrent_positions": getattr(
+                    self, "max_concurrent_positions", None
+                ),
                 # Configuraciones de timeframes
-                'primary_timeframe': getattr(self, 'primary_timeframe', None),
-                'confirmation_timeframe': getattr(self, 'confirmation_timeframe', None),
-                'trend_timeframe': getattr(self, 'trend_timeframe', None),
-                
+                "primary_timeframe": getattr(self, "primary_timeframe", None),
+                "confirmation_timeframe": getattr(self, "confirmation_timeframe", None),
+                "trend_timeframe": getattr(self, "trend_timeframe", None),
                 # Configuraciones de trading real
-                'enable_real_trading': getattr(self, 'enable_real_trading', False),
-                'real_trading_size_multiplier': getattr(self, 'real_trading_size_multiplier', 0.1),
+                "enable_real_trading": getattr(self, "enable_real_trading", False),
+                "real_trading_size_multiplier": getattr(
+                    self, "real_trading_size_multiplier", 0.1
+                ),
             }
-            
+
             # Agregar configuraciones del paper trader si está disponible
-            if hasattr(self, 'paper_trader') and self.paper_trader:
-                if hasattr(self.paper_trader, 'get_configuration'):
+            if hasattr(self, "paper_trader") and self.paper_trader:
+                if hasattr(self.paper_trader, "get_configuration"):
                     paper_config = self.paper_trader.get_configuration()
-                    config.update({
-                        'max_position_size': paper_config.get('max_position_size'),
-                        'max_total_exposure': paper_config.get('max_total_exposure'),
-                        'min_trade_value': paper_config.get('min_trade_value'),
-                    })
+                    config.update(
+                        {
+                            "max_position_size": paper_config.get("max_position_size"),
+                            "max_total_exposure": paper_config.get(
+                                "max_total_exposure"
+                            ),
+                            "min_trade_value": paper_config.get("min_trade_value"),
+                        }
+                    )
                 else:
                     # Valores por defecto si no hay método get_configuration
-                    config.update({
-                        'max_position_size': getattr(self.paper_trader, 'max_position_size', None),
-                        'max_total_exposure': getattr(self.paper_trader, 'max_total_exposure', None),
-                        'min_trade_value': getattr(self.paper_trader, 'min_trade_value', None),
-                    })
-            
+                    config.update(
+                        {
+                            "max_position_size": getattr(
+                                self.paper_trader, "max_position_size", None
+                            ),
+                            "max_total_exposure": getattr(
+                                self.paper_trader, "max_total_exposure", None
+                            ),
+                            "min_trade_value": getattr(
+                                self.paper_trader, "min_trade_value", None
+                            ),
+                        }
+                    )
+
             # Agregar configuraciones del risk manager si está disponible
-            if hasattr(self, 'risk_manager') and self.risk_manager:
-                if hasattr(self.risk_manager, 'get_configuration'):
+            if hasattr(self, "risk_manager") and self.risk_manager:
+                if hasattr(self.risk_manager, "get_configuration"):
                     risk_config = self.risk_manager.get_configuration()
-                    config.update({
-                        'max_risk_per_trade': risk_config.get('max_risk_per_trade'),
-                        'max_daily_risk': risk_config.get('max_daily_risk'),
-                        'max_drawdown_threshold': risk_config.get('max_drawdown_threshold'),
-                        'correlation_threshold': risk_config.get('correlation_threshold'),
-                    })
+                    config.update(
+                        {
+                            "max_risk_per_trade": risk_config.get("max_risk_per_trade"),
+                            "max_daily_risk": risk_config.get("max_daily_risk"),
+                            "max_drawdown_threshold": risk_config.get(
+                                "max_drawdown_threshold"
+                            ),
+                            "correlation_threshold": risk_config.get(
+                                "correlation_threshold"
+                            ),
+                        }
+                    )
                 else:
                     # Valores por defecto si no hay método get_configuration
-                    config.update({
-                        'max_risk_per_trade': getattr(self.risk_manager, 'max_portfolio_risk', None),
-                        'max_daily_risk': getattr(self.risk_manager, 'max_daily_risk', None),
-                        'max_drawdown_threshold': getattr(self.risk_manager, 'max_drawdown_threshold', None),
-                        'correlation_threshold': getattr(self.risk_manager, 'correlation_threshold', None),
-                    })
-            
+                    config.update(
+                        {
+                            "max_risk_per_trade": getattr(
+                                self.risk_manager, "max_portfolio_risk", None
+                            ),
+                            "max_daily_risk": getattr(
+                                self.risk_manager, "max_daily_risk", None
+                            ),
+                            "max_drawdown_threshold": getattr(
+                                self.risk_manager, "max_drawdown_threshold", None
+                            ),
+                            "correlation_threshold": getattr(
+                                self.risk_manager, "correlation_threshold", None
+                            ),
+                        }
+                    )
+
             return config
         except Exception as e:
             self.logger.error(f"❌ Error obteniendo configuración: {e}")
             return {}
-    
+
     def update_configuration(self, config: Dict):
         """
         ⚙️ Actualizar configuración del bot
-        
+
         Args:
             config: Diccionario con nueva configuración
         """
@@ -1564,92 +1884,128 @@ class TradingBot:
             # Configuraciones básicas del bot
             if "analysis_interval_minutes" in config:
                 self.analysis_interval = max(1, config["analysis_interval_minutes"])
-                self.logger.info(f"⚙️ Analysis interval updated to {self.analysis_interval} minutes")
-            
+                self.logger.info(
+                    f"⚙️ Analysis interval updated to {self.analysis_interval} minutes"
+                )
+
             if "max_daily_trades" in config:
                 self.max_daily_trades = max(1, config["max_daily_trades"])
-                self.logger.info(f"⚙️ Max daily trades updated to {self.max_daily_trades}")
-            
+                self.logger.info(
+                    f"⚙️ Max daily trades updated to {self.max_daily_trades}"
+                )
+
             if "min_confidence_threshold" in config:
-                self.min_confidence_threshold = max(0, min(100, config["min_confidence_threshold"]))
-                self.logger.info(f"⚙️ Min confidence threshold updated to {self.min_confidence_threshold}%")
-            
+                self.min_confidence_threshold = max(
+                    0, min(100, config["min_confidence_threshold"])
+                )
+                self.logger.info(
+                    f"⚙️ Min confidence threshold updated to {self.min_confidence_threshold}%"
+                )
+
             if "enable_trading" in config:
                 self.enable_trading = bool(config["enable_trading"])
                 status = "enabled" if self.enable_trading else "disabled"
                 self.logger.info(f"⚙️ Trading execution {status}")
-            
+
             if "symbols" in config and isinstance(config["symbols"], list):
                 self.symbols = config["symbols"]
                 self.logger.info(f"⚙️ Symbols updated: {', '.join(self.symbols)}")
-            
+
             # Configuraciones de posiciones
             if "max_concurrent_positions" in config:
-                self.max_concurrent_positions = max(1, config["max_concurrent_positions"])
-                self.logger.info(f"⚙️ Max concurrent positions updated to {self.max_concurrent_positions}")
-            
+                self.max_concurrent_positions = max(
+                    1, config["max_concurrent_positions"]
+                )
+                self.logger.info(
+                    f"⚙️ Max concurrent positions updated to {self.max_concurrent_positions}"
+                )
+
             # Configuraciones de timeframes
             if "primary_timeframe" in config:
                 self.primary_timeframe = config["primary_timeframe"]
-                self.logger.info(f"⚙️ Primary timeframe updated to {self.primary_timeframe}")
-            
+                self.logger.info(
+                    f"⚙️ Primary timeframe updated to {self.primary_timeframe}"
+                )
+
             if "confirmation_timeframe" in config:
                 self.confirmation_timeframe = config["confirmation_timeframe"]
-                self.logger.info(f"⚙️ Confirmation timeframe updated to {self.confirmation_timeframe}")
-            
+                self.logger.info(
+                    f"⚙️ Confirmation timeframe updated to {self.confirmation_timeframe}"
+                )
+
             if "trend_timeframe" in config:
                 self.trend_timeframe = config["trend_timeframe"]
                 self.logger.info(f"⚙️ Trend timeframe updated to {self.trend_timeframe}")
-            
+
             # Configuraciones de trading real
             if "enable_real_trading" in config:
                 self.enable_real_trading = bool(config["enable_real_trading"])
                 status = "enabled" if self.enable_real_trading else "disabled"
                 self.logger.info(f"⚙️ Real trading {status}")
-            
+
             if "real_trading_size_multiplier" in config:
-                self.real_trading_size_multiplier = max(0.01, min(1.0, config["real_trading_size_multiplier"]))
-                self.logger.info(f"⚙️ Real trading size multiplier updated to {self.real_trading_size_multiplier}")
-            
+                self.real_trading_size_multiplier = max(
+                    0.01, min(1.0, config["real_trading_size_multiplier"])
+                )
+                self.logger.info(
+                    f"⚙️ Real trading size multiplier updated to {self.real_trading_size_multiplier}"
+                )
+
             # Configuraciones del paper trader (si están disponibles)
-            if hasattr(self, 'paper_trader') and self.paper_trader:
+            if hasattr(self, "paper_trader") and self.paper_trader:
                 paper_config = {}
                 if "max_position_size" in config:
-                    paper_config["max_position_size"] = max(0.01, min(1.0, config["max_position_size"]))
+                    paper_config["max_position_size"] = max(
+                        0.01, min(1.0, config["max_position_size"])
+                    )
                 if "max_total_exposure" in config:
-                    paper_config["max_total_exposure"] = max(0.01, min(1.0, config["max_total_exposure"]))
+                    paper_config["max_total_exposure"] = max(
+                        0.01, min(1.0, config["max_total_exposure"])
+                    )
                 if "min_trade_value" in config:
-                    paper_config["min_trade_value"] = max(1.0, config["min_trade_value"])
-                
+                    paper_config["min_trade_value"] = max(
+                        1.0, config["min_trade_value"]
+                    )
+
                 if paper_config:
                     # Actualizar configuración del paper trader si tiene método de actualización
-                    if hasattr(self.paper_trader, 'update_configuration'):
+                    if hasattr(self.paper_trader, "update_configuration"):
                         self.paper_trader.update_configuration(paper_config)
-                        self.logger.info(f"⚙️ Paper trader configuration updated: {paper_config}")
-            
+                        self.logger.info(
+                            f"⚙️ Paper trader configuration updated: {paper_config}"
+                        )
+
             # Configuraciones del risk manager (si están disponibles)
-            if hasattr(self, 'risk_manager') and self.risk_manager:
+            if hasattr(self, "risk_manager") and self.risk_manager:
                 risk_config = {}
                 if "max_risk_per_trade" in config:
-                    risk_config["max_portfolio_risk"] = max(0.001, min(0.05, config["max_risk_per_trade"]))
+                    risk_config["max_portfolio_risk"] = max(
+                        0.001, min(0.05, config["max_risk_per_trade"])
+                    )
                 if "max_daily_risk" in config:
-                    risk_config["max_daily_risk"] = max(0.005, min(0.1, config["max_daily_risk"]))
+                    risk_config["max_daily_risk"] = max(
+                        0.005, min(0.1, config["max_daily_risk"])
+                    )
                 if "max_drawdown_threshold" in config:
-                    risk_config["max_drawdown_threshold"] = max(0.05, min(0.5, config["max_drawdown_threshold"]))
+                    risk_config["max_drawdown_threshold"] = max(
+                        0.05, min(0.5, config["max_drawdown_threshold"])
+                    )
                 if "correlation_threshold" in config:
-                    risk_config["correlation_threshold"] = max(0.1, min(1.0, config["correlation_threshold"]))
-                
+                    risk_config["correlation_threshold"] = max(
+                        0.1, min(1.0, config["correlation_threshold"])
+                    )
+
                 if risk_config:
                     # Actualizar configuración del risk manager si tiene método de actualización
-                    if hasattr(self.risk_manager, 'update_configuration'):
+                    if hasattr(self.risk_manager, "update_configuration"):
                         self.risk_manager.update_configuration(risk_config)
-                        self.logger.info(f"⚙️ Risk manager configuration updated: {risk_config}")
-            
+                        self.logger.info(
+                            f"⚙️ Risk manager configuration updated: {risk_config}"
+                        )
+
         except Exception as e:
             self.logger.error(f"❌ Error updating configuration: {e}")
-    
 
-    
     def force_analysis(self):
         """
         🔄 Forzar análisis inmediato (útil para testing)
@@ -1659,138 +2015,142 @@ class TradingBot:
             self._run_analysis_cycle()
         else:
             self.logger.warning("⚠️ Bot is not running - cannot force analysis")
-    
+
     def emergency_stop(self):
         """
         🚨 Parada de emergencia (cierra todas las posiciones)
         """
         self.logger.warning("🚨 EMERGENCY STOP INITIATED")
-        
+
         try:
             # Detener el bot
             self.stop()
-            
+
             # Obtener posiciones abiertas
             open_positions = self.paper_trader.get_open_positions()
-            
+
             if open_positions:
-                self.logger.warning(f"🚨 Closing {len(open_positions)} open positions...")
-                
+                self.logger.warning(
+                    f"🚨 Closing {len(open_positions)} open positions..."
+                )
+
                 # Aquí podrías implementar lógica para cerrar posiciones automáticamente
                 # Por ahora solo loggeamos
                 for position in open_positions:
-                    self.logger.warning(f"   📊 Open position: {position['symbol']} - ${position['entry_value']:.2f}")
-            
+                    self.logger.warning(
+                        f"   📊 Open position: {position['symbol']} - ${position['entry_value']:.2f}"
+                    )
+
             self.logger.warning("🚨 Emergency stop completed")
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error during emergency stop: {e}")
-    
+
     def test_connection(self) -> bool:
         """🔌 Probar conexión con la API de Capital.com
-        
+
         Returns:
             bool: True si la conexión es exitosa, False en caso contrario
         """
         try:
             if not self.capital_client:
                 self._initialize_capital_client()
-            
+
             if not self.capital_client:
                 self.logger.error("❌ Capital.com client not available")
                 return False
-            
+
             # Probar conexión con ping
             ping_result = self.capital_client.ping()
             if not ping_result.get("success"):
                 self.logger.error("❌ Capital.com ping failed")
                 return False
-            
+
             # Probar obtención de cuentas
             accounts = self.capital_client.get_accounts()
             if not accounts:
                 self.logger.error("❌ No accounts found in Capital.com")
                 return False
-            
+
             self.logger.info("✅ Conexión con Capital.com exitosa")
             self.logger.info(f"📊 Cuentas disponibles: {len(accounts)}")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error de conexión con Capital.com: {e}")
             return False
-    
 
-    
-    def _emit_trade_event(self, signal: TradingSignal, trade_result: TradeResult, risk_assessment):
+    def _emit_trade_event(
+        self, signal: TradingSignal, trade_result: TradeResult, risk_assessment
+    ):
         """📢 Emitir evento de trade ejecutado"""
         try:
             event = {
-                'type': 'trade_executed',
-                'timestamp': datetime.now(),
-                'symbol': signal.symbol,
-                'signal_type': signal.signal_type,
-                'confidence': signal.confidence_score,
-                'entry_price': trade_result.entry_price,
-                'quantity': trade_result.quantity,
-                'tp_price': getattr(signal, 'take_profit', None),
-                'sl_price': getattr(signal, 'stop_loss', None),
-                'risk_score': risk_assessment.overall_risk_score,
-                'position_size': risk_assessment.position_sizing.recommended_size,
-                'success': trade_result.success,
-                'message': trade_result.message
+                "type": "trade_executed",
+                "timestamp": datetime.now(),
+                "symbol": signal.symbol,
+                "signal_type": signal.signal_type,
+                "confidence": signal.confidence_score,
+                "entry_price": trade_result.entry_price,
+                "quantity": trade_result.quantity,
+                "tp_price": getattr(signal, "take_profit", None),
+                "sl_price": getattr(signal, "stop_loss", None),
+                "risk_score": risk_assessment.overall_risk_score,
+                "position_size": risk_assessment.position_sizing.recommended_size,
+                "success": trade_result.success,
+                "message": trade_result.message,
             }
-            
+
             self.event_queue.put(event, block=False)
-            
+
         except queue.Full:
             self.logger.warning("⚠️ Event queue full, dropping trade event")
         except Exception as e:
             self.logger.error(f"❌ Error emitting trade event: {e}")
-    
 
-    
     def _emit_analysis_event(self, signals_count: int, daily_trades: int):
         """📢 Emitir evento de análisis completado"""
         try:
             event = {
-                'type': 'analysis_completed',
-                'timestamp': datetime.now(),
-                'signals_generated': signals_count,
-                'daily_trades': daily_trades,
-                'max_daily_trades': self.max_daily_trades,
-                'portfolio_value': self.stats.get('total_pnl', 0)
+                "type": "analysis_completed",
+                "timestamp": datetime.now(),
+                "signals_generated": signals_count,
+                "daily_trades": daily_trades,
+                "max_daily_trades": self.max_daily_trades,
+                "portfolio_value": self.stats.get("total_pnl", 0),
             }
-            
+
             self.event_queue.put(event, block=False)
-            
+
         except queue.Full:
             self.logger.warning("⚠️ Event queue full, dropping analysis event")
         except Exception as e:
             self.logger.error(f"❌ Error emitting analysis event: {e}")
-    
+
     def _normalize_symbol_for_capital(self, symbol: str) -> str:
         """
         🔄 Normalizar símbolo para Capital.com
-        
+
         Args:
             symbol: Símbolo original (ej: ETHUSD, US100, GOLD)
-            
+
         Returns:
             Símbolo tal como está definido en GLOBAL_SYMBOLS (sin modificaciones)
         """
         # Los símbolos en GLOBAL_SYMBOLS ya están en el formato correcto para Capital.com
         # No necesitamos agregar USD automáticamente
         return symbol.upper()
-    
-    def _execute_real_trade(self, signal: TradingSignal, risk_assessment) -> Dict[str, Any]:
+
+    def _execute_real_trade(
+        self, signal: TradingSignal, risk_assessment
+    ) -> Dict[str, Any]:
         """
         🔴 Ejecutar trade real en Capital.com
-        
+
         Args:
             signal: Señal de trading
             risk_assessment: Evaluación de riesgo
-            
+
         Returns:
             Dict con resultado del trade real
         """
@@ -1800,123 +2160,171 @@ class TradingBot:
             if not balance_result.get("success"):
                 return {
                     "success": False,
-                    "error": f"Failed to get account balance: {balance_result.get('error')}"
+                    "error": f"Failed to get account balance: {balance_result.get('error')}",
                 }
-            
+
             available_balance = balance_result.get("available", 0)
             currency_symbol = balance_result.get("symbol", "$")
-            
-            self.logger.info(f"💰 Available balance: {currency_symbol}{available_balance}")
-            
+
+            self.logger.info(
+                f"💰 Available balance: {currency_symbol}{available_balance}"
+            )
+
             # 2. Convertir símbolo al formato de Capital.com
             capital_symbol = self._normalize_symbol_for_capital(signal.symbol)
-            
+
             # 3. Usar el tamaño de posición calculado por el risk manager (que ya considera apalancamiento)
-            current_price = signal.price if hasattr(signal, 'price') else signal.current_price
-            
+            current_price = (
+                signal.price if hasattr(signal, "price") else signal.current_price
+            )
+
             # El risk_assessment ya calculó el tamaño óptimo en UNIDADES del activo
             # recommended_size ya incluye el apalancamiento aplicado
             # Aplicar real_trading_size_multiplier para trading real (por defecto 10% del tamaño de paper trading)
-            real_size = risk_assessment.position_sizing.recommended_size * self.real_trading_size_multiplier
+            real_size = (
+                risk_assessment.position_sizing.recommended_size
+                * self.real_trading_size_multiplier
+            )
             leverage_used = risk_assessment.position_sizing.leverage_used
-            position_value_usd = risk_assessment.position_sizing.position_value  # Valor total en USD
-            
+            position_value_usd = (
+                risk_assessment.position_sizing.position_value
+            )  # Valor total en USD
+
             # 4. Redondear a 4 decimales para crypto (más precisión)
             real_size = round(real_size, 4)
-            
+
             # Calcular valores para mostrar correctamente
-            total_position_value = real_size * current_price  # Valor total de la posición
+            total_position_value = (
+                real_size * current_price
+            )  # Valor total de la posición
             required_margin = total_position_value / leverage_used  # Margen requerido
-            
+
             # Log detallado del cálculo
             self.logger.info(f"💰 Cálculo de posición real:")
-            self.logger.info(f"   Balance disponible: {currency_symbol}{available_balance:.2f}")
-            self.logger.info(f"   Tamaño base recomendado: {risk_assessment.position_sizing.recommended_size:.4f} unidades")
-            self.logger.info(f"   Real trading multiplier: {self.real_trading_size_multiplier}")
+            self.logger.info(
+                f"   Balance disponible: {currency_symbol}{available_balance:.2f}"
+            )
+            self.logger.info(
+                f"   Tamaño base recomendado: {risk_assessment.position_sizing.recommended_size:.4f} unidades"
+            )
+            self.logger.info(
+                f"   Real trading multiplier: {self.real_trading_size_multiplier}"
+            )
             self.logger.info(f"   Tamaño final real: {real_size:.4f} unidades")
             self.logger.info(f"   Apalancamiento usado: {leverage_used}x")
-            self.logger.info(f"   Precio actual {capital_symbol}: {currency_symbol}{current_price:.2f}")
-            self.logger.info(f"   Valor total posición: {currency_symbol}{total_position_value:.2f}")
-            self.logger.info(f"   Margen requerido: {currency_symbol}{required_margin:.2f}")
-            self.logger.info(f"   Verificación: {real_size:.4f} * {currency_symbol}{current_price:.2f} = {currency_symbol}{total_position_value:.2f}")
-            
+            self.logger.info(
+                f"   Precio actual {capital_symbol}: {currency_symbol}{current_price:.2f}"
+            )
+            self.logger.info(
+                f"   Valor total posición: {currency_symbol}{total_position_value:.2f}"
+            )
+            self.logger.info(
+                f"   Margen requerido: {currency_symbol}{required_margin:.2f}"
+            )
+            self.logger.info(
+                f"   Verificación: {real_size:.4f} * {currency_symbol}{current_price:.2f} = {currency_symbol}{total_position_value:.2f}"
+            )
+
             # 5. Verificar si tenemos suficiente balance para el trade
             # Los valores ya están calculados arriba: total_position_value y required_margin
-            
+
             if available_balance < required_margin:
                 return {
                     "success": False,
-                    "error": f"Insufficient balance. Available: {currency_symbol}{available_balance:.2f}, Required margin: {currency_symbol}{required_margin:.2f}, Position value: {currency_symbol}{total_position_value:.2f}"
+                    "error": f"Insufficient balance. Available: {currency_symbol}{available_balance:.2f}, Required margin: {currency_symbol}{required_margin:.2f}, Position value: {currency_symbol}{total_position_value:.2f}",
                 }
-            
+
             # Verificar tamaño mínimo (Capital.com generalmente requiere mínimo 0.01)
             if real_size < 0.01:
                 return {
                     "success": False,
-                    "error": f"Position size too small: {real_size} (minimum: 0.01)"
+                    "error": f"Position size too small: {real_size} (minimum: 0.01)",
                 }
-            
+
             # 6. Obtener valores de TP y SL de la señal
             stop_loss = None
             take_profit = None
-            
+
             # Verificar si estamos usando perfiles que soportan cálculo basado en ROI
             current_profile_config = TradingProfiles.get_current_profile()
-            current_profile = current_profile_config.get('name', '')
+            current_profile = current_profile_config.get("name", "")
             if current_profile in ["Scalping", "Intraday"]:
                 # Para perfiles ROI, recalcular TP/SL basado en ROI del balance invertido
                 try:
                     from .trend_following_professional import TrendFollowingProfessional
+
                     strategy_instance = TrendFollowingProfessional()
-                    
+
                     # Obtener ATR para el cálculo
                     current_price = self._get_current_price(symbol)
                     atr = current_price * 0.02  # ATR estimado como 2% del precio
-                    
+
                     # Calcular TP/SL basado en ROI usando el tamaño de posición real
                     position_size_usd = real_size * current_price  # Convertir a USD
-                    stop_loss, take_profit, risk_reward = strategy_instance.calculate_roi_based_risk_reward(
-                        current_price, signal.signal_type, position_size_usd, atr
+                    stop_loss, take_profit, risk_reward = (
+                        strategy_instance.calculate_roi_based_risk_reward(
+                            current_price, signal.signal_type, position_size_usd, atr
+                        )
                     )
-                    
-                    self.logger.info(f"🎯 {current_profile} ROI-based TP/SL calculated:")
+
+                    self.logger.info(
+                        f"🎯 {current_profile} ROI-based TP/SL calculated:"
+                    )
                     self.logger.info(f"🛡️ Stop Loss (ROI-based): ${stop_loss:.4f}")
                     self.logger.info(f"🎯 Take Profit (ROI-based): ${take_profit:.4f}")
                     self.logger.info(f"📊 Risk/Reward Ratio: {risk_reward:.2f}")
-                    
+
                 except Exception as e:
-                    self.logger.warning(f"⚠️ Error calculating ROI-based TP/SL for SCALPING: {e}")
+                    self.logger.warning(
+                        f"⚠️ Error calculating ROI-based TP/SL for SCALPING: {e}"
+                    )
                     # Fallback a valores originales
                     stop_loss = None
                     take_profit = None
-            
+
             # Si no se calculó con ROI o no es SCALPING, usar valores de la señal
-            if stop_loss is None and hasattr(signal, 'stop_loss_price') and signal.stop_loss_price > 0:
+            if (
+                stop_loss is None
+                and hasattr(signal, "stop_loss_price")
+                and signal.stop_loss_price > 0
+            ):
                 stop_loss = signal.stop_loss_price
                 self.logger.info(f"🛡️ Stop Loss: ${stop_loss:.4f}")
-            
-            if take_profit is None and hasattr(signal, 'take_profit_price') and signal.take_profit_price > 0:
+
+            if (
+                take_profit is None
+                and hasattr(signal, "take_profit_price")
+                and signal.take_profit_price > 0
+            ):
                 take_profit = signal.take_profit_price
                 self.logger.info(f"🎯 Take Profit: ${take_profit:.4f}")
-            
+
             # Si no hay TP/SL en la señal, usar valores del risk assessment
-            if stop_loss is None and hasattr(risk_assessment, 'dynamic_stop_loss'):
+            if stop_loss is None and hasattr(risk_assessment, "dynamic_stop_loss"):
                 stop_loss = risk_assessment.dynamic_stop_loss.stop_loss_price
-                self.logger.info(f"🛡️ Stop Loss (from risk assessment): ${stop_loss:.4f}")
-                
-            if take_profit is None and hasattr(risk_assessment, 'dynamic_take_profit'):
+                self.logger.info(
+                    f"🛡️ Stop Loss (from risk assessment): ${stop_loss:.4f}"
+                )
+
+            if take_profit is None and hasattr(risk_assessment, "dynamic_take_profit"):
                 take_profit = risk_assessment.dynamic_take_profit.take_profit_price
-                self.logger.info(f"🎯 Take Profit (from risk assessment): ${take_profit:.4f}")
-            
-            self.logger.info(f"🔴 Executing REAL trade: {signal.signal_type} {capital_symbol} size={real_size}")
+                self.logger.info(
+                    f"🎯 Take Profit (from risk assessment): ${take_profit:.4f}"
+                )
+
+            self.logger.info(
+                f"🔴 Executing REAL trade: {signal.signal_type} {capital_symbol} size={real_size}"
+            )
             self.logger.info(f"🔴 Stop Loss: {stop_loss}, Take Profit: {take_profit}")
             self.logger.info(f"🔴 Capital.com API URL: {self.capital_client.base_url}")
-            
+
             # Determinar si usar trailing stop basado en configuración del perfil
-            use_trailing_stop = TradingProfiles.get_current_profile().get("use_trailing_stop", False)
+            use_trailing_stop = TradingProfiles.get_current_profile().get(
+                "use_trailing_stop", False
+            )
             trailing_distance = None
             trailing_stop_available = False
-            
+
             if use_trailing_stop and stop_loss:
                 # Calcular la distancia correcta según el tipo de operación
                 # Para BUY: stopDistance = current_price - stop_loss (protege hacia abajo)
@@ -1925,18 +2333,26 @@ class TradingBot:
                     trailing_distance = current_price - stop_loss
                 else:  # SELL
                     trailing_distance = stop_loss - current_price
-                
+
                 # Verificar que la distancia sea positiva
                 if trailing_distance > 0:
                     trailing_stop_available = True
-                    self.logger.info(f"🎯 Trailing stop enabled for {signal.signal_type}")
-                    self.logger.info(f"🎯 Current price: {current_price:.4f}, Stop loss: {stop_loss:.4f}")
-                    self.logger.info(f"🎯 Calculated stopDistance: {trailing_distance:.4f} points")
+                    self.logger.info(
+                        f"🎯 Trailing stop enabled for {signal.signal_type}"
+                    )
+                    self.logger.info(
+                        f"🎯 Current price: {current_price:.4f}, Stop loss: {stop_loss:.4f}"
+                    )
+                    self.logger.info(
+                        f"🎯 Calculated stopDistance: {trailing_distance:.4f} points"
+                    )
                 else:
                     trailing_stop_available = False
-                    self.logger.warning(f"⚠️ Invalid trailing distance: {trailing_distance:.4f} (must be positive)")
+                    self.logger.warning(
+                        f"⚠️ Invalid trailing distance: {trailing_distance:.4f} (must be positive)"
+                    )
                     self.logger.warning(f"⚠️ Falling back to traditional stop loss")
-            
+
             # Ejecutar orden según el tipo de señal
             if signal.signal_type == "BUY":
                 self.logger.info(f"🔴 Enviando orden BUY a Capital.com...")
@@ -1946,112 +2362,133 @@ class TradingBot:
                         size=real_size,
                         take_profit=take_profit,
                         trailing_stop=True,
-                        stop_distance=trailing_distance
+                        stop_distance=trailing_distance,
                     )
-                    self.logger.info(f"🎯 BUY order with trailing stop - Distance: {trailing_distance}")
+                    self.logger.info(
+                        f"🎯 BUY order with trailing stop - Distance: {trailing_distance}"
+                    )
                 else:
                     result = self.capital_client.buy_market_order(
                         epic=capital_symbol,
                         size=real_size,
                         stop_loss=stop_loss,
-                        take_profit=take_profit
+                        take_profit=take_profit,
                     )
                     if use_trailing_stop and not trailing_stop_available:
-                        self.logger.info(f"🔄 BUY order with traditional stop loss (trailing stop not available)")
+                        self.logger.info(
+                            f"🔄 BUY order with traditional stop loss (trailing stop not available)"
+                        )
                     else:
                         self.logger.info(f"🔴 BUY order with traditional stop loss")
                 self.logger.info(f"🔴 Respuesta de Capital.com BUY: {result}")
             elif signal.signal_type == "SELL":
                 # Verificar modo hedging antes de decidir si cerrar o abrir nueva posición
-                self.logger.info(f"🔴 Verificando modo hedging y posiciones existentes para SELL...")
-                
+                self.logger.info(
+                    f"🔴 Verificando modo hedging y posiciones existentes para SELL..."
+                )
+
                 # Obtener preferencias de cuenta para verificar modo hedging
                 preferences_result = self.capital_client.get_account_preferences()
                 hedging_mode = False
                 if preferences_result.get("success"):
                     hedging_mode = preferences_result.get("hedging_mode", False)
-                    self.logger.info(f"🔄 Modo hedging: {'ACTIVADO' if hedging_mode else 'DESACTIVADO'}")
+                    self.logger.info(
+                        f"🔄 Modo hedging: {'ACTIVADO' if hedging_mode else 'DESACTIVADO'}"
+                    )
                 else:
-                    self.logger.warning(f"⚠️ No se pudo obtener preferencias de cuenta: {preferences_result.get('error')}")
-                
+                    self.logger.warning(
+                        f"⚠️ No se pudo obtener preferencias de cuenta: {preferences_result.get('error')}"
+                    )
+
                 # Obtener posiciones existentes
                 positions_result = self.capital_client.get_positions()
                 if not positions_result.get("success"):
                     return {
                         "success": False,
-                        "error": f"Failed to get positions: {positions_result.get('error')}"
+                        "error": f"Failed to get positions: {positions_result.get('error')}",
                     }
-                
+
                 # Buscar posición abierta para este símbolo
                 open_position = None
                 for position in positions_result.get("positions", []):
                     if position.get("market", {}).get("epic") == capital_symbol:
                         open_position = position
                         break
-                
+
                 if open_position and not hedging_mode:
                     # Solo cerrar posición existente si NO está en modo hedging
                     deal_id = open_position.get("position", {}).get("dealId")
-                    position_size = abs(float(open_position.get("position", {}).get("size", 0)))
+                    position_size = abs(
+                        float(open_position.get("position", {}).get("size", 0))
+                    )
                     close_size = min(real_size, position_size)
-                    
-                    self.logger.info(f"🔴 Cerrando posición existente (modo normal) - Deal ID: {deal_id}, Size: {close_size}")
+
+                    self.logger.info(
+                        f"🔴 Cerrando posición existente (modo normal) - Deal ID: {deal_id}, Size: {close_size}"
+                    )
                     result = self.capital_client.close_position(
-                        deal_id=deal_id,
-                        direction="SELL",
-                        size=close_size
+                        deal_id=deal_id, direction="SELL", size=close_size
                     )
                     self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {result}")
                 else:
                     # Abrir nueva posición de venta (siempre en modo hedging, o si no hay posición existente)
                     if hedging_mode and open_position:
-                        self.logger.info(f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)")
+                        self.logger.info(
+                            f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)"
+                        )
                     else:
                         self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
-                    
+
                     if trailing_stop_available and trailing_distance:
                         result = self.capital_client.sell_market_order(
                             epic=capital_symbol,
                             size=real_size,
                             take_profit=take_profit,
                             trailing_stop=True,
-                            stop_distance=trailing_distance
+                            stop_distance=trailing_distance,
                         )
-                        self.logger.info(f"🎯 SELL order with trailing stop - Distance: {trailing_distance}")
+                        self.logger.info(
+                            f"🎯 SELL order with trailing stop - Distance: {trailing_distance}"
+                        )
                     else:
                         result = self.capital_client.sell_market_order(
                             epic=capital_symbol,
                             size=real_size,
                             stop_loss=stop_loss,
-                            take_profit=take_profit
+                            take_profit=take_profit,
                         )
                         if use_trailing_stop and not trailing_stop_available:
-                            self.logger.info(f"🔄 SELL order with traditional stop loss (trailing stop not available)")
+                            self.logger.info(
+                                f"🔄 SELL order with traditional stop loss (trailing stop not available)"
+                            )
                         else:
-                            self.logger.info(f"🔴 SELL order with traditional stop loss")
+                            self.logger.info(
+                                f"🔴 SELL order with traditional stop loss"
+                            )
                     self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
             else:
                 return {
                     "success": False,
-                    "error": f"Unknown signal type: {signal.signal_type}"
+                    "error": f"Unknown signal type: {signal.signal_type}",
                 }
-            
+
             # Log del resultado
             if result.get("success"):
-                self.logger.info(f"🔴 Real trade SUCCESS: {signal.signal_type} {capital_symbol} - Deal ID: {result.get('deal_id')}")
+                self.logger.info(
+                    f"🔴 Real trade SUCCESS: {signal.signal_type} {capital_symbol} - Deal ID: {result.get('deal_id')}"
+                )
             else:
-                self.logger.error(f"🔴 Real trade FAILED: {signal.signal_type} {capital_symbol} - Error: {result.get('error')}")
-            
+                self.logger.error(
+                    f"🔴 Real trade FAILED: {signal.signal_type} {capital_symbol} - Error: {result.get('error')}"
+                )
+
             return result
-            
+
         except Exception as e:
             error_msg = f"Exception executing real trade: {str(e)}"
             self.logger.error(f"🔴 {error_msg}")
-            return {
-                "success": False,
-                "error": error_msg
-            }
-    
+            return {"success": False, "error": error_msg}
+
     def get_events(self) -> List[Dict]:
         """📥 Obtener eventos pendientes para LiveTradingBot"""
         events = []
@@ -2062,66 +2499,77 @@ class TradingBot:
             pass
         except Exception as e:
             self.logger.error(f"❌ Error getting events: {e}")
-        
+
         return events
-    
+
     def process_position_timeouts(self) -> Dict[str, int]:
         """⏰ Procesar timeouts de posiciones activas
-        
+
         Verifica todas las posiciones activas y cierra las que hayan excedido
         el tiempo límite configurado en position_timeout_hours.
-        
+
         Returns:
             Diccionario con estadísticas del procesamiento
         """
         try:
             logger.info("⏰ Starting position timeout processing...")
             result = self.position_monitor.process_position_timeouts()
-            
+
             if result.get("timeout_positions", 0) > 0:
                 logger.info(
                     f"⏰ Timeout processing completed: {result['closed_positions']}/{result['timeout_positions']} "
                     f"positions closed from {result['total_positions']} total"
                 )
             else:
-                logger.debug(f"⏰ No positions with timeout found from {result['total_positions']} total")
-            
+                logger.debug(
+                    f"⏰ No positions with timeout found from {result['total_positions']} total"
+                )
+
             return result
-            
+
         except Exception as e:
             logger.error(f"❌ Error processing position timeouts: {e}")
-            return {"total_positions": 0, "timeout_positions": 0, "closed_positions": 0, "error": str(e)}
-    
+            return {
+                "total_positions": 0,
+                "timeout_positions": 0,
+                "closed_positions": 0,
+                "error": str(e),
+            }
+
     def get_profitable_positions(self, min_profit: float = 1.0) -> List[Dict]:
         """
         💰 Obtener posiciones con ganancias no realizadas mayores al mínimo especificado
-        
+
         Args:
             min_profit: Ganancia mínima en USD para considerar la posición rentable (default: 1.0)
-            
+
         Returns:
             Lista de posiciones rentables con información relevante
         """
         try:
             if not self.capital_client:
-                self.logger.warning("⚠️ Capital client not available for getting positions")
+                self.logger.warning(
+                    "⚠️ Capital client not available for getting positions"
+                )
                 return []
-            
+
             # Obtener posiciones abiertas de Capital.com
             positions_result = self.capital_client.get_positions()
             if not positions_result.get("success"):
-                self.logger.warning(f"⚠️ Failed to get positions: {positions_result.get('error')}")
+                self.logger.warning(
+                    f"⚠️ Failed to get positions: {positions_result.get('error')}"
+                )
                 return []
-            
+
             profitable_positions = []
             capital_positions = positions_result.get("positions", [])
-            
+
             for position in capital_positions:
                 try:
                     # Extraer información de la posición
                     market_info = position.get("market", {})
                     position_info = position.get("position", {})
-                    
+
                     # Obtener UPL (Unrealized Profit/Loss)
                     upl = float(position_info.get("upl", 0))
                     deal_id = position_info.get("dealId")
@@ -2129,39 +2577,45 @@ class TradingBot:
                     direction = position_info.get("direction", "")
                     size = float(position_info.get("size", 0))
                     level = float(position_info.get("level", 0))
-                    
+
                     # Verificar si la posición es rentable
                     if upl > min_profit and deal_id:
-                        profitable_positions.append({
-                            "deal_id": deal_id,
-                            "epic": epic,
-                            "direction": direction,
-                            "size": size,
-                            "entry_level": level,
-                            "upl": upl,
-                            "currency": position_info.get("currency", "USD")
-                        })
-                        
-                        self.logger.info(f"💰 Profitable position found: {epic} {direction} - UPL: ${upl:.2f}")
-                
+                        profitable_positions.append(
+                            {
+                                "deal_id": deal_id,
+                                "epic": epic,
+                                "direction": direction,
+                                "size": size,
+                                "entry_level": level,
+                                "upl": upl,
+                                "currency": position_info.get("currency", "USD"),
+                            }
+                        )
+
+                        self.logger.info(
+                            f"💰 Profitable position found: {epic} {direction} - UPL: ${upl:.2f}"
+                        )
+
                 except (ValueError, KeyError) as e:
                     self.logger.warning(f"⚠️ Error processing position data: {e}")
                     continue
-            
-            self.logger.info(f"💰 Found {len(profitable_positions)} profitable positions (UPL > ${min_profit})")
+
+            self.logger.info(
+                f"💰 Found {len(profitable_positions)} profitable positions (UPL > ${min_profit})"
+            )
             return profitable_positions
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error getting profitable positions: {e}")
             return []
-    
+
     def close_profitable_positions(self, min_profit: float = 1.0) -> Dict[str, Any]:
         """
         🎯 Cerrar todas las posiciones con ganancias no realizadas mayores al mínimo especificado
-        
+
         Args:
             min_profit: Ganancia mínima en USD para cerrar la posición (default: 1.0)
-            
+
         Returns:
             Diccionario con el resultado del cierre de posiciones
         """
@@ -2172,56 +2626,64 @@ class TradingBot:
                     "error": "Capital client not available",
                     "positions_found": 0,
                     "positions_closed": 0,
-                    "total_profit_realized": 0.0
+                    "total_profit_realized": 0.0,
                 }
-            
+
             # Obtener posiciones rentables
             profitable_positions = self.get_profitable_positions(min_profit)
-            
+
             if not profitable_positions:
-                self.logger.info(f"💰 No profitable positions found with UPL > ${min_profit}")
+                self.logger.info(
+                    f"💰 No profitable positions found with UPL > ${min_profit}"
+                )
                 return {
                     "success": True,
                     "message": f"No profitable positions found with UPL > ${min_profit}",
                     "positions_found": 0,
                     "positions_closed": 0,
-                    "total_profit_realized": 0.0
+                    "total_profit_realized": 0.0,
                 }
-            
+
             # Cerrar cada posición rentable
             closed_positions = 0
             total_profit = 0.0
             failed_closes = []
-            
+
             for position in profitable_positions:
                 deal_id = position["deal_id"]
                 epic = position["epic"]
                 upl = position["upl"]
-                
+
                 try:
                     # Cerrar la posición usando el dealId
                     close_result = self.capital_client.close_position(deal_id)
-                    
+
                     if close_result.get("success"):
                         closed_positions += 1
                         total_profit += upl
-                        self.logger.info(f"🎯 Closed profitable position: {epic} (Deal ID: {deal_id}) - Profit: ${upl:.2f}")
+                        self.logger.info(
+                            f"🎯 Closed profitable position: {epic} (Deal ID: {deal_id}) - Profit: ${upl:.2f}"
+                        )
                     else:
-                        failed_closes.append({
-                            "deal_id": deal_id,
-                            "epic": epic,
-                            "error": close_result.get("error", "Unknown error")
-                        })
-                        self.logger.error(f"❌ Failed to close position {epic} (Deal ID: {deal_id}): {close_result.get('error')}")
-                
+                        failed_closes.append(
+                            {
+                                "deal_id": deal_id,
+                                "epic": epic,
+                                "error": close_result.get("error", "Unknown error"),
+                            }
+                        )
+                        self.logger.error(
+                            f"❌ Failed to close position {epic} (Deal ID: {deal_id}): {close_result.get('error')}"
+                        )
+
                 except Exception as e:
-                    failed_closes.append({
-                        "deal_id": deal_id,
-                        "epic": epic,
-                        "error": str(e)
-                    })
-                    self.logger.error(f"❌ Exception closing position {epic} (Deal ID: {deal_id}): {e}")
-            
+                    failed_closes.append(
+                        {"deal_id": deal_id, "epic": epic, "error": str(e)}
+                    )
+                    self.logger.error(
+                        f"❌ Exception closing position {epic} (Deal ID: {deal_id}): {e}"
+                    )
+
             # Preparar resultado
             result = {
                 "success": True,
@@ -2229,18 +2691,22 @@ class TradingBot:
                 "positions_found": len(profitable_positions),
                 "positions_closed": closed_positions,
                 "total_profit_realized": total_profit,
-                "failed_closes": failed_closes
+                "failed_closes": failed_closes,
             }
-            
+
             if closed_positions > 0:
-                self.logger.info(f"🎯 Successfully closed {closed_positions} profitable positions - Total profit realized: ${total_profit:.2f}")
-            
+                self.logger.info(
+                    f"🎯 Successfully closed {closed_positions} profitable positions - Total profit realized: ${total_profit:.2f}"
+                )
+
             if failed_closes:
                 self.logger.warning(f"⚠️ Failed to close {len(failed_closes)} positions")
-                result["success"] = closed_positions > 0  # Parcialmente exitoso si cerró algunas
-            
+                result["success"] = (
+                    closed_positions > 0
+                )  # Parcialmente exitoso si cerró algunas
+
             return result
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error closing profitable positions: {e}")
             return {
@@ -2248,9 +2714,9 @@ class TradingBot:
                 "error": str(e),
                 "positions_found": 0,
                 "positions_closed": 0,
-                "total_profit_realized": 0.0
+                "total_profit_realized": 0.0,
             }
-    
+
     def schedule_pre_reset_profit_taking(self):
         """
         ⏰ Programar el cierre automático de posiciones rentables 15 minutos antes del reset diario
@@ -2259,60 +2725,75 @@ class TradingBot:
             # Calcular la hora de cierre (15 minutos antes del reset)
             pre_reset_hour = DAILY_RESET_HOUR
             pre_reset_minute = DAILY_RESET_MINUTE - 15
-            
+
             # Ajustar si los minutos son negativos
             if pre_reset_minute < 0:
                 pre_reset_hour -= 1
                 pre_reset_minute += 60
-            
+
             # Asegurar que la hora esté en rango válido
             if pre_reset_hour < 0:
                 pre_reset_hour += 24
-            
+
             pre_reset_time_str = f"{pre_reset_hour:02d}:{pre_reset_minute:02d}"
-            
+
             # Programar el cierre automático
-            schedule.every().day.at(pre_reset_time_str).do(self._execute_pre_reset_profit_taking).tag('pre_reset_profit_taking')
-            
-            self.logger.info(f"⏰ Pre-reset profit taking scheduled at {pre_reset_time_str} ({TIMEZONE}) - 15 minutes before reset")
-            
+            schedule.every().day.at(pre_reset_time_str).do(
+                self._execute_pre_reset_profit_taking
+            ).tag("pre_reset_profit_taking")
+
+            self.logger.info(
+                f"⏰ Pre-reset profit taking scheduled at {pre_reset_time_str} ({TIMEZONE}) - 15 minutes before reset"
+            )
+
         except Exception as e:
             self.logger.error(f"❌ Error scheduling pre-reset profit taking: {e}")
-    
+
     def _execute_pre_reset_profit_taking(self):
         """
         🎯 Ejecutar el cierre automático de posiciones rentables antes del reset
         """
         try:
             self.logger.info("🎯 Executing pre-reset profit taking...")
-            
+
             # Cerrar posiciones con UPL > 1 USD
             result = self.close_profitable_positions(min_profit=1.0)
-            
+
             if result.get("success"):
                 positions_closed = result.get("positions_closed", 0)
                 total_profit = result.get("total_profit_realized", 0.0)
-                
+
                 if positions_closed > 0:
-                    self.logger.info(f"🎯 Pre-reset profit taking completed: {positions_closed} positions closed, ${total_profit:.2f} profit realized")
-                    
+                    self.logger.info(
+                        f"🎯 Pre-reset profit taking completed: {positions_closed} positions closed, ${total_profit:.2f} profit realized"
+                    )
+
                     # Emitir evento de cierre automático
                     try:
-                        self.event_queue.put({
-                            "type": "pre_reset_profit_taking",
-                            "timestamp": datetime.now(),
-                            "positions_closed": positions_closed,
-                            "total_profit": total_profit,
-                            "message": f"Closed {positions_closed} profitable positions before reset"
-                        })
+                        self.event_queue.put(
+                            {
+                                "type": "pre_reset_profit_taking",
+                                "timestamp": datetime.now(),
+                                "positions_closed": positions_closed,
+                                "total_profit": total_profit,
+                                "message": f"Closed {positions_closed} profitable positions before reset",
+                            }
+                        )
                     except Exception as e:
-                        self.logger.warning(f"⚠️ Could not emit pre-reset profit taking event: {e}")
+                        self.logger.warning(
+                            f"⚠️ Could not emit pre-reset profit taking event: {e}"
+                        )
                 else:
-                    self.logger.info("🎯 Pre-reset profit taking: No profitable positions to close")
+                    self.logger.info(
+                        "🎯 Pre-reset profit taking: No profitable positions to close"
+                    )
             else:
-                self.logger.error(f"❌ Pre-reset profit taking failed: {result.get('error')}")
-                
+                self.logger.error(
+                    f"❌ Pre-reset profit taking failed: {result.get('error')}"
+                )
+
         except Exception as e:
             self.logger.error(f"❌ Error executing pre-reset profit taking: {e}")
+
 
 trading_bot = TradingBot()

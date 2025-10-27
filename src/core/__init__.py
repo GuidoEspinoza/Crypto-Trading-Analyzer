@@ -7,7 +7,7 @@ Motor de trading automático con estrategias inteligentes
 from .enhanced_strategies import (
     TradingStrategy,
     TradingSignal,
-    EnhancedTradingStrategy
+    EnhancedTradingStrategy,
     # Solo usamos las estrategias profesionales avanzadas
 )
 
@@ -20,17 +20,14 @@ from .trading_bot import TradingBot
 
 __all__ = [
     # Estrategias base
-    'TradingStrategy',
-    'TradingSignal',
-    
+    "TradingStrategy",
+    "TradingSignal",
     # Estrategias mejoradas
-    'EnhancedTradingStrategy',
+    "EnhancedTradingStrategy",
     # Solo exportamos las estrategias profesionales avanzadas
-    
     # Gestión de riesgo
-    'EnhancedRiskManager',
-    
+    "EnhancedRiskManager",
     # Trading
-    'PaperTrader',
-    'TradingBot'
+    "PaperTrader",
+    "TradingBot",
 ]
