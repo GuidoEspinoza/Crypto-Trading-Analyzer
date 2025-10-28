@@ -45,14 +45,14 @@ PROFILES = {
         "analysis_interval": 1,  # Análisis cada minuto para máxima reactividad
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
         "min_confidence": 75.0,  # Confianza mínima alta para reducir señales falsas en alta frecuencia
-        "max_daily_trades": 20,  # Límite base de trades diarios para mantener calidad
+        "max_daily_trades": 35,  # Límite optimizado para aprovechar 42 símbolos disponibles
         "max_daily_trades_adaptive": True,  # Permite trades adicionales con señales de alta calidad
         "daily_trades_quality_threshold": 80.0,  # Umbral de confianza para trades adicionales
-        "max_daily_trades_bonus": 8,  # Máximo de trades adicionales permitidos con alta confianza
-        "max_positions": 10,  # Máximo de posiciones simultáneas para diversificar riesgo
+        "max_daily_trades_bonus": 15,  # Máximo de trades adicionales con alta confianza (total: 50)
+        "max_positions": 18,  # Máximo de posiciones simultáneas para máxima diversificación
         # === CONFIGURACIÓN DE PAPER TRADING ===
-        "max_position_size_percent": 6,  # 6% del balance por posición - conservador para alta frecuencia
-        "max_total_exposure_percent": 40,  # 40% de exposición total máxima - control de riesgo
+        "max_position_size_percent": 4,  # 4% del balance por posición - más conservador con más posiciones
+        "max_total_exposure_percent": 60,  # 60% de exposición total - aprovecha diversificación
         "min_trade_value": 5.0,  # Valor mínimo por trade para asegurar calidad
         "paper_min_confidence": 75.0,  # Confianza mínima consistente con trading real
         "max_slippage": 0.03,  # Slippage máximo permitido (3%)
@@ -177,16 +177,17 @@ PROFILES = {
             "1h",
         ],  # Timeframes balanceados para análisis intraday
         "analysis_interval": 12,  # Análisis cada 12 minutos para mayor selectividad
+        # "analysis_interval": 1,  # Análisis cada 1 minuto para pruebas
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
         "min_confidence": 75.0,  # Confianza mínima balanceada para intraday
-        "max_daily_trades": 12,  # Límite optimizado para calidad sobre cantidad
+        "max_daily_trades": 25,  # Límite optimizado para aprovechar diversificación de 42 símbolos
         "max_daily_trades_adaptive": True,  # Permite trades adicionales con alta confianza
         "daily_trades_quality_threshold": 80.0,  # Umbral para trades adicionales
-        "max_daily_trades_bonus": 6,  # Máximo de trades adicionales con alta confianza
-        "max_positions": 6,  # Posiciones simultáneas para diversificación
+        "max_daily_trades_bonus": 10,  # Máximo de trades adicionales con alta confianza (total: 35)
+        "max_positions": 15,  # Posiciones simultáneas para máxima diversificación
         # === CONFIGURACIÓN DE PAPER TRADING ===
-        "max_position_size_percent": 6,  # 6% del balance por posición - conservador
-        "max_total_exposure_percent": 30,  # 30% de exposición total - muy conservador
+        "max_position_size_percent": 5,  # 5% del balance por posición - balanceado con más posiciones
+        "max_total_exposure_percent": 50,  # 50% de exposición total - aprovecha diversificación- muy conservador
         "min_trade_value": 15.0,  # Valor mínimo más alto para mejor calidad
         "paper_min_confidence": 78.0,  # Confianza consistente con trading real
         "max_slippage": 0.025,  # Slippage más estricto para intraday

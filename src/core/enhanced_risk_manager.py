@@ -326,9 +326,12 @@ class EnhancedRiskManager:
                 "volatility_adjustment_factor", 1.0
             )  # Valor por defecto si no existe
 
-            if signal.market_regime == "VOLATILE":
+            # Obtener market_regime con valor por defecto si no existe
+            market_regime = getattr(signal, "market_regime", "NORMAL")
+
+            if market_regime == "VOLATILE":
                 risk_factors["volatility_risk"] = min(0.8 * volatility_factor, 1.0)
-            elif signal.market_regime == "RANGING":
+            elif market_regime == "RANGING":
                 risk_factors["volatility_risk"] = min(0.3 * volatility_factor, 1.0)
             else:
                 risk_factors["volatility_risk"] = min(0.5 * volatility_factor, 1.0)
@@ -349,9 +352,9 @@ class EnhancedRiskManager:
             risk_factors["correlation_risk"] = 0.3
 
             # Riesgo por régimen de mercado
-            if signal.market_regime == "TRENDING":
+            if market_regime == "TRENDING":
                 risk_factors["market_regime_risk"] = 0.2
-            elif signal.market_regime == "RANGING":
+            elif market_regime == "RANGING":
                 risk_factors["market_regime_risk"] = 0.4
             else:  # VOLATILE
                 risk_factors["market_regime_risk"] = 0.8
@@ -553,12 +556,15 @@ class EnhancedRiskManager:
                 self.config.get_atr_default()
             )  # Multiplicador ATR por defecto
 
+            # Obtener market_regime con valor por defecto si no existe
+            market_regime = getattr(signal, "market_regime", "NORMAL")
+
             # Ajustar multiplicador según volatilidad
-            if signal.market_regime == "VOLATILE":
+            if market_regime == "VOLATILE":
                 atr_multiplier = (
                     self.config.get_atr_volatile()
                 )  # Más espacio en mercados volátiles
-            elif signal.market_regime == "RANGING":
+            elif market_regime == "RANGING":
                 atr_multiplier = (
                     self.config.get_atr_sideways()
                 )  # Menos espacio en mercados laterales
@@ -806,7 +812,9 @@ class EnhancedRiskManager:
             if market_risk.get("volatility_risk", 0) > 0.7:
                 recommendations.append("Alta volatilidad - Usar stops más amplios")
 
-            if not signal.volume_confirmation:
+            # Verificar confirmación de volumen
+            volume_confirmation = getattr(signal, "volume_confirmation", True)
+            if not volume_confirmation:
                 recommendations.append("Sin confirmación de volumen - Precaución")
 
             if portfolio_metrics.get("current_drawdown", 0) > 0.1:

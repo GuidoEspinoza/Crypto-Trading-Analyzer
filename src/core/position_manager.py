@@ -345,9 +345,16 @@ class PositionManager:
             result = self.capital_client.close_position(deal_id)
 
             if result.get("success"):
-                logger.info(
-                    f"🎯 Position {deal_id} closed successfully by {reason} at ${current_price:.4f}"
-                )
+                # Handle both successful closes and "already closed" cases
+                if result.get("error_type") == "already_closed":
+                    logger.info(
+                        f"🎯 Position {deal_id} was already closed - {result.get('message', 'Position resolved')}"
+                    )
+                else:
+                    logger.info(
+                        f"🎯 Position {deal_id} closed successfully by {reason} at ${current_price:.4f}"
+                    )
+                
                 self.stats["positions_managed"] += 1
 
                 # Actualizar estadísticas según la razón
@@ -361,8 +368,21 @@ class PositionManager:
                 return True
             else:
                 error_msg = result.get("error", "Unknown error")
-                logger.error(f"❌ Failed to close position {deal_id}: {error_msg}")
-                return False
+                error_type = result.get("error_type", "unknown")
+                
+                # Handle specific error types gracefully
+                if error_type == "already_closed":
+                    logger.info(f"🎯 Position {deal_id} already closed - treating as success")
+                    return True
+                elif error_type == "session":
+                    logger.warning(f"⚠️ Session error closing position {deal_id} - will retry later")
+                    return False
+                elif error_type == "network":
+                    logger.warning(f"⚠️ Network error closing position {deal_id} - will retry later")
+                    return False
+                else:
+                    logger.error(f"❌ Failed to close position {deal_id}: {error_msg}")
+                    return False
 
         except Exception as e:
             logger.error(f"❌ Error closing position {trade_id}: {e}")

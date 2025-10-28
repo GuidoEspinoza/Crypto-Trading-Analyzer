@@ -66,7 +66,7 @@ class TradingStrategy(ABC):
         pass
 
     def get_market_data(
-        self, symbol: str, timeframe: str = "1h", limit: int = 100
+        self, symbol: str, timeframe: str = "1h", limit: int = 250
     ) -> pd.DataFrame:
         """Obtener datos de mercado usando Capital.com - EVITA LOOP INFINITO"""
         try:
@@ -661,11 +661,16 @@ class EnhancedTradingStrategy(TradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                adx_data = ta.adx(high_float, low_float, close_float)
+                adx_data = ta.adx(high_float, low_float, close_float, length=14)
             if adx_data is not None and not adx_data.empty:
-                adx_value = (
-                    adx_data["ADX_14"].iloc[-1] if "ADX_14" in adx_data.columns else 25
-                )
+                # Buscar la columna ADX dinámicamente
+                adx_columns = [
+                    col for col in adx_data.columns if col.startswith("ADX_")
+                ]
+                if adx_columns:
+                    adx_value = adx_data[adx_columns[0]].iloc[-1]
+                else:
+                    adx_value = 25
             else:
                 adx_value = 25
 
@@ -976,7 +981,7 @@ class EnhancedTradingStrategy(TradingStrategy):
 
         # Aplicar filtros si están habilitados
         if self.signal_filter:
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            df = self.get_market_data(symbol, timeframe, limit=250)
             return self.signal_filter.filter_signal(original_signal, df)
         else:
             # Sin filtros, crear FilteredSignal básico

@@ -67,9 +67,9 @@ class TrendFollowingProfessional:
 
         # ADX para fuerza de tendencia
         adx_data = ta.adx(df["high"], df["low"], df["close"], length=self.adx_period)
-        df["adx"] = adx_data["ADX_14"]
-        df["di_plus"] = adx_data["DMP_14"]
-        df["di_minus"] = adx_data["DMN_14"]
+        df["adx"] = adx_data[f"ADX_{self.adx_period}"]
+        df["di_plus"] = adx_data[f"DMP_{self.adx_period}"]
+        df["di_minus"] = adx_data[f"DMN_{self.adx_period}"]
 
         # RSI para momentum
         df["rsi"] = ta.rsi(df["close"], length=self.rsi_period)
@@ -193,6 +193,8 @@ class TrendFollowingProfessional:
                 "aligned": True,
                 "consensus": 1.0,
                 "details": "MTF validation disabled",
+                "has_conflict": False,
+                "conflict_details": [],
             }
 
         timeframe_analysis = {}
@@ -206,7 +208,7 @@ class TrendFollowingProfessional:
         # Analizar cada timeframe
         for tf in timeframes:
             try:
-                df = self.get_market_data(symbol, tf, limit=200)
+                df = self.get_market_data(symbol, tf, limit=250)
                 if df.empty or len(df) < self.ema_slow:
                     logger.warning(f"⚠️ Datos insuficientes para {symbol} en {tf}")
                     continue
@@ -243,6 +245,8 @@ class TrendFollowingProfessional:
                 "aligned": False,
                 "consensus": 0.0,
                 "details": "Insufficient timeframes",
+                "has_conflict": False,
+                "conflict_details": [],
             }
 
         # Calcular consenso de direcciones

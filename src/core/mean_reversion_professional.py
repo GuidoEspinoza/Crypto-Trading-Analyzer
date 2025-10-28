@@ -135,7 +135,7 @@ class MeanReversionProfessional:
         self.max_trend_strength = 0.3  # Para mercados laterales
 
     def get_market_data(
-        self, symbol: str, timeframe: str, periods: int = 100
+        self, symbol: str, timeframe: str, periods: int = 250
     ) -> pd.DataFrame:
         """
         Obtener datos de mercado - será sobrescrito por el adaptador

@@ -1187,11 +1187,79 @@ class CapitalClient:
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
 
+    def find_position_by_symbol(self, symbol: str) -> Dict[str, Any]:
+        """
+        Find open positions for a specific symbol
+        
+        Args:
+            symbol: The symbol to search for (e.g., 'EURUSD')
+            
+        Returns:
+            Dict containing matching positions or error
+        """
+        positions_result = self.get_positions()
+        
+        if not positions_result.get("success"):
+            return positions_result
+            
+        positions = positions_result.get("positions", [])
+        
+        # Convert symbol to Capital.com format for comparison
+        capital_symbol = self.get_capital_symbol(symbol)
+        
+        # Find positions matching the symbol
+        matching_positions = []
+        for position in positions:
+            position_epic = position.get("epic", "")
+            if position_epic == capital_symbol:
+                matching_positions.append(position)
+                
+        return {
+            "success": True,
+            "positions": matching_positions,
+            "symbol": symbol,
+            "capital_symbol": capital_symbol,
+            "count": len(matching_positions)
+        }
+
+    def find_position_by_deal_id(self, deal_id: str) -> Dict[str, Any]:
+        """
+        Find a specific position by deal ID
+        
+        Args:
+            deal_id: The deal ID to search for
+            
+        Returns:
+            Dict containing the position or error
+        """
+        positions_result = self.get_positions()
+        
+        if not positions_result.get("success"):
+            return positions_result
+            
+        positions = positions_result.get("positions", [])
+        
+        # Find position with matching deal ID
+        for position in positions:
+            if position.get("dealId") == deal_id:
+                return {
+                    "success": True,
+                    "position": position,
+                    "found": True
+                }
+                
+        return {
+            "success": True,
+            "position": None,
+            "found": False,
+            "message": f"Position with deal ID {deal_id} not found"
+        }
+
     def close_position(
         self, deal_id: str, direction: str = None, size: float = None
     ) -> Dict[str, Any]:
         """
-        Close an existing position using DELETE method
+        Close an existing position using DELETE method with pre-verification
 
         Args:
             deal_id: Deal ID of the position to close
@@ -1202,7 +1270,31 @@ class CapitalClient:
             Dict containing close result
         """
         if not self._ensure_valid_session():
-            return {"success": False, "error": "Failed to establish valid session"}
+            return {"success": False, "error": "Failed to establish valid session", "error_type": "session"}
+
+        # First, verify the position exists before attempting to close it
+        logger.info(f"Verifying position {deal_id} exists before closing")
+        position_check = self.find_position_by_deal_id(deal_id)
+        
+        if not position_check["success"]:
+            # Error getting positions (session, network, etc.)
+            logger.error(f"Failed to verify position {deal_id}: {position_check.get('error')}")
+            return position_check
+        
+        if not position_check.get("found", False):
+            # Position not found - already closed or invalid
+            logger.warning(f"⚠️ Position {deal_id} not found - already closed or invalid")
+            return {
+                "success": True,  # Treat as success since position is already closed
+                "deal_id": deal_id,
+                "error_type": "already_closed",
+                "message": "Position already closed or not found"
+            }
+
+        # Position exists, proceed with closing
+        position_data = position_check["position"]
+        logger.info(f"Position {deal_id} verified - Symbol: {position_data.get('market', {}).get('instrumentName')}, "
+                   f"Direction: {position_data.get('direction')}, Size: {position_data.get('size')}")
 
         # Use DELETE method with deal_id in URL path as per Capital.com API documentation
         url = f"{self.base_url}/positions/{deal_id}"
@@ -1219,16 +1311,63 @@ class CapitalClient:
                     "deal_reference": result.get("dealReference"),
                     "deal_id": deal_id,
                     "response": result,
+                    "position_data": position_data  # Include original position data
                 }
             else:
+                # Parse error response to get specific error details
+                error_details = self._parse_api_error(response)
                 error_msg = f"Failed to close position: {response.status_code} - {response.text}"
+                
+                # Handle specific error types
+                if error_details.get("errorCode") == "error.invalid.dealId":
+                    logger.warning(f"⚠️ Position {deal_id} became invalid during close attempt - marking as resolved")
+                    return {
+                        "success": True,  # Treat as success since position is no longer available
+                        "deal_id": deal_id,
+                        "error_type": "already_closed",
+                        "message": "Position became invalid during close attempt"
+                    }
+                
                 logger.error(error_msg)
-                return {"success": False, "error": error_msg}
+                return {
+                    "success": False, 
+                    "error": error_msg,
+                    "error_type": error_details.get("errorCode", "api_error"),
+                    "error_details": error_details,
+                    "position_data": position_data
+                }
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Network error closing position: {str(e)}"
             logger.error(error_msg)
-            return {"success": False, "error": error_msg}
+            return {"success": False, "error": error_msg, "error_type": "network", "position_data": position_data}
+
+    def _parse_api_error(self, response) -> Dict[str, Any]:
+        """
+        Parse API error response to extract error details
+        
+        Args:
+            response: HTTP response object
+            
+        Returns:
+            Dict containing parsed error details
+        """
+        try:
+            if response.headers.get('content-type', '').startswith('application/json'):
+                error_data = response.json()
+                return {
+                    "errorCode": error_data.get("errorCode", "unknown"),
+                    "errorMessage": error_data.get("errorMessage", ""),
+                    "status_code": response.status_code
+                }
+        except (ValueError, KeyError):
+            pass
+        
+        return {
+            "errorCode": "parse_error",
+            "errorMessage": response.text,
+            "status_code": response.status_code
+        }
 
     def is_market_tradeable(self, symbol: str) -> Dict[str, Any]:
         """

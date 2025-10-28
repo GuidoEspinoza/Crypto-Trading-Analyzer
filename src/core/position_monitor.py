@@ -338,9 +338,11 @@ class PositionMonitor:
             if trade_id in self.failed_close_attempts:
                 if self.failed_close_attempts[trade_id] >= self.max_close_attempts:
                     logger.warning(
-                        f"⚠️ Trade {trade_id} marked as processed after {self.max_close_attempts} failed attempts"
+                        f"⚠️ Trade {trade_id} marked as processed after {self.max_close_attempts} failed attempts - continuing monitoring"
                     )
                     self.processed_trades.add(trade_id)
+                    # Clear from failed attempts to avoid memory buildup
+                    del self.failed_close_attempts[trade_id]
                     return
 
             logger.info(
@@ -349,32 +351,43 @@ class PositionMonitor:
             )
 
             # Ejecutar cierre usando PositionManager
-            success = self.position_manager.close_position(
-                trade_id, current_price, close_reason
-            )
+            try:
+                success = self.position_manager.close_position(
+                    trade_id, current_price, close_reason
+                )
 
-            if success:
-                logger.info(f"✅ Position {trade_id} closed successfully")
-                # Marcar como procesado exitosamente
-                self.processed_trades.add(trade_id)
-                # Limpiar contador de intentos fallidos si existía
-                if trade_id in self.failed_close_attempts:
-                    del self.failed_close_attempts[trade_id]
+                if success:
+                    logger.info(f"✅ Position {trade_id} closed successfully")
+                    # Marcar como procesado exitosamente
+                    self.processed_trades.add(trade_id)
+                    # Limpiar contador de intentos fallidos si existía
+                    if trade_id in self.failed_close_attempts:
+                        del self.failed_close_attempts[trade_id]
 
-                # Actualizar estadísticas del monitor
-                if close_reason == "TAKE_PROFIT":
-                    self.stats["tp_executed"] += 1
-                elif close_reason in ["STOP_LOSS", "TRAILING_STOP"]:
-                    self.stats["sl_executed"] += 1
-            else:
-                # Incrementar contador de intentos fallidos
+                    # Actualizar estadísticas del monitor
+                    if close_reason == "TAKE_PROFIT":
+                        self.stats["tp_executed"] += 1
+                    elif close_reason in ["STOP_LOSS", "TRAILING_STOP"]:
+                        self.stats["sl_executed"] += 1
+                else:
+                    # Incrementar contador de intentos fallidos
+                    if trade_id not in self.failed_close_attempts:
+                        self.failed_close_attempts[trade_id] = 0
+                    self.failed_close_attempts[trade_id] += 1
+
+                    logger.error(
+                        f"❌ Failed to close position {trade_id} "
+                        f"(attempt {self.failed_close_attempts[trade_id]}/{self.max_close_attempts})"
+                    )
+                    
+            except Exception as e:
+                logger.error(f"❌ Exception while closing position {trade_id}: {str(e)}")
+                # Treat exceptions as failed attempts but don't crash
                 if trade_id not in self.failed_close_attempts:
                     self.failed_close_attempts[trade_id] = 0
                 self.failed_close_attempts[trade_id] += 1
-
                 logger.error(
-                    f"❌ Failed to close position {trade_id} "
-                    f"(attempt {self.failed_close_attempts[trade_id]}/{self.max_close_attempts})"
+                    f"❌ Failed to close position {trade_id} due to exception (attempt {self.failed_close_attempts[trade_id]}/{self.max_close_attempts})"
                 )
         else:
             # Log de estado (solo cada minuto para evitar spam)

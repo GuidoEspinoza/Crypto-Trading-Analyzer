@@ -25,6 +25,8 @@ from src.config.main_config import (
     PAPER_TRADING_ONLY,
     ENABLE_REAL_TRADING,
     VERBOSE_LOGGING,
+)
+from src.config.time_trading_config import (
     is_smart_trading_hours_allowed,
     _detect_market_type,
 )
@@ -321,7 +323,9 @@ class PaperTrader:
 
             # 🕐 Validar horarios inteligentes por tipo de mercado
             market_type = _detect_market_type(signal.symbol)
-            is_allowed, reason = is_smart_trading_hours_allowed(signal.symbol)
+            trading_hours_result = is_smart_trading_hours_allowed(signal.symbol)
+            is_allowed = trading_hours_result.get("is_allowed", True)
+            reason = trading_hours_result.get("reason", "Unknown reason")
 
             if not is_allowed:
                 self.logger.info(f"⏰ {signal.symbol} ({market_type}): {reason}")
