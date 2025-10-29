@@ -722,9 +722,9 @@ class TrendFollowingProfessional:
             )
 
             # 9. Filtros básicos de calidad MEJORADOS
-            if signal.confidence_score < 75.0:  # AUMENTADO de 65% a 75%
+            if signal.confidence_score < 60.0:  # AJUSTADO temporalmente de 75% a 60%
                 logger.info(
-                    f"Señal para {symbol} no alcanza confianza mínima (75%): {signal.confidence_score:.1f}%"
+                    f"Señal para {symbol} no alcanza confianza mínima (60%): {signal.confidence_score:.1f}%"
                 )
                 return None
 
@@ -746,29 +746,6 @@ class TrendFollowingProfessional:
         except Exception as e:
             logger.error(f"Error en análisis de {symbol}: {str(e)}")
             return None
-
-
-# Ejemplo de uso
-if __name__ == "__main__":
-    strategy = TrendFollowingProfessional()
-
-    # Simular análisis (requiere integración con datos reales)
-    signal = strategy.analyze("BTCUSD")
-
-    if signal:
-        print(f"📊 SEÑAL PROFESIONAL GENERADA:")
-        print(f"Símbolo: {signal.symbol}")
-        print(f"Señal: {signal.signal_type}")
-        print(f"Precio: ${signal.price:.2f}")
-        print(f"Confianza: {signal.confidence_score:.1f}%")
-        print(f"Calidad: {signal.quality.value}")
-        print(f"Stop Loss: ${signal.stop_loss_price:.2f}")
-        print(f"Take Profit: ${signal.take_profit_price:.2f}")
-        print(f"R/R Ratio: {signal.risk_reward_ratio:.2f}")
-        print(f"Confluencias: {signal.confluence_count}")
-        print(f"Detalles: {', '.join(signal.confluence_details)}")
-    else:
-        print("❌ No se generó señal o no pasó los filtros profesionales")
 
     def detect_sideways_market(self, df: pd.DataFrame) -> Dict:
         """🔍 Detecta mercados laterales para evitar trades innecesarios"""
@@ -804,13 +781,21 @@ if __name__ == "__main__":
             ) / recent_data["close"].mean()
 
             # 2. Análisis de EMAs - mercado lateral si están muy cerca
-            current_ema21 = df["ema_21"].iloc[-1]
-            current_ema50 = df["ema_50"].iloc[-1]
-            current_ema200 = df["ema_200"].iloc[-1]
+            current_ema21 = df["ema_21"].iloc[-1] if not pd.isna(df["ema_21"].iloc[-1]) else None
+            current_ema50 = df["ema_50"].iloc[-1] if not pd.isna(df["ema_50"].iloc[-1]) else None
+            current_ema200 = df["ema_200"].iloc[-1] if not pd.isna(df["ema_200"].iloc[-1]) else None
 
-            # Calcular distancias entre EMAs
-            ema_21_50_distance = abs(current_ema21 - current_ema50) / current_ema50
-            ema_50_200_distance = abs(current_ema50 - current_ema200) / current_ema200
+            # Calcular distancias entre EMAs (solo si ambos valores son válidos)
+            ema_21_50_distance = (
+                abs(current_ema21 - current_ema50) / current_ema50
+                if current_ema21 is not None and current_ema50 is not None and current_ema50 != 0
+                else 1.0  # Valor por defecto que indica EMAs no convergentes
+            )
+            ema_50_200_distance = (
+                abs(current_ema50 - current_ema200) / current_ema200
+                if current_ema50 is not None and current_ema200 is not None and current_ema200 != 0
+                else 1.0  # Valor por defecto que indica EMAs no convergentes
+            )
 
             # 3. Análisis de ADX - valores bajos indican mercado lateral
             current_adx = df["adx"].iloc[-1] if not pd.isna(df["adx"].iloc[-1]) else 25
@@ -907,17 +892,19 @@ if __name__ == "__main__":
 
             avg_true_range = np.mean(true_ranges) if true_ranges else 0
 
-            # 4. Criterios de volatilidad mínima
-            min_atr_normalized = 0.015  # 1.5% mínimo
-            min_historical_vol = 0.20  # 20% anualizada mínima
-            min_true_range = 0.012  # 1.2% rango verdadero mínimo
+            # 4. Criterios de volatilidad mínima (ajustados para ser más realistas)
+            min_atr_normalized = 0.008  # 0.8% mínimo (reducido de 1.5%)
+            min_historical_vol = 0.05   # 5% anualizada mínima (reducido de 20%)
+            min_true_range = 0.008      # 0.8% rango verdadero mínimo (reducido de 1.2%)
 
-            # 5. Evaluación
-            sufficient_volatility = (
-                atr_normalized >= min_atr_normalized
-                and historical_volatility >= min_historical_vol
-                and avg_true_range >= min_true_range
-            )
+            # 5. Evaluación (al menos 2 de 3 criterios deben cumplirse)
+            volatility_criteria = [
+                atr_normalized >= min_atr_normalized,
+                historical_volatility >= min_historical_vol,
+                avg_true_range >= min_true_range
+            ]
+            
+            sufficient_volatility = sum(volatility_criteria) >= 2
 
             return {
                 "sufficient_volatility": sufficient_volatility,
@@ -1037,3 +1024,26 @@ if __name__ == "__main__":
                 "current_time": datetime.now(),
                 "market_status": "error_default_open",
             }
+
+
+# Ejemplo de uso
+if __name__ == "__main__":
+    strategy = TrendFollowingProfessional()
+
+    # Simular análisis (requiere integración con datos reales)
+    signal = strategy.analyze("BTCUSD")
+
+    if signal:
+        print(f"📊 SEÑAL PROFESIONAL GENERADA:")
+        print(f"Símbolo: {signal.symbol}")
+        print(f"Señal: {signal.signal_type}")
+        print(f"Precio: ${signal.price:.2f}")
+        print(f"Confianza: {signal.confidence_score:.1f}%")
+        print(f"Calidad: {signal.quality.value}")
+        print(f"Stop Loss: ${signal.stop_loss_price:.2f}")
+        print(f"Take Profit: ${signal.take_profit_price:.2f}")
+        print(f"R/R Ratio: {signal.risk_reward_ratio:.2f}")
+        print(f"Confluencias: {signal.confluence_count}")
+        print(f"Detalles: {', '.join(signal.confluence_details)}")
+    else:
+        print("❌ No se generó señal o no pasó los filtros profesionales")

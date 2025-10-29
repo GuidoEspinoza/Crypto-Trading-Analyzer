@@ -163,7 +163,7 @@ class ConsensusStrategy:
         """
         try:
             if self.capital_client:
-                # Crear un método get_market_data que use el capital_client
+                # Crear un método get_market_data que use datos históricos reales
                 def get_market_data(
                     symbol: str,
                     timeframe: str,
@@ -174,8 +174,92 @@ class ConsensusStrategy:
                     try:
                         # Usar limit si se proporciona, sino usar periods
                         data_points = limit if limit is not None else periods
-
-                        # Obtener datos de mercado usando capital_client
+                        
+                        # Mapear timeframe a resolución de Capital.com
+                        timeframe_mapping = {
+                            "1m": "MINUTE",
+                            "5m": "MINUTE_5", 
+                            "15m": "MINUTE_15",
+                            "30m": "MINUTE_30",
+                            "1h": "HOUR",
+                            "4h": "HOUR_4",
+                            "1d": "DAY",
+                            "1w": "WEEK"
+                        }
+                        
+                        resolution = timeframe_mapping.get(timeframe, "HOUR")
+                        
+                        # Intentar obtener datos históricos reales
+                        logger.info(f"📊 Obteniendo datos históricos para {symbol} ({resolution}, {data_points} puntos)")
+                        
+                        historical_result = self.capital_client.get_historical_prices(
+                            epic=symbol,
+                            resolution=resolution,
+                            max_points=min(data_points, 1000)  # API limit
+                        )
+                        
+                        if historical_result.get("success") and historical_result.get("prices"):
+                            import pandas as pd
+                            from datetime import datetime
+                            
+                            prices = historical_result["prices"]
+                            logger.info(f"✅ Obtenidos {len(prices)} puntos históricos para {symbol}")
+                            
+                            # Convertir a DataFrame
+                            data = []
+                            for price_point in historical_result.get("prices", []):
+                                try:
+                                    # Los datos ya vienen procesados por capital_client.py
+                                    # con la estructura: timestamp, open, high, low, close, volume
+                                    
+                                    # Parsear timestamp
+                                    timestamp_str = price_point.get("timestamp", price_point.get("timestamp_utc", ""))
+                                    timestamp = pd.to_datetime(timestamp_str)
+                                    
+                                    # Los precios ya están calculados como mid en capital_client.py
+                                    open_val = price_point.get("open", 0.0)
+                                    close_val = price_point.get("close", 0.0)
+                                    high_val = price_point.get("high", 0.0)
+                                    low_val = price_point.get("low", 0.0)
+                                    volume_val = price_point.get("volume", 0)
+                                    
+                                    data.append({
+                                        "timestamp": timestamp,
+                                        "open": float(open_val),
+                                        "high": float(high_val),
+                                        "low": float(low_val),
+                                        "close": float(close_val),
+                                        "volume": float(volume_val)
+                                    })
+                                except (ValueError, TypeError) as e:
+                                    logger.warning(f"Error procesando punto de precio: {e}")
+                                    continue
+                            
+                            if data:
+                                df = pd.DataFrame(data)
+                                df.set_index("timestamp", inplace=True)
+                                df.sort_index(inplace=True)
+                                
+                                # Debug: mostrar información detallada
+                                logger.info(f"🔍 DataFrame procesado: {len(df)} filas")
+                                if not df.empty:
+                                    logger.info(f"🔍 Último precio close: {df['close'].iloc[-1]}")
+                                    logger.info(f"🔍 Primeras 3 filas:\n{df.head(3)}")
+                                    logger.info(f"🔍 Últimas 3 filas:\n{df.tail(3)}")
+                                
+                                # Validar que tenemos datos válidos
+                                if not df.empty and df["close"].iloc[-1] > 0:
+                                    logger.info(f"✅ DataFrame creado: {len(df)} filas, precio actual: ${df['close'].iloc[-1]:.2f}")
+                                    return df
+                                else:
+                                    logger.warning(f"⚠️ Datos históricos inválidos para {symbol} - DataFrame vacío: {df.empty}, último close: {df['close'].iloc[-1] if not df.empty else 'N/A'}")
+                            else:
+                                logger.warning(f"⚠️ No se pudieron procesar datos históricos para {symbol}")
+                        else:
+                            logger.warning(f"⚠️ No se obtuvieron datos históricos para {symbol}: {historical_result.get('error', 'Error desconocido')}")
+                        
+                        # Fallback: intentar obtener precio actual y generar datos simulados
+                        logger.info(f"🔄 Fallback: obteniendo precio actual para {symbol}")
                         market_data = self.capital_client.get_market_data([symbol])
 
                         if market_data and symbol in market_data:
@@ -183,7 +267,7 @@ class ConsensusStrategy:
                             current_price = None
 
                             # Intentar obtener precio válido
-                            for price_key in ["bid", "offer", "mid"]:
+                            for price_key in ["mid", "bid", "offer"]:
                                 if (
                                     price_key in price_data
                                     and price_data[price_key] is not None
@@ -199,35 +283,39 @@ class ConsensusStrategy:
                                 # Crear DataFrame básico con datos simulados para compatibilidad
                                 import pandas as pd
                                 from datetime import datetime, timedelta
+                                
+                                logger.info(f"🔄 Generando datos simulados para {symbol} basados en precio actual: ${current_price:.2f}")
 
                                 timestamps = [
                                     datetime.now() - timedelta(hours=i)
                                     for i in range(data_points, 0, -1)
                                 ]
                                 data = []
-                                for ts in timestamps:
-                                    # Variación pequeña alrededor del precio actual
-                                    variation = 0.01 * (
-                                        0.5 - abs(hash(str(ts)) % 100) / 100
+                                for i, ts in enumerate(timestamps):
+                                    # Variación más realista basada en volatilidad típica
+                                    variation = 0.02 * (
+                                        0.5 - abs(hash(str(ts) + str(i)) % 100) / 100
                                     )
                                     price = current_price * (1 + variation)
                                     data.append(
                                         {
                                             "timestamp": ts,
                                             "open": price,
-                                            "high": price * 1.005,
-                                            "low": price * 0.995,
+                                            "high": price * 1.01,
+                                            "low": price * 0.99,
                                             "close": price,
-                                            "volume": 1000,
+                                            "volume": 1000 + (i * 10),
                                         }
                                     )
 
                                 df = pd.DataFrame(data)
                                 df.set_index("timestamp", inplace=True)
                                 df.sort_index(inplace=True)
+                                logger.info(f"✅ Datos simulados generados: {len(df)} filas")
                                 return df
 
                         # Si no se pueden obtener datos, retornar DataFrame vacío
+                        logger.error(f"❌ No se pudieron obtener datos para {symbol}")
                         import pandas as pd
 
                         return pd.DataFrame(
@@ -235,7 +323,7 @@ class ConsensusStrategy:
                         )
 
                     except Exception as e:
-                        logger.warning(
+                        logger.error(
                             f"Error obteniendo datos de mercado para {symbol}: {e}"
                         )
                         import pandas as pd

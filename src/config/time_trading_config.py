@@ -23,6 +23,24 @@ Versión: 2.0
 import pytz
 from datetime import time
 
+# Importar configuración de símbolos para mantener consistencia
+from .symbols_config import (
+    GLOBAL_SYMBOLS,
+    CRYPTO_MAJOR,
+    CRYPTO_LARGE_CAP,
+    CRYPTO_EMERGING,
+    FOREX_MAJOR,
+    FOREX_MINOR,
+    FOREX_EXOTIC,
+    METALS_PRECIOUS,
+    ENERGY_COMMODITIES,
+    AGRICULTURAL,
+    METALS_INDUSTRIAL,
+    INDICES_US,
+    INDICES_EUROPE,
+    INDICES_ASIA,
+)
+
 # ============================================================================
 # 🌍 CONFIGURACIÓN DE ZONA HORARIA
 # ============================================================================
@@ -268,6 +286,39 @@ def get_schedule_info() -> dict:
 # 🌍 CONFIGURACIÓN ESPECÍFICA POR TIPO DE MERCADO
 # ============================================================================
 
+# Función auxiliar para obtener símbolos por categoría desde GLOBAL_SYMBOLS
+def _get_symbols_by_category(category_type: str) -> list:
+    """
+    Obtiene símbolos de GLOBAL_SYMBOLS filtrados por categoría.
+    
+    Args:
+        category_type: Tipo de categoría ('crypto', 'forex', 'commodities', 'indices')
+    
+    Returns:
+        list: Lista de símbolos de la categoría especificada
+    """
+    if category_type == "crypto":
+        # Obtener todos los símbolos crypto de GLOBAL_SYMBOLS
+        crypto_symbols = CRYPTO_MAJOR + CRYPTO_LARGE_CAP[:4] + CRYPTO_EMERGING[:2]
+        return crypto_symbols
+    
+    elif category_type == "forex":
+        # Obtener todos los símbolos forex de GLOBAL_SYMBOLS
+        forex_symbols = FOREX_MAJOR + FOREX_MINOR[:3] + FOREX_EXOTIC[:2]
+        return forex_symbols
+    
+    elif category_type == "commodities":
+        # Obtener todos los símbolos commodities de GLOBAL_SYMBOLS
+        commodities_symbols = METALS_PRECIOUS + ENERGY_COMMODITIES[:2] + AGRICULTURAL[:2] + METALS_INDUSTRIAL[:2]
+        return commodities_symbols
+    
+    elif category_type == "indices":
+        # Obtener todos los símbolos índices de GLOBAL_SYMBOLS
+        indices_symbols = INDICES_US + INDICES_EUROPE[:2] + INDICES_ASIA[:2]
+        return indices_symbols
+    
+    return []
+
 # Configuración optimizada según volatilidad y características de cada mercado
 MARKET_SPECIFIC_CONFIG = {
     "crypto": {
@@ -290,7 +341,8 @@ MARKET_SPECIFIC_CONFIG = {
                 "end": time(2, 0),
             },  # Actividad nocturna weekend
         },
-        "optimal_symbols": ["BTCUSD", "ETHUSD", "ADAUSD", "SOLUSD"],
+        # Usar símbolos principales de crypto desde GLOBAL_SYMBOLS
+        "optimal_symbols": CRYPTO_MAJOR[:4],  # Top 4 crypto principales
         "min_confidence_adjustment": -5.0,  # Reducir 5% confianza mínima (más oportunidades)
         "max_trades_multiplier": 1.3,  # 30% más trades permitidos
     },
@@ -311,7 +363,8 @@ MARKET_SPECIFIC_CONFIG = {
             },  # Overlap principal
             "asian_close": {"start": time(7, 0), "end": time(9, 0)},  # Cierre asiático
         },
-        "optimal_symbols": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"],
+        # Usar símbolos principales de forex desde GLOBAL_SYMBOLS
+        "optimal_symbols": FOREX_MAJOR[:4],  # Top 4 pares mayores
         "min_confidence_adjustment": 0.0,  # Sin ajuste (mantener estándar)
         "max_trades_multiplier": 1.0,  # Sin multiplicador
     },
@@ -328,7 +381,8 @@ MARKET_SPECIFIC_CONFIG = {
                 "end": time(16, 0),
             },  # Actividad general
         },
-        "optimal_symbols": ["GOLD", "SILVER", "OIL", "COPPER"],
+        # Usar símbolos principales de commodities desde GLOBAL_SYMBOLS
+        "optimal_symbols": METALS_PRECIOUS + ENERGY_COMMODITIES[:2] + METALS_INDUSTRIAL[:1],  # Metales preciosos + energía + industrial
         "min_confidence_adjustment": 2.0,  # Aumentar 2% confianza (más conservador)
         "max_trades_multiplier": 0.8,  # 20% menos trades (más selectivo)
     },

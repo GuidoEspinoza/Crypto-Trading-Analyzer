@@ -22,6 +22,7 @@ Versión: 2.0
 
 # 🚨 IMPORTANTE: Cambiar este valor modifica todo el comportamiento del bot
 # Este es el único lugar donde se debe cambiar el perfil de trading
+# TRADING_PROFILE = "SCALPING"  # Opciones disponibles: "SCALPING", "INTRADAY"
 TRADING_PROFILE = "INTRADAY"  # Opciones disponibles: "SCALPING", "INTRADAY"
 
 # ============================================================================
@@ -50,10 +51,10 @@ PROFILES = {
         "daily_trades_quality_threshold": 80.0,  # Umbral de confianza para trades adicionales
         "max_daily_trades_bonus": 15,  # Máximo de trades adicionales con alta confianza (total: 50)
         "max_positions": 18,  # Máximo de posiciones simultáneas para máxima diversificación
-        # === CONFIGURACIÓN DE PAPER TRADING ===
-        "max_position_size_percent": 4,  # 4% del balance por posición - más conservador con más posiciones
-        "max_total_exposure_percent": 60,  # 60% de exposición total - aprovecha diversificación
-        "min_trade_value": 5.0,  # Valor mínimo por trade para asegurar calidad
+        # === CONFIGURACIÓN DE PAPER TRADING - OPTIMIZADA PARA SCALPING ===
+        "max_position_size_percent": 8,  # 8% del balance por posición - OPTIMIZADO (era 4%)
+        "max_total_exposure_percent": 80,  # 80% de exposición total - OPTIMIZADO (era 60%)
+        "min_trade_value": 25.0,  # Valor mínimo por trade - OPTIMIZADO (era 5.0)
         "paper_min_confidence": 75.0,  # Confianza mínima consistente con trading real
         "max_slippage": 0.03,  # Slippage máximo permitido (3%)
         "min_liquidity": 8.0,  # Liquidez mínima requerida para ejecución
@@ -78,18 +79,18 @@ PROFILES = {
         "dynamic_position_sizing": True,  # Activar dimensionamiento dinámico de posiciones
         # === CONFIGURACIÓN DE CAPITAL.COM ===
         "use_trailing_stop": True,  # Usar trailing stops nativos de Capital.com
-        # === CONFIGURACIÓN DE TP/SL BASADO EN ROI ===
+        # === CONFIGURACIÓN DE TP/SL BASADO EN ROI - OPTIMIZADA PARA SCALPING ===
         # Los porcentajes son sobre el balance total invertido, no sobre el precio del activo
-        "tp_min_percent": 0.35,  # Take Profit mínimo: 0.35% ROI del balance
-        "tp_max_percent": 1.5,  # Take Profit máximo: 1.5% ROI del balance
-        "sl_min_percent": 0.3,  # Stop Loss mínimo: 0.3% ROI del balance
-        "sl_max_percent": 0.8,  # Stop Loss máximo: 0.8% ROI del balance
+        "tp_min_percent": 0.5,  # Take Profit mínimo: 0.5% ROI - OPTIMIZADO (era 0.35%)
+        "tp_max_percent": 2.0,  # Take Profit máximo: 2.0% ROI - OPTIMIZADO (era 1.5%)
+        "sl_min_percent": 0.4,  # Stop Loss mínimo: 0.4% ROI - OPTIMIZADO (era 0.3%)
+        "sl_max_percent": 1.0,  # Stop Loss máximo: 1.0% ROI - OPTIMIZADO (era 0.8%)
         "tp_increment_percent": 1.2,  # Factor de incremento para TP dinámico
         "tp_confidence_threshold": 0.65,  # Umbral de confianza para ajustar TP
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
-        "max_daily_loss_percent": 3.0,  # Pérdida máxima diaria permitida
+        "max_daily_loss_percent": 4.5,  # Pérdida máxima diaria - OPTIMIZADA (era 3.0%)
         "min_confidence_threshold": 0.78,  # Umbral mínimo de confianza para operar
-        "position_size_multiplier": 0.8,  # Multiplicador conservador para tamaño de posición
+        "position_size_multiplier": 1.5,  # Multiplicador OPTIMIZADO para scalping (era 0.8)
         # === CONFIGURACIÓN DE ESTRATEGIAS ===
         "default_min_confidence": 70.0,  # Confianza mínima por defecto para estrategias
         "default_atr_period": 14,  # Período ATR estándar para cálculos
@@ -186,9 +187,9 @@ PROFILES = {
         "max_daily_trades_bonus": 10,  # Máximo de trades adicionales con alta confianza (total: 35)
         "max_positions": 15,  # Posiciones simultáneas para máxima diversificación
         # === CONFIGURACIÓN DE PAPER TRADING ===
-        "max_position_size_percent": 5,  # 5% del balance por posición - balanceado con más posiciones
-        "max_total_exposure_percent": 50,  # 50% de exposición total - aprovecha diversificación- muy conservador
-        "min_trade_value": 15.0,  # Valor mínimo más alto para mejor calidad
+        "max_position_size_percent": 12,  # 12% del balance por posición - OPTIMIZADO PARA MEJORES RETORNOS
+        "max_total_exposure_percent": 75,  # 75% de exposición total - OPTIMIZADO PARA MEJORES RETORNOS
+        "min_trade_value": 50.0,  # Valor mínimo más alto para mejor calidad - OPTIMIZADO
         "paper_min_confidence": 78.0,  # Confianza consistente con trading real
         "max_slippage": 0.025,  # Slippage más estricto para intraday
         "min_liquidity": 12.0,  # Liquidez más alta requerida
@@ -216,15 +217,15 @@ PROFILES = {
         # === CONFIGURACIÓN DE TP/SL BASADO EN ROI OPTIMIZADO ===
         # Relación Riesgo:Recompensa 2:1 optimizada para criptomonedas
         "tp_min_percent": 1.5,  # Take Profit mínimo: 1.5% ROI - realista para crypto
-        "tp_max_percent": 3.5,  # Take Profit máximo: 3.5% ROI - apropiado para volatilidad
+        "tp_max_percent": 4.5,  # Take Profit máximo: 4.5% ROI - ligeramente mayor (era 3.5%)
         "sl_min_percent": 1.2,  # Stop Loss mínimo: 1.2% ROI - apropiado para crypto
-        "sl_max_percent": 2.5,  # Stop Loss máximo: 2.5% ROI - evita stops prematuros
+        "sl_max_percent": 2.0,  # Stop Loss máximo: 2.0% ROI - más estricto para posiciones grandes (era 2.5%)
         "tp_increment_percent": 1.0,  # Factor de incremento TP balanceado
         "tp_confidence_threshold": 0.72,  # Umbral moderado para ajustar TP
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
-        "max_daily_loss_percent": 4.0,  # Pérdida máxima diaria balanceada
+        "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria ajustada para posiciones más grandes
         "min_confidence_threshold": 0.72,  # Confianza mínima balanceada
-        "position_size_multiplier": 1.2,  # Multiplicador agresivo para trades selectivos
+        "position_size_multiplier": 2.0,  # Multiplicador OPTIMIZADO para trades selectivos
         # === CONFIGURACIÓN DE ESTRATEGIAS PARA CRYPTO ===
         "default_min_confidence": 75.0,  # Confianza balanceada para crypto
         "default_atr_period": 14,  # Período estándar más responsivo

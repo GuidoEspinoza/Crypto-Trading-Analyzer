@@ -14,8 +14,16 @@ import logging
 from datetime import datetime, timedelta
 
 # Import symbol functions from main_config
-from ..config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
-from ..utils.market_hours import market_hours_checker
+try:
+    from ..config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
+    from ..utils.market_hours import market_hours_checker
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
+    from utils.market_hours import market_hours_checker
 
 logger = logging.getLogger(__name__)
 
@@ -761,6 +769,199 @@ class CapitalClient:
                 )
 
         return all_market_data
+
+    def get_historical_prices(
+        self,
+        epic: str,
+        resolution: str = "HOUR",
+        max_points: int = 100,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get historical price data for a specific instrument
+
+        Args:
+            epic: Capital.com symbol (epic)
+            resolution: Time resolution (MINUTE, MINUTE_2, MINUTE_3, MINUTE_5, MINUTE_10, 
+                       MINUTE_15, MINUTE_30, HOUR, HOUR_2, HOUR_3, HOUR_4, DAY, WEEK)
+            max_points: Maximum number of data points to return (max 1000)
+            from_date: Start date in ISO format (e.g., "2023-01-01T00:00:00")
+            to_date: End date in ISO format (e.g., "2023-01-31T23:59:59")
+
+        Returns:
+            Dict with success status and historical price data
+        """
+        if not self._ensure_valid_session():
+            return {
+                "success": False,
+                "error": "No valid session available",
+                "prices": []
+            }
+
+        # Validate parameters
+        valid_resolutions = [
+            "MINUTE", "MINUTE_2", "MINUTE_3", "MINUTE_5", "MINUTE_10",
+            "MINUTE_15", "MINUTE_30", "HOUR", "HOUR_2", "HOUR_3", 
+            "HOUR_4", "DAY", "WEEK"
+        ]
+        
+        if resolution not in valid_resolutions:
+            return {
+                "success": False,
+                "error": f"Invalid resolution. Must be one of: {valid_resolutions}",
+                "prices": []
+            }
+
+        if max_points > 1000:
+            max_points = 1000
+            logger.warning("max_points limited to 1000 as per API constraints")
+
+        # Build URL and parameters
+        url = f"{self.base_url}/prices/{epic}"
+        params = {
+            "resolution": resolution,
+            "max": max_points
+        }
+
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+
+        try:
+            response = self.session.get(url, params=params, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Process the price data to make it more usable
+                processed_prices = []
+                if "prices" in data:
+                    for price_point in data["prices"]:
+                        # Extract bid/ask prices
+                        open_bid = price_point.get("openPrice", {}).get("bid", 0.0)
+                        open_ask = price_point.get("openPrice", {}).get("ask", 0.0)
+                        high_bid = price_point.get("highPrice", {}).get("bid", 0.0)
+                        high_ask = price_point.get("highPrice", {}).get("ask", 0.0)
+                        low_bid = price_point.get("lowPrice", {}).get("bid", 0.0)
+                        low_ask = price_point.get("lowPrice", {}).get("ask", 0.0)
+                        close_bid = price_point.get("closePrice", {}).get("bid", 0.0)
+                        close_ask = price_point.get("closePrice", {}).get("ask", 0.0)
+                        
+                        # Calculate mid prices as average of bid and ask
+                        open_mid = (open_bid + open_ask) / 2 if open_bid > 0 and open_ask > 0 else 0.0
+                        high_mid = (high_bid + high_ask) / 2 if high_bid > 0 and high_ask > 0 else 0.0
+                        low_mid = (low_bid + low_ask) / 2 if low_bid > 0 and low_ask > 0 else 0.0
+                        close_mid = (close_bid + close_ask) / 2 if close_bid > 0 and close_ask > 0 else 0.0
+                        
+                        processed_point = {
+                            "timestamp": price_point.get("snapshotTime"),
+                            "timestamp_utc": price_point.get("snapshotTimeUTC"),
+                            "open": open_mid,
+                            "high": high_mid,
+                            "low": low_mid,
+                            "close": close_mid,
+                            "volume": price_point.get("lastTradedVolume", 0),
+                            "open_bid": open_bid,
+                            "open_ask": open_ask,
+                            "high_bid": high_bid,
+                            "high_ask": high_ask,
+                            "low_bid": low_bid,
+                            "low_ask": low_ask,
+                            "close_bid": close_bid,
+                            "close_ask": close_ask,
+                        }
+                        processed_prices.append(processed_point)
+
+                return {
+                    "success": True,
+                    "epic": epic,
+                    "resolution": resolution,
+                    "instrument_type": data.get("instrumentType", "UNKNOWN"),
+                    "prices": processed_prices,
+                    "metadata": {
+                        "total_points": len(processed_prices),
+                        "from_date": from_date,
+                        "to_date": to_date,
+                        "max_requested": max_points
+                    }
+                }
+            
+            elif response.status_code == 401:
+                logger.warning("Session expired, attempting to renew")
+                if self.create_session()["success"]:
+                    # Retry once with new session
+                    response = self.session.get(url, params=params, timeout=30)
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Process data same as above
+                        processed_prices = []
+                        if "prices" in data:
+                            for price_point in data["prices"]:
+                                processed_point = {
+                                    "timestamp": price_point.get("snapshotTime"),
+                                    "timestamp_utc": price_point.get("snapshotTimeUTC"),
+                                    "open": price_point.get("openPrice", {}).get("mid", 0.0),
+                                    "high": price_point.get("highPrice", {}).get("mid", 0.0),
+                                    "low": price_point.get("lowPrice", {}).get("mid", 0.0),
+                                    "close": price_point.get("closePrice", {}).get("mid", 0.0),
+                                    "volume": price_point.get("lastTradedVolume", 0),
+                                    "open_bid": price_point.get("openPrice", {}).get("bid", 0.0),
+                                    "open_ask": price_point.get("openPrice", {}).get("ask", 0.0),
+                                    "high_bid": price_point.get("highPrice", {}).get("bid", 0.0),
+                                    "high_ask": price_point.get("highPrice", {}).get("ask", 0.0),
+                                    "low_bid": price_point.get("lowPrice", {}).get("bid", 0.0),
+                                    "low_ask": price_point.get("lowPrice", {}).get("ask", 0.0),
+                                    "close_bid": price_point.get("closePrice", {}).get("bid", 0.0),
+                                    "close_ask": price_point.get("closePrice", {}).get("ask", 0.0),
+                                }
+                                processed_prices.append(processed_point)
+
+                        return {
+                            "success": True,
+                            "epic": epic,
+                            "resolution": resolution,
+                            "instrument_type": data.get("instrumentType", "UNKNOWN"),
+                            "prices": processed_prices,
+                            "metadata": {
+                                "total_points": len(processed_prices),
+                                "from_date": from_date,
+                                "to_date": to_date,
+                                "max_requested": max_points
+                            }
+                        }
+
+            # Handle error responses
+            error_msg = f"HTTP {response.status_code}"
+            try:
+                error_data = response.json()
+                if "errorCode" in error_data:
+                    error_msg = f"{error_data['errorCode']}: {error_data.get('message', 'Unknown error')}"
+            except:
+                error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
+
+            logger.error(f"Failed to get historical prices for {epic}: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg,
+                "prices": []
+            }
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout getting historical prices for {epic}")
+            return {
+                "success": False,
+                "error": "Request timeout",
+                "prices": []
+            }
+        except Exception as e:
+            logger.error(f"Error getting historical prices for {epic}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "prices": []
+            }
 
     def get_all_supported_symbols(self) -> List[str]:
         """

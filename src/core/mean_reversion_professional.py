@@ -30,8 +30,11 @@ logger = logging.getLogger(__name__)
 
 class MarketRegime(Enum):
     TRENDING = "TRENDING"
+    TRENDING_UP = "TRENDING_UP"
+    TRENDING_DOWN = "TRENDING_DOWN"
     RANGING = "RANGING"
     VOLATILE = "VOLATILE"
+    BREAKOUT = "BREAKOUT"
 
 
 class DivergenceType(Enum):
