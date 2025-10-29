@@ -9,7 +9,7 @@ temporales que determinan cuándo el bot puede operar según diferentes perfiles
 de trading (Scalping e Intraday).
 
 Características principales:
-- Configuración de zona horaria (Chile/Santiago)
+- Configuración de zona horaria (UTC para portabilidad global)
 - Horarios de trading inteligentes por perfil
 - Configuración de trading en fines de semana
 - Horarios de reinicio diario del sistema
@@ -45,9 +45,9 @@ from .symbols_config import (
 # 🌍 CONFIGURACIÓN DE ZONA HORARIA
 # ============================================================================
 
-# Zona horaria principal del sistema (Chile)
-TIMEZONE = "America/Santiago"  # UTC-3 (UTC-4 en horario de invierno)
-CHILE_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
+# Zona horaria principal del sistema (UTC)
+TIMEZONE = "UTC"  # UTC - Zona horaria universal para portabilidad global
+UTC_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
 
 # ============================================================================
 # 🔄 CONFIGURACIÓN DE REINICIO DIARIO
@@ -68,30 +68,30 @@ DAILY_RESET_MINUTE = 0  # Minuto exacto del reinicio
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
     # Optimizado para aprovechar superposición Europa-América
-    "start_time": time(8, 0),  # 08:00 - Inicio temprano (pre-mercado Europa)
-    "end_time": time(23, 30),  # 23:30 - Fin extendido (post-mercado USA)
+    "start_time": time(11, 0),  # 11:00 UTC - Apertura mercados europeos (era 08:00 Chile)
+    "end_time": time(2, 30),  # 02:30 UTC - Cierre extendido mercados asiáticos (era 23:30 Chile)
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
-    "extended_start": time(6, 0),  # 06:00 - Inicio muy temprano
-    "extended_end": time(23, 59),  # 23:59 - Casi 24/7
+    "extended_start": time(9, 0),  # 09:00 UTC - Inicio muy temprano (era 06:00 Chile)
+    "extended_end": time(2, 59),  # 02:59 UTC - Casi 24/7 (era 23:59 Chile)
     # === HORARIO NOCTURNO (SESIÓN ASIÁTICA) ===
     # Aprovecha alta volatilidad en mercados asiáticos
-    "night_start": time(22, 0),  # 22:00 - Inicio sesión asiática
-    "night_end": time(8, 0),  # 08:00 - Fin sesión asiática
+    "night_start": time(1, 0),  # 01:00 UTC - Inicio sesión asiática (era 22:00 Chile)
+    "night_end": time(11, 0),  # 11:00 UTC - Fin sesión asiática (era 08:00 Chile)
     # === SESIONES DE ALTA VOLATILIDAD ===
     # Horarios específicos para máxima actividad
     "high_volatility_sessions": {
-        "asian_open": {"start": time(22, 0), "end": time(2, 0)},  # Apertura asiática
-        "london_open": {"start": time(8, 0), "end": time(12, 0)},  # Apertura Londres
-        "ny_open": {"start": time(14, 30), "end": time(18, 30)},  # Apertura NY
+        "asian_open": {"start": time(22, 0), "end": time(2, 0)},  # Apertura asiática (UTC)
+        "london_open": {"start": time(8, 0), "end": time(12, 0)},  # Apertura Londres (UTC)
+        "ny_open": {"start": time(14, 30), "end": time(18, 30)},  # Apertura NY (UTC)
         "overlap_london_ny": {
             "start": time(14, 30),
             "end": time(17, 0),
-        },  # Superposición
+        },  # Superposición Londres-NY (UTC)
     },
     # === CONFIGURACIÓN AVANZADA ===
     "enabled": True,  # Habilitar horarios inteligentes
-    "timezone": "America/Santiago",  # Zona horaria base
+    "timezone": "UTC",  # Zona horaria base
 }
 
 # ============================================================================
@@ -153,17 +153,17 @@ SCALPING_WEEKEND_TRADING = {
     "saturday": {
         "active": True,  # ✅ Activo los sábados
         "start_time": time(
-            8, 0
-        ),  # Inicio temprano para aprovechar movimientos asiáticos
-        "end_time": time(22, 0),  # Sesión extendida hasta entrada nocturna
+            11, 0
+        ),  # 11:00 UTC - Inicio temprano (era 08:00 Chile)
+        "end_time": time(1, 0),  # 01:00 UTC - Sesión extendida (era 22:00 Chile)
         "max_trades": 15,  # Límite aumentado para fin de semana
         "min_confidence": 70.0,  # Confianza ligeramente reducida (más oportunidades)
         "description": "Sábado Scalping - Aprovechando menor competencia institucional",
     },
     "sunday": {
         "active": True,  # ✅ Activo los domingos
-        "start_time": time(10, 0),  # Inicio moderado domingo
-        "end_time": time(23, 0),  # Hasta tarde para posicionamiento semanal
+        "start_time": time(13, 0),  # 13:00 UTC - Inicio moderado (era 10:00 Chile)
+        "end_time": time(2, 0),  # 02:00 UTC - Hasta tarde (era 23:00 Chile)
         "max_trades": 12,  # Límite moderado para preparación semanal
         "min_confidence": 72.0,  # Confianza moderada
         "description": "Domingo Scalping - Posicionamiento para nueva semana",
@@ -176,16 +176,16 @@ INTRADAY_WEEKEND_TRADING = {
     "enabled": True,  # ✅ HABILITADO para aprovechar oportunidades crypto weekend
     "saturday": {
         "active": True,  # ✅ Activo los sábados
-        "start_time": time(9, 0),  # Inicio moderado
-        "end_time": time(20, 0),  # Sesión extendida pero conservadora
+        "start_time": time(12, 0),  # 12:00 UTC - Inicio moderado (era 09:00 Chile)
+        "end_time": time(23, 0),  # 23:00 UTC - Sesión extendida (era 20:00 Chile)
         "max_trades": 8,  # Límite moderado para weekend
         "min_confidence": 78.0,  # Confianza alta pero accesible
         "description": "Sábado Intraday - Señales de calidad con menor competencia",
     },
     "sunday": {
         "active": True,  # ✅ Activo los domingos
-        "start_time": time(12, 0),  # Inicio tarde del domingo
-        "end_time": time(22, 0),  # Hasta tarde para posicionamiento
+        "start_time": time(15, 0),  # 15:00 UTC - Inicio tarde (era 12:00 Chile)
+        "end_time": time(1, 0),  # 01:00 UTC - Hasta tarde (era 22:00 Chile)
         "max_trades": 6,  # Límite conservador para preparación
         "min_confidence": 80.0,  # Confianza alta para calidad
         "description": "Domingo Intraday - Posicionamiento estratégico semanal",
@@ -391,21 +391,21 @@ MARKET_SPECIFIC_CONFIG = {
 # Configuración de sesiones de alta volatilidad global
 HIGH_VOLATILITY_SESSIONS = {
     "morning_breakout": {
-        "start": time(8, 30),
-        "end": time(10, 30),
-        "description": "Sesión de breakout matutino - Mayor volatilidad europea",
+        "start": time(11, 30),
+        "end": time(13, 30),
+        "description": "Sesión de breakout matutino - Mayor volatilidad europea (UTC)",
         "confidence_boost": 5.0,  # Aumentar confianza en señales durante esta sesión
     },
     "afternoon_momentum": {
-        "start": time(14, 30),
-        "end": time(16, 30),
-        "description": "Sesión de momentum vespertino - Overlap EU-US",
+        "start": time(17, 30),
+        "end": time(19, 30),
+        "description": "Sesión de momentum vespertino - Overlap EU-US (UTC)",
         "confidence_boost": 7.0,  # Mayor boost por ser sesión premium
     },
     "evening_continuation": {
-        "start": time(20, 0),
-        "end": time(22, 0),
-        "description": "Sesión de continuación nocturna - Crypto y mercados asiáticos",
+        "start": time(23, 0),
+        "end": time(1, 0),
+        "description": "Sesión de continuación nocturna - Crypto y mercados asiáticos (UTC)",
         "confidence_boost": 3.0,  # Boost moderado para sesión nocturna
     },
 }
@@ -421,7 +421,7 @@ TIME_LIMITS = {
     "daily_max_hours": 12,  # Máximo 12 horas de trading por día
     "weekly_max_hours": 60,  # Máximo 60 horas de trading por semana
     "cooldown_after_loss_minutes": 15,  # Cooldown después de pérdidas
-    "emergency_stop_hour": 23,  # Hora de parada de emergencia (23:00)
+    "emergency_stop_hour": 2,  # Hora de parada de emergencia (02:00 UTC, era 23:00 Chile)
 }
 
 # Configuración de pausas automáticas
@@ -534,8 +534,8 @@ def is_smart_trading_hours_allowed(
     symbol: str = None, profile_name: str = None
 ) -> dict:
     """
-    🕘 Verifica si estamos dentro de los horarios inteligentes de trading para Chile.
-    Usa UTC internamente para comparaciones precisas, evitando problemas con cambios de horario.
+    🕘 Verifica si estamos dentro de los horarios inteligentes de trading en UTC.
+    Usa UTC para comparaciones precisas y portabilidad global.
 
     Args:
         symbol: Símbolo del activo (opcional, para validación específica por mercado)
@@ -553,24 +553,23 @@ def is_smart_trading_hours_allowed(
         return {
             "is_allowed": True,
             "reason": "Smart trading hours disabled - 24/7 trading",
-            "current_time_chile": datetime.now(),
+            "current_time_utc": datetime.now(pytz.UTC),
             "market_status": "always_open",
         }
 
     try:
-        # Obtener zonas horarias
-        chile_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
-        utc_tz = pytz.UTC
+        # Obtener zona horaria UTC
+        utc_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
 
-        # Obtener hora actual en Chile y UTC
-        current_time_chile = datetime.now(chile_tz)
-        current_time_utc = datetime.now(utc_tz)
+        # Obtener tiempo actual en UTC
+        utc_now = datetime.now(pytz.UTC)
+        current_time_utc = utc_now
 
         # Si no se especifica perfil, usar el actual
         if profile_name is None:
             profile_name = TRADING_PROFILE
 
-        # Obtener horarios base (formato HH:MM en hora Chile)
+        # Obtener horarios base (formato HH:MM en UTC)
         start_time_str = SMART_TRADING_HOURS["start_time"]
         end_time_str = SMART_TRADING_HOURS["end_time"]
 
@@ -595,22 +594,18 @@ def is_smart_trading_hours_allowed(
         else:
             market_reason = "General trading hours"
 
-        # Convertir horarios de Chile a UTC para comparaciones precisas
+        # Crear horarios en UTC para comparaciones precisas
         start_hour, start_minute = map(int, start_time_str.split(":"))
         end_hour, end_minute = map(int, end_time_str.split(":"))
 
-        # Crear datetime en Chile para hoy con los horarios configurados
-        today_chile = current_time_chile.date()
-        start_datetime_chile = chile_tz.localize(
-            datetime.combine(today_chile, time(start_hour, start_minute))
+        # Crear datetime en UTC para hoy con los horarios configurados
+        today_utc = current_time_utc.date()
+        start_datetime_utc = utc_tz.localize(
+            datetime.combine(today_utc, time(start_hour, start_minute))
         )
-        end_datetime_chile = chile_tz.localize(
-            datetime.combine(today_chile, time(end_hour, end_minute))
+        end_datetime_utc = utc_tz.localize(
+            datetime.combine(today_utc, time(end_hour, end_minute))
         )
-
-        # Convertir a UTC para comparaciones precisas
-        start_datetime_utc = start_datetime_chile.astimezone(utc_tz)
-        end_datetime_utc = end_datetime_chile.astimezone(utc_tz)
 
         # Verificar si estamos dentro del horario (comparación en UTC)
         is_within_hours = (
@@ -619,40 +614,26 @@ def is_smart_trading_hours_allowed(
             < end_datetime_utc.time()
         )
 
-        # Información adicional para debugging
-        debug_info = {
-            "start_chile": start_datetime_chile.strftime("%H:%M %Z"),
-            "end_chile": end_datetime_chile.strftime("%H:%M %Z"),
-            "start_utc": start_datetime_utc.strftime("%H:%M %Z"),
-            "end_utc": end_datetime_utc.strftime("%H:%M %Z"),
-            "current_chile": current_time_chile.strftime("%H:%M %Z"),
-            "current_utc": current_time_utc.strftime("%H:%M %Z"),
-        }
-
         if is_within_hours:
             return {
                 "is_allowed": True,
-                "reason": f"Within smart trading hours ({start_time_str}-{end_time_str} Chile) - {market_reason}",
-                "current_time_chile": current_time_chile,
+                "reason": f"Within smart trading hours ({start_time_str}-{end_time_str} UTC) - {market_reason}",
                 "current_time_utc": current_time_utc,
                 "market_status": "open",
                 "market_type": market_type,
                 "active_hours": f"{start_time_str}-{end_time_str}",
                 "profile": profile_name,
-                "debug": debug_info,
             }
         else:
             return {
                 "is_allowed": False,
-                "reason": f"Outside smart trading hours ({start_time_str}-{end_time_str} Chile) - Current: {current_time_chile.strftime('%H:%M')}",
-                "current_time_chile": current_time_chile,
+                "reason": f"Outside smart trading hours ({start_time_str}-{end_time_str} UTC) - Current: {current_time_utc.strftime('%H:%M')}",
                 "current_time_utc": current_time_utc,
                 "market_status": "closed_hours",
                 "market_type": market_type,
                 "active_hours": f"{start_time_str}-{end_time_str}",
                 "profile": profile_name,
                 "next_open_time": start_time_str,
-                "debug": debug_info,
             }
 
     except Exception as e:
@@ -660,7 +641,7 @@ def is_smart_trading_hours_allowed(
         return {
             "is_allowed": True,
             "reason": f"Error checking smart hours: {e} - Defaulting to allow",
-            "current_time_chile": datetime.now(),
+            "current_time_utc": datetime.now(pytz.UTC),
             "market_status": "error_default_open",
             "error": str(e),
         }
@@ -721,8 +702,8 @@ def get_smart_trading_status_summary() -> dict:
     from .profiles_config import TRADING_PROFILE
 
     try:
-        chile_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
-        current_time_chile = datetime.now(chile_tz)
+        utc_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
+        current_time_utc = datetime.now(pytz.UTC)
 
         # Estado general
         general_status = is_smart_trading_hours_allowed()
@@ -735,13 +716,13 @@ def get_smart_trading_status_summary() -> dict:
             )
 
         return {
-            "current_time_chile": current_time_chile.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "current_time_utc": current_time_utc.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "smart_hours_enabled": SMART_TRADING_HOURS.get("enabled", True),
             "general_status": general_status,
             "market_statuses": market_statuses,
             "active_profile": TRADING_PROFILE,
             "configuration": {
-                "base_hours": f"{SMART_TRADING_HOURS['start_hour']:02d}:00-{SMART_TRADING_HOURS['end_hour']:02d}:00",
+                "base_hours": f"{SMART_TRADING_HOURS['start_time']}-{SMART_TRADING_HOURS['end_time']}",
                 "timezone": SMART_TRADING_HOURS["timezone"],
             },
         }
@@ -749,7 +730,7 @@ def get_smart_trading_status_summary() -> dict:
     except Exception as e:
         return {
             "error": f"Error getting smart trading status: {e}",
-            "current_time_chile": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "current_time_utc": datetime.now(pytz.UTC).strftime("%Y-%m-%d %H:%M:%S %Z"),
             "smart_hours_enabled": False,
         }
 

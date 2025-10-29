@@ -43,7 +43,7 @@ proporcionando una arquitectura modular y escalable para la gestión de parámet
 🛡️ CARACTERÍSTICAS DE SEGURIDAD:
     ✨ Validación automática de parámetros en tiempo real
     🔒 Límites de riesgo dinámicos por perfil
-    ⏰ Horarios inteligentes optimizados para mercados chilenos
+    ⏰ Horarios inteligentes optimizados para mercados globales en UTC
     📊 Monitoreo continuo de rendimiento y drawdown
     🚨 Sistema de alertas y notificaciones automáticas
 
@@ -73,7 +73,7 @@ from .profiles_config import TRADING_PROFILE, PROFILES
 # ⏰ Configuraciones Temporales: Horarios, zonas horarias y programación
 from .time_trading_config import (
     TIMEZONE,  # Zona horaria principal del sistema
-    CHILE_TZ,  # Zona horaria de Chile para trading local
+    UTC_TZ,  # Zona horaria UTC para trading global
     DAILY_RESET_HOUR,  # Hora de reinicio diario del sistema
     DAILY_RESET_MINUTE,  # Minuto de reinicio diario del sistema
     SMART_TRADING_HOURS,  # Horarios inteligentes optimizados

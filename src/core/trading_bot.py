@@ -1013,7 +1013,7 @@ class TradingBot:
                 )
                 return
 
-            # Verificar horarios inteligentes de trading (08:00 - 22:00 Chile)
+            # Verificar horarios inteligentes de trading (11:00 - 02:30 UTC)
             smart_hours_status = is_smart_trading_hours_allowed()
 
             # Manejo robusto del resultado de smart_hours_status
@@ -1054,7 +1054,7 @@ class TradingBot:
                 current_hour = current_time.hour
 
                 self.logger.info(
-                    f"🌍 Hora actual Chile: {current_time.strftime('%H:%M:%S CLT')}"
+                    f"🌍 Hora actual UTC: {current_time.strftime('%H:%M:%S UTC')}"
                 )
 
                 # Mostrar estado de cada tipo de mercado
@@ -1563,7 +1563,7 @@ class TradingBot:
 
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias a las 11:00 AM hora Chile (America/Santiago)
+        📅 Resetear estadísticas diarias a las 14:00 UTC (11:00 AM Chile convertido)
         """
         try:
             tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
