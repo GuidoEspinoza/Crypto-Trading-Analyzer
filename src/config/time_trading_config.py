@@ -68,25 +68,25 @@ DAILY_RESET_MINUTE = 0  # Minuto exacto del reinicio
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
     # Optimizado para aprovechar superposición Europa-América
-    "start_time": time(11, 0),  # 11:00 UTC - Apertura mercados europeos (era 08:00 Chile)
-    "end_time": time(2, 30),  # 02:30 UTC - Cierre extendido mercados asiáticos (era 23:30 Chile)
+    "start_time": "11:00",  # 11:00 UTC - Apertura mercados europeos (era 08:00 Chile)
+    "end_time": "02:30",  # 02:30 UTC - Cierre extendido mercados asiáticos (era 23:30 Chile)
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
-    "extended_start": time(9, 0),  # 09:00 UTC - Inicio muy temprano (era 06:00 Chile)
-    "extended_end": time(2, 59),  # 02:59 UTC - Casi 24/7 (era 23:59 Chile)
+    "extended_start": "09:00",  # 09:00 UTC - Inicio muy temprano (era 06:00 Chile)
+    "extended_end": "02:59",  # 02:59 UTC - Casi 24/7 (era 23:59 Chile)
     # === HORARIO NOCTURNO (SESIÓN ASIÁTICA) ===
     # Aprovecha alta volatilidad en mercados asiáticos
-    "night_start": time(1, 0),  # 01:00 UTC - Inicio sesión asiática (era 22:00 Chile)
-    "night_end": time(11, 0),  # 11:00 UTC - Fin sesión asiática (era 08:00 Chile)
+    "night_start": "01:00",  # 01:00 UTC - Inicio sesión asiática (era 22:00 Chile)
+    "night_end": "11:00",  # 11:00 UTC - Fin sesión asiática (era 08:00 Chile)
     # === SESIONES DE ALTA VOLATILIDAD ===
     # Horarios específicos para máxima actividad
     "high_volatility_sessions": {
-        "asian_open": {"start": time(22, 0), "end": time(2, 0)},  # Apertura asiática (UTC)
-        "london_open": {"start": time(8, 0), "end": time(12, 0)},  # Apertura Londres (UTC)
-        "ny_open": {"start": time(14, 30), "end": time(18, 30)},  # Apertura NY (UTC)
+        "asian_open": {"start": "22:00", "end": "02:00"},  # Apertura asiática (UTC)
+        "london_open": {"start": "08:00", "end": "12:00"},  # Apertura Londres (UTC)
+        "ny_open": {"start": "14:30", "end": "18:30"},  # Apertura NY (UTC)
         "overlap_london_ny": {
-            "start": time(14, 30),
-            "end": time(17, 0),
+            "start": "14:30",
+            "end": "17:00",
         },  # Superposición Londres-NY (UTC)
     },
     # === CONFIGURACIÓN AVANZADA ===
@@ -152,18 +152,16 @@ SCALPING_WEEKEND_TRADING = {
     "enabled": True,  # ✅ HABILITADO para aprovechar mercado crypto 24/7
     "saturday": {
         "active": True,  # ✅ Activo los sábados
-        "start_time": time(
-            11, 0
-        ),  # 11:00 UTC - Inicio temprano (era 08:00 Chile)
-        "end_time": time(1, 0),  # 01:00 UTC - Sesión extendida (era 22:00 Chile)
+        "start_time": "11:00",  # 11:00 UTC - Inicio temprano (era 08:00 Chile)
+        "end_time": "01:00",  # 01:00 UTC - Sesión extendida (era 22:00 Chile)
         "max_trades": 15,  # Límite aumentado para fin de semana
         "min_confidence": 70.0,  # Confianza ligeramente reducida (más oportunidades)
         "description": "Sábado Scalping - Aprovechando menor competencia institucional",
     },
     "sunday": {
         "active": True,  # ✅ Activo los domingos
-        "start_time": time(13, 0),  # 13:00 UTC - Inicio moderado (era 10:00 Chile)
-        "end_time": time(2, 0),  # 02:00 UTC - Hasta tarde (era 23:00 Chile)
+        "start_time": "13:00",  # 13:00 UTC - Inicio moderado (era 10:00 Chile)
+        "end_time": "02:00",  # 02:00 UTC - Hasta tarde (era 23:00 Chile)
         "max_trades": 12,  # Límite moderado para preparación semanal
         "min_confidence": 72.0,  # Confianza moderada
         "description": "Domingo Scalping - Posicionamiento para nueva semana",
@@ -176,16 +174,16 @@ INTRADAY_WEEKEND_TRADING = {
     "enabled": True,  # ✅ HABILITADO para aprovechar oportunidades crypto weekend
     "saturday": {
         "active": True,  # ✅ Activo los sábados
-        "start_time": time(12, 0),  # 12:00 UTC - Inicio moderado (era 09:00 Chile)
-        "end_time": time(23, 0),  # 23:00 UTC - Sesión extendida (era 20:00 Chile)
+        "start_time": "12:00",  # 12:00 UTC - Inicio moderado (era 09:00 Chile)
+        "end_time": "23:00",  # 23:00 UTC - Sesión extendida (era 20:00 Chile)
         "max_trades": 8,  # Límite moderado para weekend
         "min_confidence": 78.0,  # Confianza alta pero accesible
         "description": "Sábado Intraday - Señales de calidad con menor competencia",
     },
     "sunday": {
         "active": True,  # ✅ Activo los domingos
-        "start_time": time(15, 0),  # 15:00 UTC - Inicio tarde (era 12:00 Chile)
-        "end_time": time(1, 0),  # 01:00 UTC - Hasta tarde (era 22:00 Chile)
+        "start_time": "15:00",  # 15:00 UTC - Inicio tarde (era 12:00 Chile)
+        "end_time": "01:00",  # 01:00 UTC - Hasta tarde (era 22:00 Chile)
         "max_trades": 6,  # Límite conservador para preparación
         "min_confidence": 80.0,  # Confianza alta para calidad
         "description": "Domingo Intraday - Posicionamiento estratégico semanal",
@@ -595,6 +593,12 @@ def is_smart_trading_hours_allowed(
             market_reason = "General trading hours"
 
         # Crear horarios en UTC para comparaciones precisas
+        # Fix: Convertir objetos time() a string si es necesario
+        if isinstance(start_time_str, time):
+            start_time_str = start_time_str.strftime("%H:%M")
+        if isinstance(end_time_str, time):
+            end_time_str = end_time_str.strftime("%H:%M")
+            
         start_hour, start_minute = map(int, start_time_str.split(":"))
         end_hour, end_minute = map(int, end_time_str.split(":"))
 
@@ -608,11 +612,20 @@ def is_smart_trading_hours_allowed(
         )
 
         # Verificar si estamos dentro del horario (comparación en UTC)
-        is_within_hours = (
-            start_datetime_utc.time()
-            <= current_time_utc.time()
-            < end_datetime_utc.time()
-        )
+        # Manejar correctamente horarios que cruzan medianoche
+        current_time_only = current_time_utc.time()
+        start_time_only = start_datetime_utc.time()
+        end_time_only = end_datetime_utc.time()
+        
+        if start_time_only <= end_time_only:
+            # Horario normal (no cruza medianoche): ej. 08:00 - 17:00
+            is_within_hours = start_time_only <= current_time_only <= end_time_only
+        else:
+            # Horario que cruza medianoche: ej. 11:00 - 02:30
+            is_within_hours = (
+                current_time_only >= start_time_only or 
+                current_time_only <= end_time_only
+            )
 
         if is_within_hours:
             return {

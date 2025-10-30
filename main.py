@@ -847,12 +847,9 @@ async def force_immediate_analysis():
     """
     try:
         bot = ensure_bot_exists()
-        if not getattr(bot, "is_running", False):
-            raise HTTPException(
-                status_code=400, detail="Bot must be running to force analysis"
-            )
-
-        # Ejecutar análisis en background
+        
+        # Permitir análisis forzado incluso si el bot está detenido
+        # Solo verificar que el bot tenga el método force_analysis
         if hasattr(bot, "force_analysis"):
             bot.force_analysis()
         else:
