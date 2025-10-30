@@ -323,6 +323,638 @@ SYMBOL_SPECIFIC_CONFIG = {
         "risk_level": "high",
         "liquidity": "high",
     },
+    
+    # === CRIPTOMONEDAS ADICIONALES ===
+    "XRPUSD": {
+        "category": "crypto_major",
+        "volatility": "high",
+        "avg_daily_range": 5.8,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.0001,
+        "min_confidence_adjustment": -3,
+        "max_trades_multiplier": 1.2,
+        "risk_level": "medium_high",
+        "liquidity": "very_high",
+    },
+    "DOTUSD": {
+        "category": "crypto_large_cap",
+        "volatility": "very_high",
+        "avg_daily_range": 7.2,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.001,
+        "min_confidence_adjustment": -5,
+        "max_trades_multiplier": 1.4,
+        "risk_level": "high",
+        "liquidity": "high",
+    },
+    "AVAXUSD": {
+        "category": "crypto_large_cap",
+        "volatility": "very_high",
+        "avg_daily_range": 8.1,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.002,
+        "min_confidence_adjustment": -6,
+        "max_trades_multiplier": 1.5,
+        "risk_level": "high",
+        "liquidity": "medium",
+    },
+    "MATICUSD": {
+        "category": "crypto_large_cap",
+        "volatility": "very_high",
+        "avg_daily_range": 9.3,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.0001,
+        "min_confidence_adjustment": -7,
+        "max_trades_multiplier": 1.6,
+        "risk_level": "high",
+        "liquidity": "medium",
+    },
+    "LINKUSD": {
+        "category": "crypto_large_cap",
+        "volatility": "very_high",
+        "avg_daily_range": 8.7,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.001,
+        "min_confidence_adjustment": -6,
+        "max_trades_multiplier": 1.5,
+        "risk_level": "high",
+        "liquidity": "medium",
+    },
+    "ATOMUSD": {
+        "category": "crypto_emerging",
+        "volatility": "very_high",
+        "avg_daily_range": 10.2,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.002,
+        "min_confidence_adjustment": -8,
+        "max_trades_multiplier": 1.7,
+        "risk_level": "very_high",
+        "liquidity": "low",
+    },
+    "ALGOUSD": {
+        "category": "crypto_emerging",
+        "volatility": "very_high",
+        "avg_daily_range": 11.5,
+        "optimal_hours": ["00:00-23:59"],
+        "spread_typical": 0.0001,
+        "min_confidence_adjustment": -9,
+        "max_trades_multiplier": 1.8,
+        "risk_level": "very_high",
+        "liquidity": "low",
+    },
+    
+    # === FOREX ADICIONALES ===
+    "USDCHF": {
+        "category": "forex_major",
+        "volatility": "low",
+        "avg_daily_range": 0.7,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.0002,
+        "min_confidence_adjustment": 5,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "low",
+        "liquidity": "very_high",
+    },
+    "AUDUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 1.1,
+        "optimal_hours": ["22:00-08:00", "13:00-22:00"],
+        "spread_typical": 0.0002,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "USDCAD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 1.0,
+        "optimal_hours": ["13:00-22:00"],
+        "spread_typical": 0.0003,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "NZDUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 1.3,
+        "optimal_hours": ["22:00-08:00"],
+        "spread_typical": 0.0003,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "EURGBP": {
+        "category": "forex_minor",
+        "volatility": "low",
+        "avg_daily_range": 0.6,
+        "optimal_hours": ["08:00-17:00"],
+        "spread_typical": 0.0003,
+        "min_confidence_adjustment": 4,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "low",
+        "liquidity": "high",
+    },
+    "EURJPY": {
+        "category": "forex_minor",
+        "volatility": "medium",
+        "avg_daily_range": 1.1,
+        "optimal_hours": ["08:00-17:00", "00:00-09:00"],
+        "spread_typical": 0.002,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "GBPJPY": {
+        "category": "forex_minor",
+        "volatility": "high",
+        "avg_daily_range": 1.8,
+        "optimal_hours": ["08:00-17:00", "00:00-09:00"],
+        "spread_typical": 0.003,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.1,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "USDZAR": {
+        "category": "forex_exotic",
+        "volatility": "very_high",
+        "avg_daily_range": 2.8,
+        "optimal_hours": ["08:00-17:00"],
+        "spread_typical": 0.01,
+        "min_confidence_adjustment": -5,
+        "max_trades_multiplier": 1.3,
+        "risk_level": "high",
+        "liquidity": "low",
+    },
+    "USDTRY": {
+        "category": "forex_exotic",
+        "volatility": "very_high",
+        "avg_daily_range": 3.5,
+        "optimal_hours": ["08:00-17:00"],
+        "spread_typical": 0.02,
+        "min_confidence_adjustment": -7,
+        "max_trades_multiplier": 1.4,
+        "risk_level": "very_high",
+        "liquidity": "low",
+    },
+    
+    # === METALES PRECIOSOS ADICIONALES ===
+    "PLATINUM": {
+        "category": "metals_precious",
+        "volatility": "high",
+        "avg_daily_range": 2.2,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.15,
+        "min_confidence_adjustment": -2,
+        "max_trades_multiplier": 1.1,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "PALLADIUM": {
+        "category": "metals_precious",
+        "volatility": "very_high",
+        "avg_daily_range": 3.8,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.25,
+        "min_confidence_adjustment": -4,
+        "max_trades_multiplier": 1.2,
+        "risk_level": "high",
+        "liquidity": "low",
+    },
+    
+    # === ENERGÍA ADICIONAL ===
+    "OIL_CRUDE": {
+        "category": "energy",
+        "volatility": "high",
+        "avg_daily_range": 3.5,
+        "optimal_hours": ["14:30-21:00", "08:00-17:00"],
+        "spread_typical": 0.03,
+        "min_confidence_adjustment": -3,
+        "max_trades_multiplier": 1.2,
+        "risk_level": "high",
+        "liquidity": "very_high",
+    },
+    "OIL_BRENT": {
+        "category": "energy",
+        "volatility": "high",
+        "avg_daily_range": 3.2,
+        "optimal_hours": ["08:00-17:00", "14:30-21:00"],
+        "spread_typical": 0.03,
+        "min_confidence_adjustment": -2,
+        "max_trades_multiplier": 1.1,
+        "risk_level": "high",
+        "liquidity": "high",
+    },
+    
+    # === AGRICULTURA ===
+    "WHEAT": {
+        "category": "agricultural",
+        "volatility": "high",
+        "avg_daily_range": 2.8,
+        "optimal_hours": ["14:30-21:00"],
+        "spread_typical": 0.05,
+        "min_confidence_adjustment": -2,
+        "max_trades_multiplier": 1.1,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "CORN": {
+        "category": "agricultural",
+        "volatility": "high",
+        "avg_daily_range": 2.5,
+        "optimal_hours": ["14:30-21:00"],
+        "spread_typical": 0.04,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    
+    # === METALES INDUSTRIALES ===
+    "COPPER": {
+        "category": "metals_industrial",
+        "volatility": "high",
+        "avg_daily_range": 2.1,
+        "optimal_hours": ["08:00-17:00", "14:30-21:00"],
+        "spread_typical": 0.0001,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium_high",
+        "liquidity": "high",
+    },
+    "ALUMINUM": {
+        "category": "metals_industrial",
+        "volatility": "medium",
+        "avg_daily_range": 1.8,
+        "optimal_hours": ["08:00-17:00"],
+        "spread_typical": 0.5,
+        "min_confidence_adjustment": 0,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    
+    # === ÍNDICES ADICIONALES ===
+    "US30": {
+        "category": "indices_us",
+        "volatility": "medium",
+        "avg_daily_range": 1.1,
+        "optimal_hours": ["14:30-21:00"],
+        "spread_typical": 0.5,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "US100": {
+        "category": "indices_us",
+        "volatility": "high",
+        "avg_daily_range": 2.3,
+        "optimal_hours": ["14:30-21:00"],
+        "spread_typical": 0.3,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium_high",
+        "liquidity": "very_high",
+    },
+    "DE40": {
+        "category": "indices_europe",
+        "volatility": "medium",
+        "avg_daily_range": 1.4,
+        "optimal_hours": ["08:00-17:00"],
+        "spread_typical": 0.2,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "UK100": {
+        "category": "indices_europe",
+        "volatility": "medium",
+        "avg_daily_range": 1.2,
+        "optimal_hours": ["08:00-17:00"],
+        "spread_typical": 0.3,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "J225": {
+        "category": "indices_asia",
+        "volatility": "medium",
+        "avg_daily_range": 1.6,
+        "optimal_hours": ["00:00-08:00"],
+        "spread_typical": 1.0,
+        "min_confidence_adjustment": 0,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "HK50": {
+        "category": "indices_asia",
+        "volatility": "high",
+        "avg_daily_range": 2.0,
+        "optimal_hours": ["01:00-08:00"],
+        "spread_typical": 2.0,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+     },
+     
+     # === SÍMBOLOS RESTANTES DE GLOBAL_SYMBOLS ===
+     "UNIUSD": {
+         "category": "crypto_large_cap",
+         "volatility": "very_high",
+         "avg_daily_range": 8.5,
+         "optimal_hours": ["00:00-23:59"],
+         "spread_typical": 0.002,
+         "min_confidence_adjustment": -6,
+         "max_trades_multiplier": 1.5,
+         "risk_level": "high",
+         "liquidity": "medium",
+     },
+     "LTCUSD": {
+         "category": "crypto_large_cap",
+         "volatility": "high",
+         "avg_daily_range": 4.8,
+         "optimal_hours": ["00:00-23:59"],
+         "spread_typical": 0.01,
+         "min_confidence_adjustment": -3,
+         "max_trades_multiplier": 1.2,
+         "risk_level": "medium_high",
+         "liquidity": "high",
+     },
+     "VETUSD": {
+         "category": "crypto_emerging",
+         "volatility": "very_high",
+         "avg_daily_range": 12.1,
+         "optimal_hours": ["00:00-23:59"],
+         "spread_typical": 0.00001,
+         "min_confidence_adjustment": -10,
+         "max_trades_multiplier": 1.9,
+         "risk_level": "very_high",
+         "liquidity": "low",
+     },
+     "FILUSD": {
+         "category": "crypto_emerging",
+         "volatility": "very_high",
+         "avg_daily_range": 11.8,
+         "optimal_hours": ["00:00-23:59"],
+         "spread_typical": 0.002,
+         "min_confidence_adjustment": -9,
+         "max_trades_multiplier": 1.8,
+         "risk_level": "very_high",
+         "liquidity": "low",
+     },
+     "SANDUSD": {
+         "category": "crypto_emerging",
+         "volatility": "very_high",
+         "avg_daily_range": 13.5,
+         "optimal_hours": ["00:00-23:59"],
+         "spread_typical": 0.0001,
+         "min_confidence_adjustment": -12,
+         "max_trades_multiplier": 2.0,
+         "risk_level": "very_high",
+         "liquidity": "low",
+     },
+     "MANAUSD": {
+         "category": "crypto_emerging",
+         "volatility": "very_high",
+         "avg_daily_range": 14.2,
+         "optimal_hours": ["00:00-23:59"],
+         "spread_typical": 0.0001,
+         "min_confidence_adjustment": -13,
+         "max_trades_multiplier": 2.1,
+         "risk_level": "very_high",
+         "liquidity": "low",
+     },
+     "EURCHF": {
+         "category": "forex_minor",
+         "volatility": "very_low",
+         "avg_daily_range": 0.4,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.0004,
+         "min_confidence_adjustment": 8,
+         "max_trades_multiplier": 0.7,
+         "risk_level": "very_low",
+         "liquidity": "medium",
+     },
+     "AUDCAD": {
+         "category": "forex_minor",
+         "volatility": "medium",
+         "avg_daily_range": 1.0,
+         "optimal_hours": ["22:00-08:00", "13:00-22:00"],
+         "spread_typical": 0.0004,
+         "min_confidence_adjustment": 2,
+         "max_trades_multiplier": 0.9,
+         "risk_level": "medium",
+         "liquidity": "medium",
+     },
+     "AUDNZD": {
+         "category": "forex_minor",
+         "volatility": "medium",
+         "avg_daily_range": 1.2,
+         "optimal_hours": ["22:00-08:00"],
+         "spread_typical": 0.0005,
+         "min_confidence_adjustment": 1,
+         "max_trades_multiplier": 1.0,
+         "risk_level": "medium",
+         "liquidity": "medium",
+     },
+     "USDSEK": {
+         "category": "forex_exotic",
+         "volatility": "high",
+         "avg_daily_range": 1.8,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.005,
+         "min_confidence_adjustment": -2,
+         "max_trades_multiplier": 1.1,
+         "risk_level": "medium_high",
+         "liquidity": "low",
+     },
+     "USDNOK": {
+         "category": "forex_exotic",
+         "volatility": "high",
+         "avg_daily_range": 1.9,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.006,
+         "min_confidence_adjustment": -2,
+         "max_trades_multiplier": 1.1,
+         "risk_level": "medium_high",
+         "liquidity": "low",
+     },
+     "USDPLN": {
+         "category": "forex_exotic",
+         "volatility": "high",
+         "avg_daily_range": 2.1,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.008,
+         "min_confidence_adjustment": -3,
+         "max_trades_multiplier": 1.2,
+         "risk_level": "high",
+         "liquidity": "low",
+     },
+     "USDHUF": {
+         "category": "forex_exotic",
+         "volatility": "high",
+         "avg_daily_range": 2.3,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.01,
+         "min_confidence_adjustment": -4,
+         "max_trades_multiplier": 1.2,
+         "risk_level": "high",
+         "liquidity": "low",
+     },
+     "NATURALGAS": {
+         "category": "energy",
+         "volatility": "very_high",
+         "avg_daily_range": 4.5,
+         "optimal_hours": ["14:30-21:00"],
+         "spread_typical": 0.005,
+         "min_confidence_adjustment": -5,
+         "max_trades_multiplier": 1.3,
+         "risk_level": "high",
+         "liquidity": "medium",
+     },
+     "GASOLINE": {
+         "category": "energy",
+         "volatility": "high",
+         "avg_daily_range": 3.8,
+         "optimal_hours": ["14:30-21:00"],
+         "spread_typical": 0.0001,
+         "min_confidence_adjustment": -3,
+         "max_trades_multiplier": 1.2,
+         "risk_level": "high",
+         "liquidity": "medium",
+     },
+     "SOYBEAN": {
+         "category": "agricultural",
+         "volatility": "high",
+         "avg_daily_range": 2.3,
+         "optimal_hours": ["14:30-21:00"],
+         "spread_typical": 0.03,
+         "min_confidence_adjustment": -1,
+         "max_trades_multiplier": 1.0,
+         "risk_level": "medium_high",
+         "liquidity": "medium",
+     },
+     "SB": {
+         "category": "agricultural",
+         "volatility": "high",
+         "avg_daily_range": 3.1,
+         "optimal_hours": ["14:30-21:00"],
+         "spread_typical": 0.0001,
+         "min_confidence_adjustment": -2,
+         "max_trades_multiplier": 1.1,
+         "risk_level": "medium_high",
+         "liquidity": "low",
+     },
+     "LRC": {
+         "category": "agricultural",
+         "volatility": "high",
+         "avg_daily_range": 2.9,
+         "optimal_hours": ["14:30-21:00"],
+         "spread_typical": 0.0005,
+         "min_confidence_adjustment": -2,
+         "max_trades_multiplier": 1.1,
+         "risk_level": "medium_high",
+         "liquidity": "medium",
+     },
+     "USCOTTON": {
+         "category": "agricultural",
+         "volatility": "high",
+         "avg_daily_range": 2.7,
+         "optimal_hours": ["14:30-21:00"],
+         "spread_typical": 0.0001,
+         "min_confidence_adjustment": -1,
+         "max_trades_multiplier": 1.0,
+         "risk_level": "medium_high",
+         "liquidity": "low",
+     },
+     "MZN3": {
+         "category": "metals_industrial",
+         "volatility": "high",
+         "avg_daily_range": 2.8,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.5,
+         "min_confidence_adjustment": -2,
+         "max_trades_multiplier": 1.1,
+         "risk_level": "medium_high",
+         "liquidity": "low",
+     },
+     "NICKEL": {
+         "category": "metals_industrial",
+         "volatility": "very_high",
+         "avg_daily_range": 4.2,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 1.0,
+         "min_confidence_adjustment": -4,
+         "max_trades_multiplier": 1.3,
+         "risk_level": "high",
+         "liquidity": "low",
+     },
+     "FR40": {
+         "category": "indices_europe",
+         "volatility": "medium",
+         "avg_daily_range": 1.3,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.2,
+         "min_confidence_adjustment": 1,
+         "max_trades_multiplier": 0.9,
+         "risk_level": "medium",
+         "liquidity": "high",
+     },
+     "IT40": {
+         "category": "indices_europe",
+         "volatility": "medium",
+         "avg_daily_range": 1.5,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.5,
+         "min_confidence_adjustment": 0,
+         "max_trades_multiplier": 0.9,
+         "risk_level": "medium",
+         "liquidity": "medium",
+     },
+     "EU50": {
+         "category": "indices_europe",
+         "volatility": "medium",
+         "avg_daily_range": 1.2,
+         "optimal_hours": ["08:00-17:00"],
+         "spread_typical": 0.2,
+         "min_confidence_adjustment": 1,
+         "max_trades_multiplier": 0.9,
+         "risk_level": "medium",
+         "liquidity": "high",
+     },
+     "AU200": {
+         "category": "indices_asia",
+         "volatility": "medium",
+         "avg_daily_range": 1.4,
+         "optimal_hours": ["22:00-08:00"],
+         "spread_typical": 0.5,
+         "min_confidence_adjustment": 0,
+         "max_trades_multiplier": 0.9,
+         "risk_level": "medium",
+         "liquidity": "medium",
+     },
+     "SG25": {
+         "category": "indices_asia",
+         "volatility": "medium",
+         "avg_daily_range": 1.1,
+         "optimal_hours": ["01:00-08:00"],
+         "spread_typical": 1.0,
+         "min_confidence_adjustment": 1,
+         "max_trades_multiplier": 0.9,
+         "risk_level": "medium",
+         "liquidity": "low",
+     },
 }
 
 # ============================================================================
@@ -331,27 +963,158 @@ SYMBOL_SPECIFIC_CONFIG = {
 
 # Símbolos por nivel de volatilidad
 VOLATILITY_CATEGORIES = {
-    "very_low": [],  # Volatilidad < 0.5% diaria
-    "low": ["EURUSD", "USDCHF", "EURCHF"],  # 0.5% - 1.0%
-    "medium": ["BTCUSD", "GBPUSD", "USDJPY", "GOLD", "US500"],  # 1.0% - 2.0%
-    "high": ["ETHUSD", "BNBUSD", "ADAUSD", "SILVER", "NAS100", "OIL"],  # 2.0% - 4.0%
-    "very_high": ["SOLUSD", "DOTUSD", "AVAXUSD", "USDTRY"],  # > 4.0%
+    "very_low": ["EURCHF"],  # Volatilidad < 0.5% diaria
+    "low": ["EURUSD", "USDCHF", "EURGBP"],  # 0.5% - 1.0%
+    "medium": [
+        # Forex majors estables
+        "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD",
+        # Forex minors
+        "EURJPY", "AUDCAD", "AUDNZD",
+        # Metales preciosos
+        "GOLD",
+        # Índices estables
+        "US500", "US30", "DE40", "UK100", "FR40", "IT40", "EU50", "J225", "AU200", "SG25",
+        # Metales industriales
+        "ALUMINUM",
+        # Crypto major estable
+        "BTCUSD"
+    ],  # 1.0% - 2.0%
+    "high": [
+        # Forex exóticos
+        "USDSEK", "USDNOK", "GBPJPY",
+        # Metales preciosos volátiles
+        "SILVER", "PLATINUM",
+        # Energía
+        "OIL", "OIL_CRUDE", "OIL_BRENT", "GASOLINE",
+        # Agricultura
+        "WHEAT", "CORN", "SOYBEAN", "LRC", "USCOTTON",
+        # Metales industriales
+        "COPPER", "MZN3",
+        # Índices volátiles
+        "US100", "HK50",
+        # Crypto majors
+        "ETHUSD", "BNBUSD", "ADAUSD", "XRPUSD", "LTCUSD"
+    ],  # 2.0% - 4.0%
+    "very_high": [
+        # Forex exóticos muy volátiles
+        "USDZAR", "USDTRY", "USDPLN", "USDHUF",
+        # Energía muy volátil
+        "NATURALGAS",
+        # Agricultura volátil
+        "SB",
+        # Metales industriales volátiles
+        "NICKEL",
+        # Metales preciosos muy volátiles
+        "PALLADIUM",
+        # Crypto large cap
+        "SOLUSD", "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD",
+        # Crypto emerging
+        "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD"
+    ]  # > 4.0%
 }
 
 # Símbolos por nivel de liquidez
 LIQUIDITY_CATEGORIES = {
-    "very_high": ["BTCUSD", "ETHUSD", "EURUSD", "GBPUSD", "USDJPY", "GOLD", "US500"],
-    "high": ["BNBUSD", "ADAUSD", "SOLUSD", "SILVER", "NAS100", "OIL"],
-    "medium": ["DOTUSD", "AVAXUSD", "MATICUSD", "PLATINUM", "GER40"],
-    "low": ["ATOMUSD", "ALGOUSD", "COPPER", "WHEAT"],
+    "very_high": [
+        # Crypto majors con máxima liquidez
+        "BTCUSD", "ETHUSD", "XRPUSD",
+        # Forex majors
+        "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD",
+        # Metales preciosos principales
+        "GOLD",
+        # Índices principales
+        "US500", "US30", "US100",
+        # Energía principal
+        "OIL_CRUDE"
+    ],
+    "high": [
+        # Crypto majors
+        "BNBUSD", "ADAUSD", "SOLUSD", "LTCUSD",
+        # Forex majors
+        "USDCAD", "NZDUSD",
+        # Forex minors principales
+        "EURJPY", "EURGBP", "GBPJPY",
+        # Metales preciosos
+        "SILVER",
+        # Índices europeos principales
+        "DE40", "UK100", "FR40", "EU50",
+        # Índices asiáticos principales
+        "J225",
+        # Energía
+        "OIL", "OIL_BRENT",
+        # Metales industriales principales
+        "COPPER"
+    ],
+    "medium": [
+        # Crypto large cap
+        "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD",
+        # Forex minors
+        "AUDCAD", "AUDNZD", "EURCHF",
+        # Metales preciosos
+        "PLATINUM",
+        # Índices secundarios
+        "IT40", "HK50", "AU200",
+        # Energía secundaria
+        "NATURALGAS", "GASOLINE",
+        # Agricultura principal
+        "WHEAT", "CORN", "SOYBEAN", "LRC",
+        # Metales industriales
+        "ALUMINUM"
+    ],
+    "low": [
+        # Crypto emerging
+        "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD",
+        # Forex exóticos
+        "USDZAR", "USDTRY", "USDSEK", "USDNOK", "USDPLN", "USDHUF",
+        # Metales preciosos especializados
+        "PALLADIUM",
+        # Índices menores
+        "SG25",
+        # Agricultura especializada
+        "SB", "USCOTTON",
+        # Metales industriales especializados
+        "MZN3", "NICKEL"
+    ]
 }
 
 # Símbolos por sesión de mercado óptima
 MARKET_SESSION_SYMBOLS = {
-    "asian": ["USDJPY", "AUDUSD", "NZDUSD", "JPN225", "HK50", "AUS200"],
-    "european": ["EURUSD", "GBPUSD", "EURGBP", "GOLD", "SILVER", "GER40", "UK100"],
-    "american": ["US500", "NAS100", "US30", "OIL", "COPPER"],
-    "crypto_24_7": CRYPTO_MAJOR + CRYPTO_LARGE_CAP + CRYPTO_EMERGING,
+    "asian": [
+        # Forex con yen y monedas asiáticas/oceánicas
+        "USDJPY", "AUDUSD", "NZDUSD", "EURJPY", "GBPJPY", "AUDCAD", "AUDNZD",
+        # Índices asiáticos
+        "J225", "HK50", "AU200", "SG25"
+    ],
+    "european": [
+        # Forex europeos
+        "EURUSD", "GBPUSD", "USDCHF", "EURGBP", "EURCHF",
+        # Forex exóticos europeos
+        "USDSEK", "USDNOK", "USDPLN", "USDHUF",
+        # Metales preciosos (Londres es centro principal)
+        "GOLD", "SILVER", "PLATINUM", "PALLADIUM",
+        # Metales industriales (LME en Londres)
+        "COPPER", "ALUMINUM", "MZN3", "NICKEL",
+        # Índices europeos
+        "DE40", "UK100", "FR40", "IT40", "EU50"
+    ],
+    "american": [
+        # Forex con USD como base en horario americano
+        "USDCAD", "USDZAR", "USDTRY",
+        # Índices americanos
+        "US500", "US30", "US100",
+        # Energía (mercados principales en NY)
+        "OIL", "OIL_CRUDE", "OIL_BRENT", "NATURALGAS", "GASOLINE",
+        # Agricultura (Chicago/NY)
+        "WHEAT", "CORN", "SOYBEAN", "SB", "LRC", "USCOTTON"
+    ],
+    "crypto_24_7": [
+        # Crypto majors
+        "BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "ADAUSD", "SOLUSD",
+        # Crypto large cap
+        "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD", "LTCUSD",
+        # Crypto emerging
+        "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD"
+    ]
 }
 
 # ============================================================================
