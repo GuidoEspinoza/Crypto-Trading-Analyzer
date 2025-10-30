@@ -54,8 +54,21 @@ from .capital_client import CapitalClient, create_capital_client_from_env
 from src.utils.market_hours import market_hours_checker
 
 # Configurar logging ANTES de la clase
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.WARNING,  # Cambiar a WARNING para reducir verbosidad
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Configurar loggers específicos para reducir ruido
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('requests').setLevel(logging.WARNING)
+logging.getLogger('pydantic').setLevel(logging.ERROR)
+
+# Mantener INFO para componentes críticos del trading bot
+logging.getLogger('src.core.trading_bot').setLevel(logging.INFO)
+logging.getLogger('src.core.balance_manager').setLevel(logging.INFO)
+logging.getLogger('src.core.capital_client').setLevel(logging.INFO)
 
 
 @dataclass
@@ -1151,18 +1164,16 @@ class TradingBot:
             if cached_signals is not None:
                 self.logger.info("⚡ Using cached analysis results")
                 all_signals = cached_signals
+                # Procesar señales con trading
+                if all_signals:
+                    self._process_signals(all_signals)
+                else:
+                    self.logger.info("⚪ No trading signals generated this cycle")
             else:
-                # Analizar en paralelo usando ThreadPoolExecutor
-                all_signals = self._analyze_symbols_parallel()
-
-                # Almacenar en cache
-                self._store_in_cache(cache_key, all_signals)
-
-            # Procesar señales con trading
-            if all_signals:
-                self._process_signals(all_signals)
-            else:
-                self.logger.info("⚪ No trading signals generated this cycle")
+                # Usar el nuevo flujo secuencial con ejecución inmediata
+                self.logger.info("🔄 Starting sequential analysis with immediate execution")
+                self._analyze_symbols_sequential_with_immediate_execution()
+                self.logger.info("✅ Sequential analysis with immediate execution completed")
 
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
@@ -1292,6 +1303,64 @@ class TradingBot:
                         f"❌ Error analyzing {symbol} with {strategy_name}: {e}"
                     )
         return all_signals
+
+    def _analyze_symbols_sequential_with_immediate_execution(self):
+        """
+        🎯 Nuevo flujo: Analizar símbolo por símbolo con ejecución inmediata de trades
+        
+        FLUJO OPTIMIZADO SÍMBOLO POR SÍMBOLO:
+        1. Tomar símbolo
+        2. Analizar con todas las estrategias
+        3. Procesar señales inmediatamente
+        4. Ejecutar trades si hay señales válidas
+        5. Esperar 1 segundo
+        6. Repetir con siguiente símbolo
+        """
+        weekend_indicator = "🏖️" if self._is_weekend_trading() else "🎯"
+        self.logger.info(f"{weekend_indicator} Starting sequential symbol-by-symbol analysis with immediate execution...")
+        
+        total_symbols = len(self.symbols)
+        
+        for symbol_index, symbol in enumerate(self.symbols, 1):
+            try:
+                self.logger.info(f"📊 {symbol} ({symbol_index}/{total_symbols})")
+                
+                # PASO 1: Analizar símbolo con todas las estrategias
+                symbol_signals = []
+                
+                for strategy_name, strategy in self.strategies.items():
+                    try:
+                        signal = self._analyze_single_symbol(symbol, strategy_name, strategy)
+                        if signal and signal.signal_type != "HOLD":
+                            symbol_signals.append(signal)
+                            self.stats["signals_generated"] += 1
+                            # Tracking separado para fines de semana
+                            if self._is_weekend_trading():
+                                self.stats["weekend_signals"] += 1
+                            else:
+                                self.stats["weekday_signals"] += 1
+                            
+                            self.logger.info(
+                                f"   ✅ Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%"
+                            )
+                    except Exception as e:
+                        self.logger.error(f"   ❌ Error analyzing {symbol} with {strategy_name}: {e}")
+                
+                # PASO 2: Procesar señales inmediatamente para este símbolo
+                if symbol_signals:
+                    self.logger.info(f"   🎯 Processing {len(symbol_signals)} signals for {symbol}...")
+                    self._process_signals(symbol_signals)
+                
+                # PASO 3: Esperar 1 segundo antes del siguiente símbolo (excepto el último)
+                if symbol_index < total_symbols:
+                    time.sleep(1)
+                
+            except Exception as e:
+                self.logger.error(f"❌ Error processing symbol {symbol}: {e}")
+                # Continuar con el siguiente símbolo incluso si hay error
+                continue
+        
+        self.logger.info(f"✅ Sequential symbol-by-symbol analysis completed for {total_symbols} symbols")
 
     def _process_signals(self, signals: List[TradingSignal]):
         """
@@ -1522,9 +1591,6 @@ class TradingBot:
                         self._update_trade_tracking(signal)
 
                         # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
-                        self.logger.info(
-                            f"🔄 Trade completed for {signal.symbol}. Balance will be refreshed for next signal."
-                        )
 
                         # Emitir evento de trade ejecutado
                         self._emit_trade_event(signal, trade_result, risk_assessment)
@@ -1685,9 +1751,6 @@ class TradingBot:
             # Obtener posiciones abiertas de Capital.com (solo para contar)
             logger.info(f"🔧 DEBUG: llamando get_positions()")
             positions_response = self.capital_client.get_positions()
-            logger.info(
-                f"🔧 DEBUG: positions_response from Capital.com: {positions_response}"
-            )
 
             # Extraer la lista de posiciones de la respuesta
             positions = []
@@ -1695,7 +1758,6 @@ class TradingBot:
                 "positions"
             ):
                 positions = positions_response.get("positions", [])
-                logger.info(f"🔧 DEBUG: extracted positions: {positions}")
                 logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
 
             # El valor total del portfolio es el balance total (equity) que ya incluye las posiciones

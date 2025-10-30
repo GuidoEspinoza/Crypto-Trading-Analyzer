@@ -506,7 +506,7 @@ class MeanReversionProfessional:
             )
 
             current_price = df["close"].iloc[-1]
-            current_rsi = rsi[-1]
+            current_rsi = rsi.iloc[-1]
             current_stoch_k = stoch_k.iloc[-1]
             current_stoch_d = stoch_d.iloc[-1]
 

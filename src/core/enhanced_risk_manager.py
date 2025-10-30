@@ -102,23 +102,9 @@ class EnhancedRiskManager:
             capital_client  # Cliente para obtener apalancamientos dinámicos
         )
 
-        # Debug logs más visibles
-        print(
-            f"🔧 DEBUG: EnhancedRiskManager inicializado con capital_client: {capital_client is not None}"
-        )
-        logger.info(
-            f"🔧 EnhancedRiskManager inicializado con capital_client: {capital_client is not None}"
-        )
-        if capital_client:
-            print(
-                f"🔧 DEBUG: Capital client tiene get_leverage_for_symbol: {hasattr(capital_client, 'get_leverage_for_symbol')}"
-            )
-            logger.info(
-                f"🔧 Capital client tiene get_leverage_for_symbol: {hasattr(capital_client, 'get_leverage_for_symbol')}"
-            )
-        else:
-            print("🔧 DEBUG: ❌ Capital client es None!")
-            logger.warning("🔧 ❌ Capital client es None!")
+        # Inicialización del risk manager
+        logger.info(f"🔧 EnhancedRiskManager inicializado con capital_client: {capital_client is not None}")
+        
         self.max_portfolio_risk = self.config.get_max_risk_per_trade()  # Ya en decimal
         self.max_daily_risk = self.config.get_max_daily_risk()  # Ya en decimal
         self.max_drawdown_threshold = (
@@ -154,77 +140,32 @@ class EnhancedRiskManager:
 
     def _get_dynamic_leverage(self, symbol: str) -> float:
         """Obtener apalancamiento dinámico desde Capital.com API"""
-        print(f"🔧 DEBUG: Obteniendo apalancamiento dinámico para {symbol}")
-        logger.info(f"🔍 Obteniendo apalancamiento dinámico para {symbol}")
-        print(f"🔧 DEBUG: Capital client disponible: {self.capital_client is not None}")
-        logger.info(f"🔍 Capital client disponible: {self.capital_client is not None}")
+        logger.debug(f"🔍 Obteniendo apalancamiento dinámico para {symbol}")
 
         try:
-            if self.capital_client:
-                print(
-                    f"🔧 DEBUG: Capital client tiene get_leverage_for_symbol: {hasattr(self.capital_client, 'get_leverage_for_symbol')}"
-                )
-                logger.info(
-                    f"🔍 Capital client tiene get_leverage_for_symbol: {hasattr(self.capital_client, 'get_leverage_for_symbol')}"
-                )
-                if hasattr(self.capital_client, "get_leverage_for_symbol"):
-                    print(f"🔧 DEBUG: Llamando get_leverage_for_symbol para {symbol}")
-                    logger.info(f"🔍 Llamando get_leverage_for_symbol para {symbol}")
-                    leverage_info = self.capital_client.get_leverage_for_symbol(symbol)
-                    print(f"🔧 DEBUG: Respuesta leverage_info: {leverage_info}")
-                    logger.info(f"🔍 Respuesta leverage_info: {leverage_info}")
-
-                    if (
-                        leverage_info
-                        and leverage_info.get("success")
-                        and "current_leverage" in leverage_info
-                    ):
-                        dynamic_leverage = float(leverage_info["current_leverage"])
-                        print(
-                            f"🔧 DEBUG: ✅ Apalancamiento dinámico para {symbol}: {dynamic_leverage}x"
-                        )
-                        logger.info(
-                            f"✅ Apalancamiento dinámico para {symbol}: {dynamic_leverage}x"
-                        )
-                        return dynamic_leverage
-                    else:
-                        print(
-                            f"🔧 DEBUG: ⚠️ No se pudo obtener apalancamiento dinámico para {symbol}, usando perfil"
-                        )
-                        logger.warning(
-                            f"⚠️ No se pudo obtener apalancamiento dinámico para {symbol}, usando perfil"
-                        )
+            if self.capital_client and hasattr(self.capital_client, "get_leverage_for_symbol"):
+                leverage_info = self.capital_client.get_leverage_for_symbol(symbol)
+                
+                if (
+                    leverage_info
+                    and leverage_info.get("success")
+                    and "current_leverage" in leverage_info
+                ):
+                    dynamic_leverage = float(leverage_info["current_leverage"])
+                    logger.debug(f"✅ Apalancamiento dinámico para {symbol}: {dynamic_leverage}x")
+                    return dynamic_leverage
                 else:
-                    print(
-                        f"🔧 DEBUG: ⚠️ Capital client no tiene método get_leverage_for_symbol"
-                    )
-                    logger.warning(
-                        f"⚠️ Capital client no tiene método get_leverage_for_symbol"
-                    )
+                    logger.debug(f"⚠️ No se pudo obtener apalancamiento dinámico para {symbol}")
             else:
-                print(
-                    f"🔧 DEBUG: ⚠️ Capital client no disponible, usando apalancamiento del perfil"
-                )
-                logger.warning(
-                    "⚠️ Capital client no disponible, usando apalancamiento del perfil"
-                )
+                logger.debug("⚠️ Capital client no disponible o sin método get_leverage_for_symbol")
+                
         except Exception as e:
-            print(
-                f"🔧 DEBUG: ❌ Error obteniendo apalancamiento dinámico para {symbol}: {e}"
-            )
-            logger.error(
-                f"❌ Error obteniendo apalancamiento dinámico para {symbol}: {e}"
-            )
-            import traceback
-
-            print(f"🔧 DEBUG: Traceback: {traceback.format_exc()}")
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            logger.error(f"❌ Error obteniendo apalancamiento dinámico para {symbol}: {e}")
 
         # Fallback al apalancamiento del perfil
         profile = TradingProfiles.get_current_profile()
         fallback_leverage = profile["default_leverage"]
-        print(f"🔧 DEBUG: 🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
-        logger.info(f"🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
+        logger.debug(f"🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
         return fallback_leverage
 
     def assess_trade_risk(
@@ -379,48 +320,32 @@ class EnhancedRiskManager:
         self, signal: EnhancedSignal, market_risk: Dict
     ) -> PositionSizing:
         """Calcular tamaño de posición usando múltiples métodos"""
-        print(f"🔧 DEBUG: _calculate_position_sizing llamado para {signal.symbol}")
-        logger.info(f"🔍 _calculate_position_sizing llamado para {signal.symbol}")
+        logger.debug(f"🔍 _calculate_position_sizing llamado para {signal.symbol}")
         try:
             # NUEVA ESTRATEGIA: Cálculo basado en balance y apalancamiento dinámico
-            print(
-                f"🔧 DEBUG: Iniciando cálculo con balance: ${self.portfolio_value:.2f}"
-            )
+            logger.debug(f"Iniciando cálculo con balance: ${self.portfolio_value:.2f}")
 
             # Obtener apalancamiento dinámico primero
             dynamic_leverage = self._get_dynamic_leverage(signal.symbol)
-            print(f"🔧 DEBUG: Apalancamiento obtenido: {dynamic_leverage}x")
+            logger.debug(f"Apalancamiento obtenido: {dynamic_leverage}x")
 
             # Paso 1: Calcular monto de operación (% del balance)
-            print(
-                f"🔧 DEBUG: max_position_size configurado: {self.max_position_size} ({self.max_position_size*100:.1f}%)"
-            )
-
             # Aplicar position_size_multiplier del perfil activo
             position_multiplier = self.config.get_position_size_multiplier()
-            print(
-                f"🔧 DEBUG: position_size_multiplier del perfil: {position_multiplier}"
-            )
 
             monto_operacion = (
                 self.portfolio_value * self.max_position_size * position_multiplier
             )
-            print(
-                f"🔧 DEBUG: Monto operación ({self.max_position_size*100:.1f}% * {position_multiplier} del balance): ${monto_operacion:.2f}"
-            )
+            logger.debug(f"Monto operación ({self.max_position_size*100:.1f}% * {position_multiplier} del balance): ${monto_operacion:.2f}")
 
             # Paso 2: Calcular valor de negociación (monto * apalancamiento)
             valor_negociacion = monto_operacion * dynamic_leverage
-            print(
-                f"🔧 DEBUG: Valor negociación (${monto_operacion:.2f} * {dynamic_leverage}x): ${valor_negociacion:.2f}"
-            )
+            logger.debug(f"Valor negociación: ${valor_negociacion:.2f}")
 
             # Paso 3: Calcular tamaño de posición (valor / precio actual)
             precio_actual = signal.price
             tamano_posicion = valor_negociacion / precio_actual
-            print(
-                f"🔧 DEBUG: Tamaño posición (${valor_negociacion:.2f} / ${precio_actual:.2f}): {tamano_posicion:.6f}"
-            )
+            logger.debug(f"Tamaño posición: {tamano_posicion:.6f}")
 
             # NUEVO: Ajuste dinámico por volatilidad ATR (percentil 90+)
             volatility_adjustment = 1.0
@@ -434,10 +359,6 @@ class EnhancedRiskManager:
                 volatility_adjustment = atr_info.get("volatility_adjustment", 1.0)
 
                 if volatility_adjustment < 1.0:
-                    print(
-                        f"🔧 DEBUG: Ajuste por volatilidad ATR para {signal.symbol}: {volatility_adjustment:.1f}x"
-                    )
-                    print(f"🔧 DEBUG: {atr_info.get('reason', 'Sin razón')}")
                     logger.info(
                         f"🌪️ Ajuste volatilidad {signal.symbol}: {volatility_adjustment:.1f}x - {atr_info.get('reason', '')}"
                     )
@@ -446,17 +367,6 @@ class EnhancedRiskManager:
                     monto_operacion *= volatility_adjustment
                     valor_negociacion *= volatility_adjustment
                     tamano_posicion *= volatility_adjustment
-
-                    print(f"🔧 DEBUG: Después del ajuste ATR:")
-                    print(
-                        f"🔧 DEBUG: - Monto operación ajustado: ${monto_operacion:.2f}"
-                    )
-                    print(
-                        f"🔧 DEBUG: - Valor negociación ajustado: ${valor_negociacion:.2f}"
-                    )
-                    print(
-                        f"🔧 DEBUG: - Tamaño posición ajustado: {tamano_posicion:.6f}"
-                    )
 
             # Aplicar límites mínimos y máximos
             recommended_size = max(self.min_position_size, tamano_posicion)
@@ -481,9 +391,7 @@ class EnhancedRiskManager:
                 position_risk_ratio = 1.0  # 100% de riesgo
                 risk_level = RiskLevel.EXTREME
 
-            print(
-                f"🔧 DEBUG: Nivel de riesgo: {risk_level.value} (ratio: {position_risk_ratio:.3f})"
-            )
+            logger.debug(f"Nivel de riesgo: {risk_level.value} (ratio: {position_risk_ratio:.3f})")
 
             # Reasoning actualizado para nueva estrategia con ajuste de volatilidad
             reasoning = (
@@ -495,8 +403,6 @@ class EnhancedRiskManager:
             # Agregar información del ajuste de volatilidad si aplica
             if atr_info and volatility_adjustment < 1.0:
                 reasoning += f", Ajuste volatilidad ATR: {volatility_adjustment:.1f}x (Percentil {atr_info.get('atr_percentile', 0):.1f}%)"
-
-            print(f"🔧 DEBUG: Reasoning: {reasoning}")
 
             return PositionSizing(
                 recommended_size=round(tamano_posicion, 6),  # Más precisión para crypto
@@ -648,12 +554,13 @@ class EnhancedRiskManager:
             )  # Desde perfil activo
 
             # Ajustar según régimen de mercado
-            if signal.market_regime == "TRENDING":
+            market_regime = getattr(signal, "market_regime", "NORMAL")
+            if market_regime == "TRENDING":
                 tp_increment_pct = 0.015  # Incremento en tendencias (decimal)
                 confidence_threshold = max(
                     0.5, confidence_threshold - 0.1
                 )  # Reducir umbral
-            elif signal.market_regime == "VOLATILE":
+            elif market_regime == "VOLATILE":
                 tp_increment_pct = 0.008  # Más conservador en volatilidad (decimal)
                 confidence_threshold = min(
                     0.9, confidence_threshold + 0.1
@@ -1301,7 +1208,7 @@ class EnhancedRiskManager:
                     "max_daily_risk": self.max_daily_risk,
                     "max_drawdown_threshold": self.max_drawdown_threshold,
                     "risk_budget_used": round(
-                        len(self.open_positions) * self.max_portfolio_risk, 2
+                        len(self.open_positions) * self.max_portfolio_risk, 4
                     ),
                 },
             }

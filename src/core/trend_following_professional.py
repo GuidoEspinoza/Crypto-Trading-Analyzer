@@ -759,11 +759,133 @@ class TrendFollowingProfessional:
                 )
                 return None
 
-            return signal
+            return None
 
         except Exception as e:
             logger.error(f"Error en análisis de {symbol}: {str(e)}")
             return None
+
+    def calculate_roi_based_risk_reward(
+        self, entry_price: float, signal_type: str, position_size: float, atr: float
+    ) -> Tuple[float, float, float]:
+        """Calcular stop loss, take profit basado en ROI del balance total (para scalping)
+
+        Args:
+            entry_price: Precio de entrada
+            signal_type: "BUY" o "SELL"
+            position_size: Tamaño de la posición en USD
+            atr: Average True Range
+
+        Returns:
+            Tuple[stop_loss_price, take_profit_price, risk_reward_ratio]
+        """
+        try:
+            # Importar configuración dinámica y balance manager
+            from src.config.main_config import RiskManagerConfig, get_global_initial_balance
+            from src.core.balance_manager import get_current_balance_sync
+
+            # Obtener balance total actual
+            try:
+                balance_data = get_current_balance_sync()
+                total_balance = balance_data.get("available", 0.0)
+                if total_balance <= 0:
+                    # Fallback al balance inicial si no se puede obtener el actual
+                    total_balance = get_global_initial_balance()
+            except:
+                # Fallback al balance inicial en caso de error
+                total_balance = get_global_initial_balance()
+
+            # Obtener rangos dinámicos desde config (representan % del balance total)
+            sl_roi_min = RiskManagerConfig.get_sl_min_percentage()  # % de pérdida del balance total
+            sl_roi_max = RiskManagerConfig.get_sl_max_percentage()  # % de pérdida del balance total
+            tp_roi_min = RiskManagerConfig.get_tp_min_percentage()  # % de ganancia del balance total
+            tp_roi_max = RiskManagerConfig.get_tp_max_percentage()  # % de ganancia del balance total
+
+            # Calcular cantidad de activo que se puede comprar/vender
+            quantity = position_size / entry_price
+
+            # Calcular ROI objetivo basado en el tamaño de posición relativo al balance
+            position_ratio = position_size / total_balance
+            
+            # Para posiciones más grandes relativas al balance, usar ROI más conservador
+            if position_ratio > 0.1:  # Posiciones > 10% del balance
+                target_sl_roi = sl_roi_min + (sl_roi_max - sl_roi_min) * 0.3
+                target_tp_roi = tp_roi_min + (tp_roi_max - tp_roi_min) * 0.7
+            elif position_ratio > 0.05:  # Posiciones > 5% del balance
+                target_sl_roi = sl_roi_min + (sl_roi_max - sl_roi_min) * 0.5
+                target_tp_roi = tp_roi_min + (tp_roi_max - tp_roi_min) * 0.8
+            else:  # Posiciones pequeñas
+                target_sl_roi = sl_roi_min + (sl_roi_max - sl_roi_min) * 0.7
+                target_tp_roi = tp_roi_min + (tp_roi_max - tp_roi_min) * 0.9
+
+            # Calcular pérdida máxima permitida en USD (% del balance total)
+            max_loss_usd = total_balance * target_sl_roi
+            
+            # Calcular ganancia objetivo en USD (% del balance total)
+            target_profit_usd = total_balance * target_tp_roi
+
+            if signal_type.upper() == "BUY":
+                # Para BUY: pérdida = (entry_price - stop_loss) * quantity
+                # max_loss_usd = (entry_price - stop_loss) * quantity
+                # stop_loss = entry_price - (max_loss_usd / quantity)
+                stop_loss_price = entry_price - (max_loss_usd / quantity)
+
+                # Para BUY: ganancia = (take_profit - entry_price) * quantity
+                # target_profit_usd = (take_profit - entry_price) * quantity
+                # take_profit = entry_price + (target_profit_usd / quantity)
+                take_profit_price = entry_price + (target_profit_usd / quantity)
+            else:  # SELL
+                # Para SELL: pérdida = (stop_loss - entry_price) * quantity
+                # max_loss_usd = (stop_loss - entry_price) * quantity
+                # stop_loss = entry_price + (max_loss_usd / quantity)
+                stop_loss_price = entry_price + (max_loss_usd / quantity)
+
+                # Para SELL: ganancia = (entry_price - take_profit) * quantity
+                # target_profit_usd = (entry_price - take_profit) * quantity
+                # take_profit = entry_price - (target_profit_usd / quantity)
+                take_profit_price = entry_price - (target_profit_usd / quantity)
+
+            # Validaciones de seguridad para evitar stop loss inválidos
+            if signal_type.upper() == "BUY":
+                # Para BUY, el stop loss debe ser menor que el precio de entrada
+                if stop_loss_price >= entry_price:
+                    stop_loss_price = entry_price * 0.98  # 2% por debajo como fallback
+                # El stop loss no puede ser negativo o muy bajo
+                if stop_loss_price <= 0 or stop_loss_price < entry_price * 0.5:
+                    stop_loss_price = entry_price * 0.95  # 5% por debajo como fallback
+            else:  # SELL
+                # Para SELL, el stop loss debe ser mayor que el precio de entrada
+                if stop_loss_price <= entry_price:
+                    stop_loss_price = entry_price * 1.02  # 2% por encima como fallback
+                # El stop loss no puede ser excesivamente alto
+                if stop_loss_price > entry_price * 2.0:
+                    stop_loss_price = entry_price * 1.05  # 5% por encima como fallback
+
+            # Calcular risk/reward ratio
+            risk = abs(entry_price - stop_loss_price)
+            reward = abs(take_profit_price - entry_price)
+            risk_reward_ratio = reward / risk if risk > 0 else 0
+
+            return stop_loss_price, take_profit_price, risk_reward_ratio
+
+        except Exception as e:
+            logger.error(f"Error calculating ROI-based risk/reward: {e}")
+            # Fallback a cálculo tradicional basado en ATR
+            atr_multiplier_sl = 2.0
+            atr_multiplier_tp = 3.0
+
+            if signal_type.upper() == "BUY":
+                stop_loss_price = entry_price - (atr * atr_multiplier_sl)
+                take_profit_price = entry_price + (atr * atr_multiplier_tp)
+            else:
+                stop_loss_price = entry_price + (atr * atr_multiplier_sl)
+                take_profit_price = entry_price - (atr * atr_multiplier_tp)
+
+            risk = abs(entry_price - stop_loss_price)
+            reward = abs(take_profit_price - entry_price)
+            risk_reward_ratio = reward / risk if risk > 0 else 0
+
+            return stop_loss_price, take_profit_price, risk_reward_ratio
 
     def detect_sideways_market(self, df: pd.DataFrame) -> Dict:
         """🔍 Detecta mercados laterales para evitar trades innecesarios"""

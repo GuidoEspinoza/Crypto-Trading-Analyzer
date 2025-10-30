@@ -1257,7 +1257,6 @@ class CapitalClient:
             logger.info(
                 f"Placing {direction} order for {epic}: size={size}, type={order_type}"
             )
-            logger.info(f"Order payload: {order_data}")
 
             response = self.session.post(url, json=order_data)
 
@@ -1810,17 +1809,17 @@ def create_capital_client_from_env() -> CapitalClient:
     )
 
     # Debug: Log configuration (without sensitive data)
-    logger.info(f"Capital.com config - Demo mode: {config.use_demo}")
-    logger.info(
+    logger.debug(f"Capital.com config - Demo mode: {config.use_demo}")
+    logger.debug(
         f"Capital.com config - Base URL: {config.demo_url if config.use_demo else config.live_url}"
     )
-    logger.info(
+    logger.debug(
         f"Capital.com config - Identifier set: {'Yes' if config.identifier else 'No'}"
     )
-    logger.info(
+    logger.debug(
         f"Capital.com config - Password set: {'Yes' if config.password else 'No'}"
     )
-    logger.info(
+    logger.debug(
         f"Capital.com config - API Key set: {'Yes' if config.api_key else 'No'}"
     )
 

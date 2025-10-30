@@ -749,9 +749,6 @@ class PositionManager:
             PositionInfo o None si hay error
         """
         try:
-            # DEBUG: Log de la posición completa
-            self.logger.info(f"🔍 Converting Capital position: {capital_position}")
-
             # Extraer datos anidados de position y market
             position_data = capital_position.get("position", {})
             market_data = capital_position.get("market", {})
@@ -775,11 +772,6 @@ class PositionManager:
             direction = position_data.get("direction", "BUY")
             created_date = position_data.get("createdDateUTC")
 
-            # DEBUG: Log de datos extraídos
-            self.logger.info(
-                f"🔍 Extracted data - symbol: {symbol}, entry_price: {entry_price}, current_price: {current_price}, quantity: {quantity}, pnl: {pnl}, direction: {direction}, created_date: {created_date}"
-            )
-
             # Validar entry_price
             if entry_price <= 0:
                 self.logger.warning(
@@ -787,7 +779,7 @@ class PositionManager:
                 )
                 entry_price = current_price
 
-            self.logger.info(
+            self.logger.debug(
                 f"💰 Using entry_price={entry_price:.4f} for {symbol} ({direction})"
             )
 
@@ -872,8 +864,6 @@ class PositionManager:
             datetime o None si hay error
         """
         try:
-            self.logger.info(f"🔍 Parsing time string: '{time_str}'")
-
             if not time_str:
                 self.logger.warning(f"⚠️ Empty time string received")
                 return None
@@ -883,7 +873,7 @@ class PositionManager:
                 time_str = time_str[:-1] + "+00:00"
 
             parsed_time = datetime.fromisoformat(time_str)
-            self.logger.info(f"✅ Successfully parsed time: {parsed_time}")
+            self.logger.debug(f"✅ Successfully parsed time: {parsed_time}")
             return parsed_time
 
         except Exception as e:

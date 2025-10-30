@@ -158,7 +158,7 @@ class BalanceManager:
 
             self.last_balance_update = datetime.now()
 
-            logger.info(
+            logger.debug(
                 f"💰 Balance actualizado: ${self.current_balance['available']:,.2f} disponible"
             )
             return True

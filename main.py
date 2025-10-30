@@ -10,6 +10,24 @@ from typing import List, Optional
 import uvicorn
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+import logging
+
+# Configurar logging para reducir verbosidad
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Configurar loggers específicos para reducir ruido
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('requests').setLevel(logging.WARNING)
+logging.getLogger('pydantic').setLevel(logging.ERROR)
+logging.getLogger('uvicorn').setLevel(logging.INFO)  # Mantener INFO para uvicorn
+
+# Mantener INFO para componentes críticos del trading bot
+logging.getLogger('src.core.trading_bot').setLevel(logging.INFO)
+logging.getLogger('src.core.balance_manager').setLevel(logging.INFO)
+logging.getLogger('src.core.capital_client').setLevel(logging.INFO)
 
 # 🤖 Importar Trading Engine
 from src.core.trading_bot import TradingBot

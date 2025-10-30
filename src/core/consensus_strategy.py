@@ -240,16 +240,9 @@ class ConsensusStrategy:
                                 df.set_index("timestamp", inplace=True)
                                 df.sort_index(inplace=True)
                                 
-                                # Debug: mostrar información detallada
-                                logger.info(f"🔍 DataFrame procesado: {len(df)} filas")
-                                if not df.empty:
-                                    logger.info(f"🔍 Último precio close: {df['close'].iloc[-1]}")
-                                    logger.info(f"🔍 Primeras 3 filas:\n{df.head(3)}")
-                                    logger.info(f"🔍 Últimas 3 filas:\n{df.tail(3)}")
-                                
                                 # Validar que tenemos datos válidos
                                 if not df.empty and df["close"].iloc[-1] > 0:
-                                    logger.info(f"✅ DataFrame creado: {len(df)} filas, precio actual: ${df['close'].iloc[-1]:.2f}")
+                                    logger.debug(f"✅ DataFrame creado: {len(df)} filas, precio actual: ${df['close'].iloc[-1]:.2f}")
                                     return df
                                 else:
                                     logger.warning(f"⚠️ Datos históricos inválidos para {symbol} - DataFrame vacío: {df.empty}, último close: {df['close'].iloc[-1] if not df.empty else 'N/A'}")
