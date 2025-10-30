@@ -146,7 +146,7 @@ class BreakoutProfessional:
         self.min_confidence = 65
 
     def get_market_data(
-        self, symbol: str, timeframe: str, periods: int = 100
+        self, symbol: str, timeframe: str, periods: int = 250
     ) -> pd.DataFrame:
         """
         Obtener datos de mercado - será sobrescrito por el adaptador

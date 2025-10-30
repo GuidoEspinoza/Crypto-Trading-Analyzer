@@ -43,7 +43,7 @@ proporcionando una arquitectura modular y escalable para la gestión de parámet
 🛡️ CARACTERÍSTICAS DE SEGURIDAD:
     ✨ Validación automática de parámetros en tiempo real
     🔒 Límites de riesgo dinámicos por perfil
-    ⏰ Horarios inteligentes optimizados para mercados chilenos
+    ⏰ Horarios inteligentes optimizados para mercados globales en UTC
     📊 Monitoreo continuo de rendimiento y drawdown
     🚨 Sistema de alertas y notificaciones automáticas
 
@@ -73,7 +73,7 @@ from .profiles_config import TRADING_PROFILE, PROFILES
 # ⏰ Configuraciones Temporales: Horarios, zonas horarias y programación
 from .time_trading_config import (
     TIMEZONE,  # Zona horaria principal del sistema
-    CHILE_TZ,  # Zona horaria de Chile para trading local
+    UTC_TZ,  # Zona horaria UTC para trading global
     DAILY_RESET_HOUR,  # Hora de reinicio diario del sistema
     DAILY_RESET_MINUTE,  # Minuto de reinicio diario del sistema
     SMART_TRADING_HOURS,  # Horarios inteligentes optimizados
@@ -81,6 +81,12 @@ from .time_trading_config import (
     SCALPING_WEEKEND_TRADING,  # Configuración de trading en fines de semana (Scalping)
     INTRADAY_WEEKEND_TRADING,  # Configuración de trading en fines de semana (Intraday)
     PROFILE_TRADING_SCHEDULE,  # Horarios específicos por perfil
+    # Funciones relacionadas con tiempo
+    is_trading_day_allowed,  # Validación de días de trading
+    get_weekend_trading_params,  # Parámetros de trading de fin de semana
+    is_smart_trading_hours_allowed,  # Validación de horarios inteligentes
+    get_smart_trading_status_summary,  # Resumen de estado de horarios
+    _detect_market_type,  # Detección de tipo de mercado
 )
 
 # ============================================================================
@@ -256,8 +262,6 @@ class TradingProfiles:
 
 
 # ============================================================================
-# 🏭 CONFIGURACIÓN DE MODO PRODUCCIÓN
-# ============================================================================
 # 🏭 CONFIGURACIÓN DEL MODO DE OPERACIÓN DEL SISTEMA
 # ============================================================================
 """
@@ -375,31 +379,6 @@ GLOBAL_INITIAL_BALANCE = PAPER_GLOBAL_INITIAL_BALANCE  # Por defecto paper tradi
 
 # 💵 Precio base de USD (moneda fiat de referencia)
 USD_BASE_PRICE = 1.0
-
-# ============================================================================
-# ⏰ CONFIGURACIÓN TEMPORAL GLOBAL
-# ============================================================================
-"""
-Configuración de zona horaria y parámetros temporales del sistema.
-Centraliza la gestión de tiempo para consistencia en todo el sistema.
-"""
-
-# 🌍 Zona horaria principal del sistema (Chile CLT/CLST)
-# Usado en:
-# - TradingBot para programación de operaciones
-# - Logging para marcas de tiempo consistentes
-# - Análisis de mercados con horarios locales
-TIMEZONE: str = "America/Santiago"
-
-# 🔄 Alias para compatibilidad con código existente
-CHILE_TZ: str = TIMEZONE
-
-# 🔄 Configuración de reinicio diario del sistema
-# Horario de reset diario optimizado para trading de criptomonedas en Chile
-# Basado en análisis de volatilidad: mejor horario 11:30 AM - 6:00 PM CLT
-# Reset configurado a las 11:00 AM CLT para preparar el bot antes del horario óptimo
-DAILY_RESET_HOUR: int = 11  # 11:00 AM CLT (hora de reinicio diario)
-DAILY_RESET_MINUTE: int = 0  # 11:00 AM exacto (minuto de reinicio)
 
 # ============================================================================
 # 🤖 CONFIGURACIÓN DEL TRADING BOT PRINCIPAL
@@ -1641,167 +1620,6 @@ def initialize_config() -> bool:
 
 
 # ============================================================================
-# ⏰ CONFIGURACIÓN DE HORARIOS INTELIGENTES DE TRADING
-# ============================================================================
-
-# Horarios óptimos de trading en hora chilena (America/Santiago)
-# Basado en análisis de superposición de sesiones Londres-NY y apertura Wall Street
-SMART_TRADING_HOURS = {
-    "enabled": True,
-    # OPCIÓN 2 - BALANCEADA (RECOMENDADA): Horario optimizado para todos los activos
-    # Cubre: Forex (superposición Londres-NY), Índices (apertura US), Criptos y Metales
-    "start_time": "09:30",  # Inicio optimizado para máxima volatilidad
-    "end_time": "13:00",  # Fin después de apertura Wall Street (10:30)
-    "timezone": "America/Santiago",
-    # OPCIÓN 3 - EXTENDIDA (para pruebas): Descomenta las siguientes líneas para horario extendido
-    # "start_time": "09:00",    # Horario extendido para máxima cobertura de criptomonedas
-    # "end_time": "17:00",      # Cubre completamente mercados US (8 horas)
-    # Configuración por tipo de mercado
-    "market_specific": {
-        "crypto": {
-            "enabled": True,
-            "start_time": "09:30",
-            "end_time": "13:00",
-            "reason": "Máxima actividad durante mercados US abiertos",
-            # Para horario extendido: "start_time": "09:00", "end_time": "17:00"
-        },
-        "forex": {
-            "enabled": True,
-            "start_time": "09:30",
-            "end_time": "13:00",
-            "reason": "Superposición Londres-NY + apertura Wall Street",
-            # Para horario extendido: "start_time": "09:00", "end_time": "17:00"
-        },
-        "stocks_us": {
-            "enabled": True,
-            "start_time": "10:30",  # 10:30 Chile = 09:30 EST (apertura US)
-            "end_time": "13:00",  # Primeras 2.5 horas de mayor volatilidad
-            "reason": "Apertura y primeras horas de Wall Street (máxima volatilidad)",
-        },
-    },
-    # Configuración por perfil de trading
-    "profile_adjustments": {
-        "SCALPING": {
-            "start_time": "10:00",  # Más conservador, evita volatilidad extrema de apertura
-            "end_time": "12:30",  # Ventana más corta para scalping intensivo
-        },
-        "INTRADAY": {
-            "start_time": "09:30",  # Aprovecha toda la ventana optimizada
-            "end_time": "13:00",  # Máximo rango del horario balanceado
-        },
-    },
-}
-
-# Configuración avanzada de horarios por perfil
-PROFILE_TRADING_SCHEDULE = {
-    "SCALPING": {
-        "monday": True,
-        "tuesday": True,
-        "wednesday": True,
-        "thursday": True,
-        "friday": True,
-        "saturday": SCALPING_WEEKEND_TRADING,
-        "sunday": SCALPING_WEEKEND_TRADING,
-        "weekend_params": {
-            # Parámetros más conservadores para fines de semana en scalping
-            "min_confidence_multiplier": 1.2,  # 20% más confianza requerida
-            "max_daily_trades_multiplier": 0.5,  # 50% menos trades
-            "max_position_size_multiplier": 0.8,  # 20% menos tamaño de posición
-        },
-    },
-    "INTRADAY": {
-        "monday": True,
-        "tuesday": True,
-        "wednesday": True,
-        "thursday": True,
-        "friday": True,
-        "saturday": INTRADAY_WEEKEND_TRADING,
-        "sunday": INTRADAY_WEEKEND_TRADING,
-        "weekend_params": {
-            # Parámetros ligeramente más conservadores para fines de semana
-            "min_confidence_multiplier": 1.1,  # 10% más confianza requerida
-            "max_daily_trades_multiplier": 0.7,  # 30% menos trades
-            "max_position_size_multiplier": 0.9,  # 10% menos tamaño de posición
-        },
-    },
-}
-
-
-def is_trading_day_allowed(profile_name: str = None) -> bool:
-    """
-    Verifica si el trading está permitido en el día actual según la configuración.
-
-    Args:
-        profile_name: Nombre del perfil (opcional, usa el actual si no se especifica)
-
-    Returns:
-        bool: True si el trading está permitido hoy
-    """
-    from datetime import datetime
-
-    # Obtener el día actual
-    current_day = datetime.now().strftime("%A").lower()
-
-    # Si no se especifica perfil, usar el actual
-    if profile_name is None:
-        profile_name = TRADING_PROFILE
-
-    # Verificar configuración específica del perfil
-    if profile_name in PROFILE_TRADING_SCHEDULE:
-        return PROFILE_TRADING_SCHEDULE[profile_name].get(current_day, False)
-
-    # Fallback a configuración general
-    return TRADING_SCHEDULE.get(current_day, False)
-
-
-def get_weekend_trading_params(profile_name: str = None) -> dict:
-    """
-    Obtiene los parámetros de trading ajustados para fines de semana.
-
-    Args:
-        profile_name: Nombre del perfil (opcional, usa el actual si no se especifica)
-
-    Returns:
-        dict: Parámetros de trading para fines de semana
-    """
-    from datetime import datetime
-
-    # Si no se especifica perfil, usar el actual
-    if profile_name is None:
-        profile_name = TRADING_PROFILE
-
-    # Verificar si es fin de semana
-    current_day = datetime.now().strftime("%A").lower()
-    is_weekend = current_day in ["saturday", "sunday"]
-
-    if not is_weekend:
-        # No es fin de semana, retornar parámetros normales (sin modificadores)
-        return {
-            "min_confidence_multiplier": 1.0,
-            "max_daily_trades_multiplier": 1.0,
-            "max_position_size_multiplier": 1.0,
-        }
-
-    # Es fin de semana, obtener parámetros específicos del perfil
-    if profile_name in PROFILE_TRADING_SCHEDULE:
-        return PROFILE_TRADING_SCHEDULE[profile_name].get(
-            "weekend_params",
-            {
-                "min_confidence_multiplier": 1.0,
-                "max_daily_trades_multiplier": 1.0,
-                "max_position_size_multiplier": 1.0,
-            },
-        )
-
-    # Fallback a parámetros conservadores por defecto
-    return {
-        "min_confidence_multiplier": 1.15,
-        "max_daily_trades_multiplier": 0.6,
-        "max_position_size_multiplier": 0.85,
-    }
-
-
-# ============================================================================
 # 🔄 FUNCIONES UTILITARIAS PARA SÍMBOLOS
 # ============================================================================
 # Las funciones de conversión fueron eliminadas porque GLOBAL_SYMBOLS
@@ -1843,229 +1661,3 @@ try:
 
 except Exception as e:
     logger.error(f"❌ Error al inicializar configuración: {e}")
-
-# ============================================================================
-# ⏰ FUNCIONES DE VALIDACIÓN DE HORARIOS INTELIGENTES
-# ============================================================================
-
-
-def is_smart_trading_hours_allowed(
-    symbol: str = None, profile_name: str = None
-) -> dict:
-    """
-    🕘 Verifica si estamos dentro de los horarios inteligentes de trading para Chile.
-    Usa UTC internamente para comparaciones precisas, evitando problemas con cambios de horario.
-
-    Args:
-        symbol: Símbolo del activo (opcional, para validación específica por mercado)
-        profile_name: Nombre del perfil (opcional, usa el actual si no se especifica)
-
-    Returns:
-        dict: Información detallada sobre el estado del horario de trading
-    """
-    from datetime import datetime, time
-    import pytz
-
-    # Si los horarios inteligentes están deshabilitados, permitir siempre
-    if not SMART_TRADING_HOURS.get("enabled", True):
-        return {
-            "is_allowed": True,
-            "reason": "Smart trading hours disabled - 24/7 trading",
-            "current_time_chile": datetime.now(),
-            "market_status": "always_open",
-        }
-
-    try:
-        # Obtener zonas horarias
-        chile_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
-        utc_tz = pytz.UTC
-
-        # Obtener hora actual en Chile y UTC
-        current_time_chile = datetime.now(chile_tz)
-        current_time_utc = datetime.now(utc_tz)
-
-        # Si no se especifica perfil, usar el actual
-        if profile_name is None:
-            profile_name = TRADING_PROFILE
-
-        # Obtener horarios base (formato HH:MM en hora Chile)
-        start_time_str = SMART_TRADING_HOURS["start_time"]
-        end_time_str = SMART_TRADING_HOURS["end_time"]
-
-        # Aplicar ajustes por perfil si existen
-        profile_adjustments = SMART_TRADING_HOURS.get("profile_adjustments", {})
-        if profile_name in profile_adjustments:
-            start_time_str = profile_adjustments[profile_name].get(
-                "start_time", start_time_str
-            )
-            end_time_str = profile_adjustments[profile_name].get(
-                "end_time", end_time_str
-            )
-
-        # Aplicar configuración específica por mercado si se proporciona símbolo
-        market_type = _detect_market_type(symbol) if symbol else "general"
-        market_config = SMART_TRADING_HOURS.get("market_specific", {}).get(market_type)
-
-        if market_config and market_config.get("enabled", True):
-            start_time_str = market_config.get("start_time", start_time_str)
-            end_time_str = market_config.get("end_time", end_time_str)
-            market_reason = market_config.get("reason", "Market-specific hours")
-        else:
-            market_reason = "General trading hours"
-
-        # Convertir horarios de Chile a UTC para comparaciones precisas
-        start_hour, start_minute = map(int, start_time_str.split(":"))
-        end_hour, end_minute = map(int, end_time_str.split(":"))
-
-        # Crear datetime en Chile para hoy con los horarios configurados
-        today_chile = current_time_chile.date()
-        start_datetime_chile = chile_tz.localize(
-            datetime.combine(today_chile, time(start_hour, start_minute))
-        )
-        end_datetime_chile = chile_tz.localize(
-            datetime.combine(today_chile, time(end_hour, end_minute))
-        )
-
-        # Convertir a UTC para comparaciones precisas
-        start_datetime_utc = start_datetime_chile.astimezone(utc_tz)
-        end_datetime_utc = end_datetime_chile.astimezone(utc_tz)
-
-        # Verificar si estamos dentro del horario (comparación en UTC)
-        is_within_hours = (
-            start_datetime_utc.time()
-            <= current_time_utc.time()
-            < end_datetime_utc.time()
-        )
-
-        # Información adicional para debugging
-        debug_info = {
-            "start_chile": start_datetime_chile.strftime("%H:%M %Z"),
-            "end_chile": end_datetime_chile.strftime("%H:%M %Z"),
-            "start_utc": start_datetime_utc.strftime("%H:%M %Z"),
-            "end_utc": end_datetime_utc.strftime("%H:%M %Z"),
-            "current_chile": current_time_chile.strftime("%H:%M %Z"),
-            "current_utc": current_time_utc.strftime("%H:%M %Z"),
-        }
-
-        if is_within_hours:
-            return {
-                "is_allowed": True,
-                "reason": f"Within smart trading hours ({start_time_str}-{end_time_str} Chile) - {market_reason}",
-                "current_time_chile": current_time_chile,
-                "current_time_utc": current_time_utc,
-                "market_status": "open",
-                "market_type": market_type,
-                "active_hours": f"{start_time_str}-{end_time_str}",
-                "profile": profile_name,
-                "debug": debug_info,
-            }
-        else:
-            return {
-                "is_allowed": False,
-                "reason": f"Outside smart trading hours ({start_time_str}-{end_time_str} Chile) - Current: {current_time_chile.strftime('%H:%M')}",
-                "current_time_chile": current_time_chile,
-                "current_time_utc": current_time_utc,
-                "market_status": "closed_hours",
-                "market_type": market_type,
-                "active_hours": f"{start_time_str}-{end_time_str}",
-                "profile": profile_name,
-                "next_open_time": start_time_str,
-                "debug": debug_info,
-            }
-
-    except Exception as e:
-        # En caso de error, permitir trading para no bloquear el sistema
-        return {
-            "is_allowed": True,
-            "reason": f"Error checking smart hours: {e} - Defaulting to allow",
-            "current_time_chile": datetime.now(),
-            "market_status": "error_default_open",
-            "error": str(e),
-        }
-
-
-def _detect_market_type(symbol: str) -> str:
-    """
-    🔍 Detecta el tipo de mercado basado en el símbolo.
-
-    Args:
-        symbol: Símbolo del activo
-
-    Returns:
-        str: Tipo de mercado ('crypto', 'forex', 'stocks_us', 'general')
-    """
-    if not symbol:
-        return "general"
-
-    symbol_upper = symbol.upper()
-
-    # Detectar criptomonedas
-    crypto_indicators = [
-        "USDT",
-        "USDC",
-        "BTC",
-        "ETH",
-        "BNB",
-        "ADA",
-        "DOT",
-        "LINK",
-        "UNI",
-    ]
-    if any(indicator in symbol_upper for indicator in crypto_indicators):
-        return "crypto"
-
-    # Detectar forex
-    forex_pairs = ["EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "USD"]
-    if len(symbol_upper) == 6 and any(pair in symbol_upper for pair in forex_pairs):
-        return "forex"
-
-    # Detectar acciones estadounidenses
-    us_stocks = ["NVDA", "US500", "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-    if any(stock in symbol_upper for stock in us_stocks):
-        return "stocks_us"
-
-    return "general"
-
-
-def get_smart_trading_status_summary() -> dict:
-    """
-    📊 Obtiene un resumen del estado actual de los horarios inteligentes.
-
-    Returns:
-        dict: Resumen completo del estado de trading
-    """
-    from datetime import datetime
-    import pytz
-
-    try:
-        chile_tz = pytz.timezone(SMART_TRADING_HOURS["timezone"])
-        current_time_chile = datetime.now(chile_tz)
-
-        # Estado general
-        general_status = is_smart_trading_hours_allowed()
-
-        # Estado por tipo de mercado
-        market_statuses = {}
-        for market_type in ["crypto", "forex", "stocks_us"]:
-            market_statuses[market_type] = is_smart_trading_hours_allowed(
-                f"sample_{market_type}"
-            )
-
-        return {
-            "current_time_chile": current_time_chile.strftime("%Y-%m-%d %H:%M:%S %Z"),
-            "smart_hours_enabled": SMART_TRADING_HOURS.get("enabled", True),
-            "general_status": general_status,
-            "market_statuses": market_statuses,
-            "active_profile": TRADING_PROFILE,
-            "configuration": {
-                "base_hours": f"{SMART_TRADING_HOURS['start_hour']:02d}:00-{SMART_TRADING_HOURS['end_hour']:02d}:00",
-                "timezone": SMART_TRADING_HOURS["timezone"],
-            },
-        }
-
-    except Exception as e:
-        return {
-            "error": f"Error getting smart trading status: {e}",
-            "current_time_chile": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "smart_hours_enabled": False,
-        }

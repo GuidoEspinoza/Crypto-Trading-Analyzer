@@ -25,10 +25,12 @@ from src.config.main_config import (
     TradingProfiles,
     APIConfig,
     CacheConfig,
+    GLOBAL_SYMBOLS,
+)
+from src.config.time_trading_config import (
     TIMEZONE,
     DAILY_RESET_HOUR,
     DAILY_RESET_MINUTE,
-    GLOBAL_SYMBOLS,
     is_trading_day_allowed,
     get_weekend_trading_params,
     is_smart_trading_hours_allowed,
@@ -43,6 +45,7 @@ from .enhanced_strategies import TradingSignal
 from .professional_adapter import ProfessionalStrategyAdapter
 from .mean_reversion_adapter import MeanReversionAdapter
 from .breakout_adapter import BreakoutAdapter
+from .consensus_adapter import ConsensusAdapter
 from .paper_trader import PaperTrader, TradeResult
 from .enhanced_risk_manager import EnhancedRiskManager, EnhancedRiskAssessment
 from .position_monitor import PositionMonitor
@@ -51,8 +54,21 @@ from .capital_client import CapitalClient, create_capital_client_from_env
 from src.utils.market_hours import market_hours_checker
 
 # Configurar logging ANTES de la clase
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.WARNING,  # Cambiar a WARNING para reducir verbosidad
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Configurar loggers específicos para reducir ruido
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('requests').setLevel(logging.WARNING)
+logging.getLogger('pydantic').setLevel(logging.ERROR)
+
+# Mantener INFO para componentes críticos del trading bot
+logging.getLogger('src.core.trading_bot').setLevel(logging.INFO)
+logging.getLogger('src.core.balance_manager').setLevel(logging.INFO)
+logging.getLogger('src.core.capital_client').setLevel(logging.INFO)
 
 
 @dataclass
@@ -426,22 +442,37 @@ class TradingBot:
     def _initialize_strategies(self):
         """🔧 Inicializar estrategias de trading"""
         try:
-            # Solo estrategias profesionales avanzadas
+            # Estrategia de consenso como estrategia principal
             self.strategies = {
+                "ConsensusStrategy": ConsensusAdapter(self.capital_client),
+            }
+
+            # Estrategias individuales (mantenidas para análisis directo si es necesario)
+            self.individual_strategies = {
                 "TrendFollowingProfessional": ProfessionalStrategyAdapter(
                     self.capital_client
                 ),
                 "MeanReversionProfessional": MeanReversionAdapter(self.capital_client),
                 "BreakoutProfessional": BreakoutAdapter(self.capital_client),
             }
-            # Inyectar referencia del bot en las estrategias para delegar operaciones comunes
+
+            # Inyectar referencia del bot en todas las estrategias
             for s in self.strategies.values():
                 if hasattr(s, "set_trading_bot"):
                     s.set_trading_bot(self)
-            self.logger.info(f"✅ {len(self.strategies)} strategies initialized")
+
+            for s in self.individual_strategies.values():
+                if hasattr(s, "set_trading_bot"):
+                    s.set_trading_bot(self)
+
+            self.logger.info(f"🧠 Consensus strategy initialized as primary strategy")
+            self.logger.info(
+                f"✅ {len(self.strategies)} primary strategies + {len(self.individual_strategies)} individual strategies initialized"
+            )
         except Exception as e:
             self.logger.error(f"❌ Error initializing strategies: {e}")
             self.strategies = {}
+            self.individual_strategies = {}
 
     @classmethod
     def _get_cache_key(cls, method_name: str, *args, **kwargs) -> str:
@@ -995,7 +1026,7 @@ class TradingBot:
                 )
                 return
 
-            # Verificar horarios inteligentes de trading (08:00 - 22:00 Chile)
+            # Verificar horarios inteligentes de trading (11:00 - 02:30 UTC)
             smart_hours_status = is_smart_trading_hours_allowed()
 
             # Manejo robusto del resultado de smart_hours_status
@@ -1030,26 +1061,31 @@ class TradingBot:
                 }
 
                 # Log detallado sobre configuración de horarios por mercado
-                from src.config.main_config import SMART_TRADING_HOURS
+                from src.config.time_trading_config import MARKET_SPECIFIC_CONFIG
 
                 current_time = datetime.now(ZoneInfo(TIMEZONE))
                 current_hour = current_time.hour
 
                 self.logger.info(
-                    f"🌍 Hora actual Chile: {current_time.strftime('%H:%M:%S CLT')}"
+                    f"🌍 Hora actual UTC: {current_time.strftime('%H:%M:%S UTC')}"
                 )
 
                 # Mostrar estado de cada tipo de mercado
-                for market_type, config in SMART_TRADING_HOURS.items():
-                    start_hour = config["start_hour"]
-                    end_hour = config["end_hour"]
-                    is_active = start_hour <= current_hour < end_hour
-                    status_icon = "🟢" if is_active else "🔴"
-                    status_text = "ACTIVO" if is_active else "INACTIVO"
+                for market_type, config in MARKET_SPECIFIC_CONFIG.items():
+                    # Obtener horarios de alta volatilidad para mostrar estado
+                    volatility_hours = config.get("high_volatility_hours", {})
+                    if volatility_hours:
+                        # Mostrar la primera sesión como ejemplo
+                        first_session = list(volatility_hours.values())[0]
+                        start_hour = first_session["start"].hour
+                        end_hour = first_session["end"].hour
+                        is_active = start_hour <= current_hour < end_hour
+                        status_icon = "🟢" if is_active else "🔴"
+                        status_text = "ACTIVO" if is_active else "INACTIVO"
 
-                    self.logger.info(
-                        f"📊 {market_type.upper()}: {start_hour:02d}:00-{end_hour:02d}:00 CLT {status_icon} {status_text}"
-                    )
+                        self.logger.info(
+                            f"📊 {market_type.upper()}: {start_hour:02d}:00-{end_hour:02d}:00 CLT {status_icon} {status_text}"
+                        )
 
                 # Mostrar resumen de estado de horarios inteligentes
                 smart_summary = get_smart_trading_status_summary()
@@ -1128,18 +1164,16 @@ class TradingBot:
             if cached_signals is not None:
                 self.logger.info("⚡ Using cached analysis results")
                 all_signals = cached_signals
+                # Procesar señales con trading
+                if all_signals:
+                    self._process_signals(all_signals)
+                else:
+                    self.logger.info("⚪ No trading signals generated this cycle")
             else:
-                # Analizar en paralelo usando ThreadPoolExecutor
-                all_signals = self._analyze_symbols_parallel()
-
-                # Almacenar en cache
-                self._store_in_cache(cache_key, all_signals)
-
-            # Procesar señales con trading
-            if all_signals:
-                self._process_signals(all_signals)
-            else:
-                self.logger.info("⚪ No trading signals generated this cycle")
+                # Usar el nuevo flujo secuencial con ejecución inmediata
+                self.logger.info("🔄 Starting sequential analysis with immediate execution")
+                self._analyze_symbols_sequential_with_immediate_execution()
+                self.logger.info("✅ Sequential analysis with immediate execution completed")
 
             # Actualizar estadísticas en base de datos
             self._update_strategy_stats()
@@ -1156,6 +1190,12 @@ class TradingBot:
 
         except Exception as e:
             self.logger.error(f"❌ Error in analysis cycle: {e}")
+            # Log the full traceback for debugging
+            import traceback
+            self.logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            
+            # Don't stop the bot - continue with next cycle
+            self.logger.info("🔄 Bot will continue with next analysis cycle despite error")
 
     def _analyze_symbols_parallel(self) -> List[TradingSignal]:
         """
@@ -1184,18 +1224,26 @@ class TradingBot:
             for future in futures:
                 try:
                     signal = future.result(timeout=timeout)  # Timeout configurable
-                    if signal and signal.signal_type != "HOLD":
-                        all_signals.append(signal)
-                        self.stats["signals_generated"] += 1
-                        # Tracking separado para fines de semana
-                        if self._is_weekend_trading():
-                            self.stats["weekend_signals"] += 1
-                        else:
-                            self.stats["weekday_signals"] += 1
-                        weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
-                    self.logger.info(
-                        f"{weekend_indicator} Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%"
-                    )
+                    weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
+
+                    if signal:
+                        if signal.signal_type != "HOLD":
+                            all_signals.append(signal)
+                            self.stats["signals_generated"] += 1
+                            # Tracking separado para fines de semana
+                            if self._is_weekend_trading():
+                                self.stats["weekend_signals"] += 1
+                            else:
+                                self.stats["weekday_signals"] += 1
+
+                        self.logger.info(
+                            f"{weekend_indicator} Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"{weekend_indicator} No signal generated for symbol"
+                        )
+
                 except Exception as e:
                     self.logger.error(f"❌ Error in parallel analysis: {e}")
 
@@ -1230,23 +1278,89 @@ class TradingBot:
             for strategy_name, strategy in self.strategies.items():
                 try:
                     signal = strategy.analyze(symbol)
-                    if signal.signal_type != "HOLD":
-                        all_signals.append(signal)
-                        self.stats["signals_generated"] += 1
-                        # Tracking separado para fines de semana
-                        if self._is_weekend_trading():
-                            self.stats["weekend_signals"] += 1
-                        else:
-                            self.stats["weekday_signals"] += 1
-                        weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
-                    self.logger.info(
-                        f"{weekend_indicator} Signal: {signal.signal_type} {symbol} ({strategy_name}) - Confidence: {signal.confidence_score}%"
-                    )
+                    weekend_indicator = "🏖️" if self._is_weekend_trading() else "📊"
+
+                    if signal:
+                        if signal.signal_type != "HOLD":
+                            all_signals.append(signal)
+                            self.stats["signals_generated"] += 1
+                            # Tracking separado para fines de semana
+                            if self._is_weekend_trading():
+                                self.stats["weekend_signals"] += 1
+                            else:
+                                self.stats["weekday_signals"] += 1
+
+                        self.logger.info(
+                            f"{weekend_indicator} Signal: {signal.signal_type} {symbol} ({strategy_name}) - Confidence: {signal.confidence_score}%"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"{weekend_indicator} No signal generated for {symbol} with {strategy_name}"
+                        )
+
                 except Exception as e:
                     self.logger.error(
                         f"❌ Error analyzing {symbol} with {strategy_name}: {e}"
                     )
         return all_signals
+
+    def _analyze_symbols_sequential_with_immediate_execution(self):
+        """
+        🎯 Nuevo flujo: Analizar símbolo por símbolo con ejecución inmediata de trades
+        
+        FLUJO OPTIMIZADO SÍMBOLO POR SÍMBOLO:
+        1. Tomar símbolo
+        2. Analizar con todas las estrategias
+        3. Procesar señales inmediatamente
+        4. Ejecutar trades si hay señales válidas
+        5. Esperar 1 segundo
+        6. Repetir con siguiente símbolo
+        """
+        weekend_indicator = "🏖️" if self._is_weekend_trading() else "🎯"
+        self.logger.info(f"{weekend_indicator} Starting sequential symbol-by-symbol analysis with immediate execution...")
+        
+        total_symbols = len(self.symbols)
+        
+        for symbol_index, symbol in enumerate(self.symbols, 1):
+            try:
+                self.logger.info(f"📊 {symbol} ({symbol_index}/{total_symbols})")
+                
+                # PASO 1: Analizar símbolo con todas las estrategias
+                symbol_signals = []
+                
+                for strategy_name, strategy in self.strategies.items():
+                    try:
+                        signal = self._analyze_single_symbol(symbol, strategy_name, strategy)
+                        if signal and signal.signal_type != "HOLD":
+                            symbol_signals.append(signal)
+                            self.stats["signals_generated"] += 1
+                            # Tracking separado para fines de semana
+                            if self._is_weekend_trading():
+                                self.stats["weekend_signals"] += 1
+                            else:
+                                self.stats["weekday_signals"] += 1
+                            
+                            self.logger.info(
+                                f"   ✅ Signal: {signal.signal_type} {signal.symbol} ({signal.strategy_name}) - Confidence: {signal.confidence_score}%"
+                            )
+                    except Exception as e:
+                        self.logger.error(f"   ❌ Error analyzing {symbol} with {strategy_name}: {e}")
+                
+                # PASO 2: Procesar señales inmediatamente para este símbolo
+                if symbol_signals:
+                    self.logger.info(f"   🎯 Processing {len(symbol_signals)} signals for {symbol}...")
+                    self._process_signals(symbol_signals)
+                
+                # PASO 3: Esperar 1 segundo antes del siguiente símbolo (excepto el último)
+                if symbol_index < total_symbols:
+                    time.sleep(1)
+                
+            except Exception as e:
+                self.logger.error(f"❌ Error processing symbol {symbol}: {e}")
+                # Continuar con el siguiente símbolo incluso si hay error
+                continue
+        
+        self.logger.info(f"✅ Sequential symbol-by-symbol analysis completed for {total_symbols} symbols")
 
     def _process_signals(self, signals: List[TradingSignal]):
         """
@@ -1477,9 +1591,6 @@ class TradingBot:
                         self._update_trade_tracking(signal)
 
                         # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
-                        self.logger.info(
-                            f"🔄 Trade completed for {signal.symbol}. Balance will be refreshed for next signal."
-                        )
 
                         # Emitir evento de trade ejecutado
                         self._emit_trade_event(signal, trade_result, risk_assessment)
@@ -1518,7 +1629,7 @@ class TradingBot:
 
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias a las 11:00 AM hora Chile (America/Santiago)
+        📅 Resetear estadísticas diarias a las 14:00 UTC (11:00 AM Chile convertido)
         """
         try:
             tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
@@ -1640,9 +1751,6 @@ class TradingBot:
             # Obtener posiciones abiertas de Capital.com (solo para contar)
             logger.info(f"🔧 DEBUG: llamando get_positions()")
             positions_response = self.capital_client.get_positions()
-            logger.info(
-                f"🔧 DEBUG: positions_response from Capital.com: {positions_response}"
-            )
 
             # Extraer la lista de posiciones de la respuesta
             positions = []
@@ -1650,7 +1758,6 @@ class TradingBot:
                 "positions"
             ):
                 positions = positions_response.get("positions", [])
-                logger.info(f"🔧 DEBUG: extracted positions: {positions}")
                 logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
 
             # El valor total del portfolio es el balance total (equity) que ya incluye las posiciones
@@ -1693,7 +1800,11 @@ class TradingBot:
                 "is_running": status.is_running,
                 "uptime": status.uptime,
                 "analysis_interval_minutes": self.analysis_interval,
-                "next_analysis": status.next_analysis_time.isoformat(),
+                "next_analysis": (
+                    status.next_analysis_time.isoformat()
+                    if status.next_analysis_time
+                    else None
+                ),
                 "enable_trading": self.enable_trading,
             },
             "trading_stats": {
@@ -2256,7 +2367,7 @@ class TradingBot:
                     strategy_instance = TrendFollowingProfessional()
 
                     # Obtener ATR para el cálculo
-                    current_price = self._get_current_price(symbol)
+                    current_price = self._get_current_price(signal.symbol)
                     atr = current_price * 0.02  # ATR estimado como 2% del precio
 
                     # Calcular TP/SL basado en ROI usando el tamaño de posición real
@@ -2794,6 +2905,120 @@ class TradingBot:
 
         except Exception as e:
             self.logger.error(f"❌ Error executing pre-reset profit taking: {e}")
+
+    def get_consensus_statistics(self) -> Dict[str, Any]:
+        """
+        📊 Obtener estadísticas del consenso de estrategias
+
+        Returns:
+            Diccionario con estadísticas del consenso
+        """
+        try:
+            consensus_adapter = self.strategies.get("ConsensusStrategy")
+            if not consensus_adapter:
+                return {"error": "Consensus strategy not available"}
+
+            return consensus_adapter.get_consensus_stats()
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting consensus statistics: {e}")
+            return {"error": str(e)}
+
+    def update_strategy_weights(self, weights: Dict[str, float]) -> Dict[str, Any]:
+        """
+        ⚖️ Actualizar los pesos de las estrategias en el consenso
+
+        Args:
+            weights: Diccionario con los nuevos pesos {strategy_name: weight}
+
+        Returns:
+            Diccionario con el resultado de la actualización
+        """
+        try:
+            consensus_adapter = self.strategies.get("ConsensusStrategy")
+            if not consensus_adapter:
+                return {"success": False, "error": "Consensus strategy not available"}
+
+            result = consensus_adapter.update_strategy_weights(weights)
+
+            if result.get("success"):
+                self.logger.info(f"⚖️ Strategy weights updated: {weights}")
+            else:
+                self.logger.error(
+                    f"❌ Failed to update strategy weights: {result.get('error')}"
+                )
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"❌ Error updating strategy weights: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_last_consensus_details(self) -> Dict[str, Any]:
+        """
+        🔍 Obtener detalles del último análisis de consenso
+
+        Returns:
+            Diccionario con detalles del último consenso
+        """
+        try:
+            consensus_adapter = self.strategies.get("ConsensusStrategy")
+            if not consensus_adapter:
+                return {"error": "Consensus strategy not available"}
+
+            return consensus_adapter.get_last_consensus_analysis()
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting last consensus details: {e}")
+            return {"error": str(e)}
+
+    def get_individual_strategy_signals(self, symbol: str) -> Dict[str, Any]:
+        """
+        🔍 Obtener señales individuales de cada estrategia para un símbolo
+
+        Args:
+            symbol: Símbolo a analizar
+
+        Returns:
+            Diccionario con las señales de cada estrategia individual
+        """
+        try:
+            if not hasattr(self, "individual_strategies"):
+                return {"error": "Individual strategies not available"}
+
+            signals = {}
+            for strategy_name, strategy in self.individual_strategies.items():
+                try:
+                    signal = strategy.analyze(symbol)
+                    if signal:
+                        signals[strategy_name] = {
+                            "signal_type": signal.signal_type,
+                            "confidence_score": signal.confidence_score,
+                            "price": getattr(
+                                signal, "price", getattr(signal, "current_price", None)
+                            ),
+                            "timestamp": signal.timestamp,
+                            "strategy_specific_data": getattr(
+                                signal, "strategy_specific_data", {}
+                            ),
+                        }
+                    else:
+                        signals[strategy_name] = {
+                            "signal_type": "HOLD",
+                            "confidence_score": 0,
+                        }
+
+                except Exception as e:
+                    self.logger.warning(
+                        f"⚠️ Error analyzing {symbol} with {strategy_name}: {e}"
+                    )
+                    signals[strategy_name] = {"error": str(e)}
+
+            return {"symbol": symbol, "individual_signals": signals}
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting individual strategy signals: {e}")
+            return {"error": str(e)}
 
 
 trading_bot = TradingBot()

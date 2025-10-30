@@ -30,8 +30,11 @@ logger = logging.getLogger(__name__)
 
 class MarketRegime(Enum):
     TRENDING = "TRENDING"
+    TRENDING_UP = "TRENDING_UP"
+    TRENDING_DOWN = "TRENDING_DOWN"
     RANGING = "RANGING"
     VOLATILE = "VOLATILE"
+    BREAKOUT = "BREAKOUT"
 
 
 class DivergenceType(Enum):
@@ -135,7 +138,7 @@ class MeanReversionProfessional:
         self.max_trend_strength = 0.3  # Para mercados laterales
 
     def get_market_data(
-        self, symbol: str, timeframe: str, periods: int = 100
+        self, symbol: str, timeframe: str, periods: int = 250
     ) -> pd.DataFrame:
         """
         Obtener datos de mercado - será sobrescrito por el adaptador
@@ -503,7 +506,7 @@ class MeanReversionProfessional:
             )
 
             current_price = df["close"].iloc[-1]
-            current_rsi = rsi[-1]
+            current_rsi = rsi.iloc[-1]
             current_stoch_k = stoch_k.iloc[-1]
             current_stoch_d = stoch_d.iloc[-1]
 

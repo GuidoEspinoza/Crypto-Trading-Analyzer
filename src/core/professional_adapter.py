@@ -14,7 +14,14 @@ from dataclasses import dataclass
 # Importar el sistema existente
 from .enhanced_strategies import TradingSignal, TradingStrategy, EnhancedSignal
 from .capital_client import CapitalClient
-from ..config.main_config import StrategyConfig, TradingBotConfig
+try:
+    from ..config.main_config import StrategyConfig, TradingBotConfig
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config.main_config import StrategyConfig, TradingBotConfig
 
 logger = logging.getLogger(__name__)
 

@@ -66,7 +66,7 @@ class TradingStrategy(ABC):
         pass
 
     def get_market_data(
-        self, symbol: str, timeframe: str = "1h", limit: int = 100
+        self, symbol: str, timeframe: str = "1h", limit: int = 250
     ) -> pd.DataFrame:
         """Obtener datos de mercado usando Capital.com - EVITA LOOP INFINITO"""
         try:
@@ -661,11 +661,16 @@ class EnhancedTradingStrategy(TradingStrategy):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                adx_data = ta.adx(high_float, low_float, close_float)
+                adx_data = ta.adx(high_float, low_float, close_float, length=14)
             if adx_data is not None and not adx_data.empty:
-                adx_value = (
-                    adx_data["ADX_14"].iloc[-1] if "ADX_14" in adx_data.columns else 25
-                )
+                # Buscar la columna ADX dinámicamente
+                adx_columns = [
+                    col for col in adx_data.columns if col.startswith("ADX_")
+                ]
+                if adx_columns:
+                    adx_value = adx_data[adx_columns[0]].iloc[-1]
+                else:
+                    adx_value = 25
             else:
                 adx_value = 25
 
@@ -864,6 +869,119 @@ class EnhancedTradingStrategy(TradingStrategy):
             else:
                 return 0.0, 0.0, 0.0
 
+            # Importar configuración dinámica y balance manager
+            from src.config.main_config import RiskManagerConfig, get_global_initial_balance
+            from src.core.balance_manager import get_current_balance_sync
+
+            # Obtener balance total actual
+            try:
+                balance_data = get_current_balance_sync()
+                total_balance = balance_data.get("available", 0.0)
+                if total_balance <= 0:
+                    # Fallback al balance inicial si no se puede obtener el actual
+                    total_balance = get_global_initial_balance()
+            except:
+                # Fallback al balance inicial en caso de error
+                total_balance = get_global_initial_balance()
+
+            # Obtener rangos dinámicos desde config (representan % del balance total)
+            sl_roi_min = RiskManagerConfig.get_sl_min_percentage()  # % de pérdida del balance total
+            sl_roi_max = RiskManagerConfig.get_sl_max_percentage()  # % de pérdida del balance total
+            tp_roi_min = RiskManagerConfig.get_tp_min_percentage()  # % de ganancia del balance total
+            tp_roi_max = RiskManagerConfig.get_tp_max_percentage()  # % de ganancia del balance total
+
+            # Calcular cantidad de activo que se puede comprar/vender
+            quantity = position_size / entry_price
+
+            # Determinar ROI objetivo basado en volatilidad (ATR)
+            atr_ratio = atr / entry_price
+
+            if signal_type == "BUY":
+                # Stop Loss ROI: entre sl_roi_min% y sl_roi_max% de pérdida del balance total
+                if atr_ratio <= sl_roi_min:
+                    target_sl_roi = sl_roi_min
+                elif atr_ratio >= sl_roi_max:
+                    target_sl_roi = sl_roi_max
+                else:
+                    target_sl_roi = atr_ratio
+
+                # Take Profit ROI: entre tp_roi_min% y tp_roi_max% de ganancia del balance total
+                atr_tp_factor = atr_ratio * 1.5  # Factor conservador para TP
+                if atr_tp_factor <= tp_roi_min:
+                    target_tp_roi = tp_roi_min
+                elif atr_tp_factor >= tp_roi_max:
+                    target_tp_roi = tp_roi_max
+                else:
+                    target_tp_roi = atr_tp_factor
+
+                # Calcular pérdida máxima permitida en USD (% del balance total)
+                max_loss_usd = total_balance * target_sl_roi
+                
+                # Calcular ganancia objetivo en USD (% del balance total)
+                target_profit_usd = total_balance * target_tp_roi
+
+                # Para BUY: pérdida = (entry_price - stop_loss) * quantity
+                # max_loss_usd = (entry_price - stop_loss) * quantity
+                # stop_loss = entry_price - (max_loss_usd / quantity)
+                stop_loss = entry_price - (max_loss_usd / quantity)
+
+                # Para BUY: ganancia = (take_profit - entry_price) * quantity
+                # target_profit_usd = (take_profit - entry_price) * quantity
+                # take_profit = entry_price + (target_profit_usd / quantity)
+                take_profit = entry_price + (target_profit_usd / quantity)
+
+            elif signal_type == "SELL":
+                # Stop Loss ROI: entre sl_roi_min% y sl_roi_max% de pérdida del balance total
+                if atr_ratio <= sl_roi_min:
+                    target_sl_roi = sl_roi_min
+                elif atr_ratio >= sl_roi_max:
+                    target_sl_roi = sl_roi_max
+                else:
+                    target_sl_roi = atr_ratio
+
+                # Take Profit ROI: entre tp_roi_min% y tp_roi_max% de ganancia del balance total
+                atr_tp_factor = atr_ratio * 1.5
+                if atr_tp_factor <= tp_roi_min:
+                    target_tp_roi = tp_roi_min
+                elif atr_tp_factor >= tp_roi_max:
+                    target_tp_roi = tp_roi_max
+                else:
+                    target_tp_roi = atr_tp_factor
+
+                # Calcular pérdida máxima permitida en USD (% del balance total)
+                max_loss_usd = total_balance * target_sl_roi
+                
+                # Calcular ganancia objetivo en USD (% del balance total)
+                target_profit_usd = total_balance * target_tp_roi
+
+                # Para SELL: pérdida = (stop_loss - entry_price) * quantity
+                # max_loss_usd = (stop_loss - entry_price) * quantity
+                # stop_loss = entry_price + (max_loss_usd / quantity)
+                stop_loss = entry_price + (max_loss_usd / quantity)
+
+                # Para SELL: ganancia = (entry_price - take_profit) * quantity
+                # target_profit_usd = (entry_price - take_profit) * quantity
+                # take_profit = entry_price - (target_profit_usd / quantity)
+                take_profit = entry_price - (target_profit_usd / quantity)
+            else:
+                return 0.0, 0.0, 0.0
+
+            # Validaciones de seguridad para evitar stop loss inválidos
+            if signal_type == "BUY":
+                # Para BUY, el stop loss debe ser menor que el precio de entrada
+                if stop_loss >= entry_price:
+                    stop_loss = entry_price * 0.98  # 2% por debajo como fallback
+                # El stop loss no puede ser negativo o muy bajo
+                if stop_loss <= 0 or stop_loss < entry_price * 0.5:
+                    stop_loss = entry_price * 0.95  # 5% por debajo como fallback
+            else:  # SELL
+                # Para SELL, el stop loss debe ser mayor que el precio de entrada
+                if stop_loss <= entry_price:
+                    stop_loss = entry_price * 1.02  # 2% por encima como fallback
+                # El stop loss no puede ser excesivamente alto
+                if stop_loss > entry_price * 2.0:
+                    stop_loss = entry_price * 1.05  # 5% por encima como fallback
+
             # Calcular risk/reward ratio
             risk = abs(entry_price - stop_loss) * quantity
             reward = abs(take_profit - entry_price) * quantity
@@ -877,7 +995,14 @@ class EnhancedTradingStrategy(TradingStrategy):
 
         except Exception as e:
             logger.error(f"Error calculating ROI-based risk/reward: {str(e)}")
-            return 0.0, 0.0, 0.0
+            # Fallback seguro basado en ATR
+            if signal_type == "BUY":
+                stop_loss = entry_price - (atr * 2)
+                take_profit = entry_price + (atr * 3)
+            else:
+                stop_loss = entry_price + (atr * 2)
+                take_profit = entry_price - (atr * 3)
+            return stop_loss, take_profit, 1.5
 
     def calculate_risk_reward(
         self, entry_price: float, signal_type: str, atr: float
@@ -976,7 +1101,7 @@ class EnhancedTradingStrategy(TradingStrategy):
 
         # Aplicar filtros si están habilitados
         if self.signal_filter:
-            df = self.get_market_data(symbol, timeframe, limit=100)
+            df = self.get_market_data(symbol, timeframe, limit=250)
             return self.signal_filter.filter_signal(original_signal, df)
         else:
             # Sin filtros, crear FilteredSignal básico

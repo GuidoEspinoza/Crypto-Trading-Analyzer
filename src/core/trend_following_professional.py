@@ -34,7 +34,7 @@ class TrendFollowingProfessional:
         # Parámetros de la estrategia - OPTIMIZADOS PARA ANTI-LATERAL
         self.ema_fast = 34  # AUMENTADO: de 21 a 34 para señales más suaves
         self.ema_medium = 89  # AUMENTADO: de 50 a 89 para mejor filtrado
-        self.ema_slow = 233  # AUMENTADO: de 200 a 233 para tendencias más sólidas
+        self.ema_slow = 200  # EMA200 estándar para tendencias de largo plazo
         self.atr_period = 21  # AUMENTADO: de 14 a 21 para volatilidad más estable
         self.adx_period = (
             21  # AUMENTADO: de 14 a 21 para fuerza de tendencia más confiable
@@ -43,7 +43,7 @@ class TrendFollowingProfessional:
         self.volume_sma = 34  # AUMENTADO: de 20 a 34 para volumen más estable
 
     def get_market_data(
-        self, symbol: str, timeframe: str = "1h", limit: int = 500
+        self, symbol: str, timeframe: str = "1h", limit: int = 600  # AUMENTADO: de 500 a 600 para EMA200
     ) -> pd.DataFrame:
         """Obtiene datos de mercado - será inyectado por el adaptador"""
         # Este método será sobrescrito por el adaptador con datos reales
@@ -67,9 +67,9 @@ class TrendFollowingProfessional:
 
         # ADX para fuerza de tendencia
         adx_data = ta.adx(df["high"], df["low"], df["close"], length=self.adx_period)
-        df["adx"] = adx_data["ADX_14"]
-        df["di_plus"] = adx_data["DMP_14"]
-        df["di_minus"] = adx_data["DMN_14"]
+        df["adx"] = adx_data[f"ADX_{self.adx_period}"]
+        df["di_plus"] = adx_data[f"DMP_{self.adx_period}"]
+        df["di_minus"] = adx_data[f"DMN_{self.adx_period}"]
 
         # RSI para momentum
         df["rsi"] = ta.rsi(df["close"], length=self.rsi_period)
@@ -139,7 +139,7 @@ class TrendFollowingProfessional:
             return {"structure": "sideways", "strength": 0.3}
 
     def analyze_trend_alignment(self, df: pd.DataFrame) -> Dict:
-        """Verifica alineación de tendencia en múltiples timeframes"""
+        """Verifica alineación de tendencia en múltiples timeframes - VERSIÓN MENOS ESTRICTA"""
         if df.empty or len(df) < self.ema_slow:
             return {"aligned": False, "direction": "neutral", "strength": 0}
 
@@ -153,18 +153,36 @@ class TrendFollowingProfessional:
         price_above_emas = current["close"] > current["ema_21"]
         price_below_emas = current["close"] < current["ema_21"]
 
-        # Verificar pendiente de EMAs
+        # Verificar pendiente de EMAs (más tolerante)
         ema21_slope = (current["ema_21"] - df["ema_21"].iloc[-5]) / 5
         ema50_slope = (current["ema_50"] - df["ema_50"].iloc[-5]) / 5
 
+        # CRITERIOS MENOS ESTRICTOS - Solo necesita 2 de 3 condiciones
+        
+        # Tendencia alcista fuerte (todas las condiciones)
         if emas_bullish and price_above_emas and ema21_slope > 0 and ema50_slope > 0:
             return {"aligned": True, "direction": "bullish", "strength": 0.9}
+        
+        # Tendencia bajista fuerte (todas las condiciones)
         elif emas_bearish and price_below_emas and ema21_slope < 0 and ema50_slope < 0:
             return {"aligned": True, "direction": "bearish", "strength": 0.9}
-        elif emas_bullish and price_above_emas:
+        
+        # Tendencia alcista moderada (2 de 3 condiciones)
+        elif (emas_bullish and price_above_emas) or (emas_bullish and ema21_slope > 0) or (price_above_emas and ema21_slope > 0):
             return {"aligned": True, "direction": "bullish", "strength": 0.6}
-        elif emas_bearish and price_below_emas:
+        
+        # Tendencia bajista moderada (2 de 3 condiciones) - NUEVO
+        elif (emas_bearish and price_below_emas) or (emas_bearish and ema21_slope < 0) or (price_below_emas and ema21_slope < 0):
             return {"aligned": True, "direction": "bearish", "strength": 0.6}
+        
+        # Tendencia alcista débil (solo EMAs o solo precio)
+        elif emas_bullish or (price_above_emas and ema21_slope > 0):
+            return {"aligned": True, "direction": "bullish", "strength": 0.4}
+        
+        # Tendencia bajista débil (solo EMAs o solo precio) - NUEVO
+        elif emas_bearish or (price_below_emas and ema21_slope < 0):
+            return {"aligned": True, "direction": "bearish", "strength": 0.4}
+        
         else:
             return {"aligned": False, "direction": "neutral", "strength": 0.3}
 
@@ -193,6 +211,8 @@ class TrendFollowingProfessional:
                 "aligned": True,
                 "consensus": 1.0,
                 "details": "MTF validation disabled",
+                "has_conflict": False,
+                "conflict_details": [],
             }
 
         timeframe_analysis = {}
@@ -206,7 +226,7 @@ class TrendFollowingProfessional:
         # Analizar cada timeframe
         for tf in timeframes:
             try:
-                df = self.get_market_data(symbol, tf, limit=200)
+                df = self.get_market_data(symbol, tf, limit=250)
                 if df.empty or len(df) < self.ema_slow:
                     logger.warning(f"⚠️ Datos insuficientes para {symbol} en {tf}")
                     continue
@@ -243,6 +263,8 @@ class TrendFollowingProfessional:
                 "aligned": False,
                 "consensus": 0.0,
                 "details": "Insufficient timeframes",
+                "has_conflict": False,
+                "conflict_details": [],
             }
 
         # Calcular consenso de direcciones
@@ -573,7 +595,7 @@ class TrendFollowingProfessional:
                     f"Alineación MTF alcista (consenso: {mtf_analysis['consensus']:.1%})"
                 )
 
-                if momentum_analysis["strength"] > 0.7:  # AUMENTADO de 0.6 a 0.7
+                if momentum_analysis["strength"] > 0.6:  # AJUSTADO de 0.7 a 0.6 para ser menos estricto
                     confluence_count += 1
                     confluence_details.append("Momentum alcista fuerte")
 
@@ -588,7 +610,7 @@ class TrendFollowingProfessional:
                     )
 
                 # NUEVA CONFLUENCIA: Volatilidad adecuada
-                if volatility_analysis["atr_normalized"] > 0.020:  # ATR > 2%
+                if volatility_analysis["atr_normalized"] > 0.005:  # ATR > 0.5% (ajustado de 1% para ser menos estricto)
                     confluence_count += 1
                     confluence_details.append("Volatilidad favorable para trading")
 
@@ -613,7 +635,7 @@ class TrendFollowingProfessional:
                     f"Alineación MTF bajista (consenso: {mtf_analysis['consensus']:.1%})"
                 )
 
-                if momentum_analysis["strength"] > 0.7:  # AUMENTADO de 0.6 a 0.7
+                if momentum_analysis["strength"] > 0.6:  # AJUSTADO de 0.7 a 0.6 para ser menos estricto
                     confluence_count += 1
                     confluence_details.append("Momentum bajista fuerte")
 
@@ -628,7 +650,7 @@ class TrendFollowingProfessional:
                     )
 
                 # NUEVA CONFLUENCIA: Volatilidad adecuada
-                if volatility_analysis["atr_normalized"] > 0.020:  # ATR > 2%
+                if volatility_analysis["atr_normalized"] > 0.005:  # ATR > 0.5% (ajustado de 1% para ser menos estricto)
                     confluence_count += 1
                     confluence_details.append("Volatilidad favorable para trading")
 
@@ -650,7 +672,7 @@ class TrendFollowingProfessional:
                 confidence_score=0.0,  # Se calculará después
                 strength=(
                     "Strong"
-                    if confluence_count >= 4
+                    if confluence_count >= 5
                     else "Moderate" if confluence_count >= 3 else "Weak"
                 ),
                 strategy_name=self.name,
@@ -718,15 +740,15 @@ class TrendFollowingProfessional:
             )
 
             # 9. Filtros básicos de calidad MEJORADOS
-            if signal.confidence_score < 75.0:  # AUMENTADO de 65% a 75%
+            if signal.confidence_score < 55.0:  # AJUSTADO temporalmente de 60% a 55%
                 logger.info(
-                    f"Señal para {symbol} no alcanza confianza mínima (75%): {signal.confidence_score:.1f}%"
+                    f"Señal para {symbol} no alcanza confianza mínima (55%): {signal.confidence_score:.1f}%"
                 )
                 return None
 
-            if confluence_count < 4:  # AUMENTADO de 3 a 4 confluencias
+            if confluence_count < 3:  # AJUSTADO de 4 a 3 confluencias para ser menos estricto
                 logger.info(
-                    f"Señal para {symbol} no tiene suficientes confluencias: {confluence_count} (mínimo 4)"
+                    f"Señal para {symbol} no tiene suficientes confluencias: {confluence_count} (mínimo 3)"
                 )
                 return None
 
@@ -737,34 +759,133 @@ class TrendFollowingProfessional:
                 )
                 return None
 
-            return signal
+            return None
 
         except Exception as e:
             logger.error(f"Error en análisis de {symbol}: {str(e)}")
             return None
 
+    def calculate_roi_based_risk_reward(
+        self, entry_price: float, signal_type: str, position_size: float, atr: float
+    ) -> Tuple[float, float, float]:
+        """Calcular stop loss, take profit basado en ROI del balance total (para scalping)
 
-# Ejemplo de uso
-if __name__ == "__main__":
-    strategy = TrendFollowingProfessional()
+        Args:
+            entry_price: Precio de entrada
+            signal_type: "BUY" o "SELL"
+            position_size: Tamaño de la posición en USD
+            atr: Average True Range
 
-    # Simular análisis (requiere integración con datos reales)
-    signal = strategy.analyze("BTCUSD")
+        Returns:
+            Tuple[stop_loss_price, take_profit_price, risk_reward_ratio]
+        """
+        try:
+            # Importar configuración dinámica y balance manager
+            from src.config.main_config import RiskManagerConfig, get_global_initial_balance
+            from src.core.balance_manager import get_current_balance_sync
 
-    if signal:
-        print(f"📊 SEÑAL PROFESIONAL GENERADA:")
-        print(f"Símbolo: {signal.symbol}")
-        print(f"Señal: {signal.signal_type}")
-        print(f"Precio: ${signal.price:.2f}")
-        print(f"Confianza: {signal.confidence_score:.1f}%")
-        print(f"Calidad: {signal.quality.value}")
-        print(f"Stop Loss: ${signal.stop_loss_price:.2f}")
-        print(f"Take Profit: ${signal.take_profit_price:.2f}")
-        print(f"R/R Ratio: {signal.risk_reward_ratio:.2f}")
-        print(f"Confluencias: {signal.confluence_count}")
-        print(f"Detalles: {', '.join(signal.confluence_details)}")
-    else:
-        print("❌ No se generó señal o no pasó los filtros profesionales")
+            # Obtener balance total actual
+            try:
+                balance_data = get_current_balance_sync()
+                total_balance = balance_data.get("available", 0.0)
+                if total_balance <= 0:
+                    # Fallback al balance inicial si no se puede obtener el actual
+                    total_balance = get_global_initial_balance()
+            except:
+                # Fallback al balance inicial en caso de error
+                total_balance = get_global_initial_balance()
+
+            # Obtener rangos dinámicos desde config (representan % del balance total)
+            sl_roi_min = RiskManagerConfig.get_sl_min_percentage()  # % de pérdida del balance total
+            sl_roi_max = RiskManagerConfig.get_sl_max_percentage()  # % de pérdida del balance total
+            tp_roi_min = RiskManagerConfig.get_tp_min_percentage()  # % de ganancia del balance total
+            tp_roi_max = RiskManagerConfig.get_tp_max_percentage()  # % de ganancia del balance total
+
+            # Calcular cantidad de activo que se puede comprar/vender
+            quantity = position_size / entry_price
+
+            # Calcular ROI objetivo basado en el tamaño de posición relativo al balance
+            position_ratio = position_size / total_balance
+            
+            # Para posiciones más grandes relativas al balance, usar ROI más conservador
+            if position_ratio > 0.1:  # Posiciones > 10% del balance
+                target_sl_roi = sl_roi_min + (sl_roi_max - sl_roi_min) * 0.3
+                target_tp_roi = tp_roi_min + (tp_roi_max - tp_roi_min) * 0.7
+            elif position_ratio > 0.05:  # Posiciones > 5% del balance
+                target_sl_roi = sl_roi_min + (sl_roi_max - sl_roi_min) * 0.5
+                target_tp_roi = tp_roi_min + (tp_roi_max - tp_roi_min) * 0.8
+            else:  # Posiciones pequeñas
+                target_sl_roi = sl_roi_min + (sl_roi_max - sl_roi_min) * 0.7
+                target_tp_roi = tp_roi_min + (tp_roi_max - tp_roi_min) * 0.9
+
+            # Calcular pérdida máxima permitida en USD (% del balance total)
+            max_loss_usd = total_balance * target_sl_roi
+            
+            # Calcular ganancia objetivo en USD (% del balance total)
+            target_profit_usd = total_balance * target_tp_roi
+
+            if signal_type.upper() == "BUY":
+                # Para BUY: pérdida = (entry_price - stop_loss) * quantity
+                # max_loss_usd = (entry_price - stop_loss) * quantity
+                # stop_loss = entry_price - (max_loss_usd / quantity)
+                stop_loss_price = entry_price - (max_loss_usd / quantity)
+
+                # Para BUY: ganancia = (take_profit - entry_price) * quantity
+                # target_profit_usd = (take_profit - entry_price) * quantity
+                # take_profit = entry_price + (target_profit_usd / quantity)
+                take_profit_price = entry_price + (target_profit_usd / quantity)
+            else:  # SELL
+                # Para SELL: pérdida = (stop_loss - entry_price) * quantity
+                # max_loss_usd = (stop_loss - entry_price) * quantity
+                # stop_loss = entry_price + (max_loss_usd / quantity)
+                stop_loss_price = entry_price + (max_loss_usd / quantity)
+
+                # Para SELL: ganancia = (entry_price - take_profit) * quantity
+                # target_profit_usd = (entry_price - take_profit) * quantity
+                # take_profit = entry_price - (target_profit_usd / quantity)
+                take_profit_price = entry_price - (target_profit_usd / quantity)
+
+            # Validaciones de seguridad para evitar stop loss inválidos
+            if signal_type.upper() == "BUY":
+                # Para BUY, el stop loss debe ser menor que el precio de entrada
+                if stop_loss_price >= entry_price:
+                    stop_loss_price = entry_price * 0.98  # 2% por debajo como fallback
+                # El stop loss no puede ser negativo o muy bajo
+                if stop_loss_price <= 0 or stop_loss_price < entry_price * 0.5:
+                    stop_loss_price = entry_price * 0.95  # 5% por debajo como fallback
+            else:  # SELL
+                # Para SELL, el stop loss debe ser mayor que el precio de entrada
+                if stop_loss_price <= entry_price:
+                    stop_loss_price = entry_price * 1.02  # 2% por encima como fallback
+                # El stop loss no puede ser excesivamente alto
+                if stop_loss_price > entry_price * 2.0:
+                    stop_loss_price = entry_price * 1.05  # 5% por encima como fallback
+
+            # Calcular risk/reward ratio
+            risk = abs(entry_price - stop_loss_price)
+            reward = abs(take_profit_price - entry_price)
+            risk_reward_ratio = reward / risk if risk > 0 else 0
+
+            return stop_loss_price, take_profit_price, risk_reward_ratio
+
+        except Exception as e:
+            logger.error(f"Error calculating ROI-based risk/reward: {e}")
+            # Fallback a cálculo tradicional basado en ATR
+            atr_multiplier_sl = 2.0
+            atr_multiplier_tp = 3.0
+
+            if signal_type.upper() == "BUY":
+                stop_loss_price = entry_price - (atr * atr_multiplier_sl)
+                take_profit_price = entry_price + (atr * atr_multiplier_tp)
+            else:
+                stop_loss_price = entry_price + (atr * atr_multiplier_sl)
+                take_profit_price = entry_price - (atr * atr_multiplier_tp)
+
+            risk = abs(entry_price - stop_loss_price)
+            reward = abs(take_profit_price - entry_price)
+            risk_reward_ratio = reward / risk if risk > 0 else 0
+
+            return stop_loss_price, take_profit_price, risk_reward_ratio
 
     def detect_sideways_market(self, df: pd.DataFrame) -> Dict:
         """🔍 Detecta mercados laterales para evitar trades innecesarios"""
@@ -800,13 +921,21 @@ if __name__ == "__main__":
             ) / recent_data["close"].mean()
 
             # 2. Análisis de EMAs - mercado lateral si están muy cerca
-            current_ema21 = df["ema_21"].iloc[-1]
-            current_ema50 = df["ema_50"].iloc[-1]
-            current_ema200 = df["ema_200"].iloc[-1]
+            current_ema21 = df["ema_21"].iloc[-1] if not pd.isna(df["ema_21"].iloc[-1]) else None
+            current_ema50 = df["ema_50"].iloc[-1] if not pd.isna(df["ema_50"].iloc[-1]) else None
+            current_ema200 = df["ema_200"].iloc[-1] if not pd.isna(df["ema_200"].iloc[-1]) else None
 
-            # Calcular distancias entre EMAs
-            ema_21_50_distance = abs(current_ema21 - current_ema50) / current_ema50
-            ema_50_200_distance = abs(current_ema50 - current_ema200) / current_ema200
+            # Calcular distancias entre EMAs (solo si ambos valores son válidos)
+            ema_21_50_distance = (
+                abs(current_ema21 - current_ema50) / current_ema50
+                if current_ema21 is not None and current_ema50 is not None and current_ema50 != 0
+                else 1.0  # Valor por defecto que indica EMAs no convergentes
+            )
+            ema_50_200_distance = (
+                abs(current_ema50 - current_ema200) / current_ema200
+                if current_ema50 is not None and current_ema200 is not None and current_ema200 != 0
+                else 1.0  # Valor por defecto que indica EMAs no convergentes
+            )
 
             # 3. Análisis de ADX - valores bajos indican mercado lateral
             current_adx = df["adx"].iloc[-1] if not pd.isna(df["adx"].iloc[-1]) else 25
@@ -903,17 +1032,19 @@ if __name__ == "__main__":
 
             avg_true_range = np.mean(true_ranges) if true_ranges else 0
 
-            # 4. Criterios de volatilidad mínima
-            min_atr_normalized = 0.015  # 1.5% mínimo
-            min_historical_vol = 0.20  # 20% anualizada mínima
-            min_true_range = 0.012  # 1.2% rango verdadero mínimo
+            # 4. Criterios de volatilidad mínima (ajustados para ser más realistas)
+            min_atr_normalized = 0.008  # 0.8% mínimo (reducido de 1.5%)
+            min_historical_vol = 0.03   # 3% anualizada mínima (reducido de 5% para ser menos estricto)
+            min_true_range = 0.008      # 0.8% rango verdadero mínimo (reducido de 1.2%)
 
-            # 5. Evaluación
-            sufficient_volatility = (
-                atr_normalized >= min_atr_normalized
-                and historical_volatility >= min_historical_vol
-                and avg_true_range >= min_true_range
-            )
+            # 5. Evaluación (al menos 2 de 3 criterios deben cumplirse)
+            volatility_criteria = [
+                atr_normalized >= min_atr_normalized,
+                historical_volatility >= min_historical_vol,
+                avg_true_range >= min_true_range
+            ]
+            
+            sufficient_volatility = sum(volatility_criteria) >= 2
 
             return {
                 "sufficient_volatility": sufficient_volatility,
@@ -1033,3 +1164,26 @@ if __name__ == "__main__":
                 "current_time": datetime.now(),
                 "market_status": "error_default_open",
             }
+
+
+# Ejemplo de uso
+if __name__ == "__main__":
+    strategy = TrendFollowingProfessional()
+
+    # Simular análisis (requiere integración con datos reales)
+    signal = strategy.analyze("BTCUSD")
+
+    if signal:
+        print(f"📊 SEÑAL PROFESIONAL GENERADA:")
+        print(f"Símbolo: {signal.symbol}")
+        print(f"Señal: {signal.signal_type}")
+        print(f"Precio: ${signal.price:.2f}")
+        print(f"Confianza: {signal.confidence_score:.1f}%")
+        print(f"Calidad: {signal.quality.value}")
+        print(f"Stop Loss: ${signal.stop_loss_price:.2f}")
+        print(f"Take Profit: ${signal.take_profit_price:.2f}")
+        print(f"R/R Ratio: {signal.risk_reward_ratio:.2f}")
+        print(f"Confluencias: {signal.confluence_score}")
+        print(f"Detalles: {', '.join(signal.confluence_details)}")
+    else:
+        print("❌ No se generó señal o no pasó los filtros profesionales")

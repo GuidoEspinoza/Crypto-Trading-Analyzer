@@ -14,8 +14,16 @@ import logging
 from datetime import datetime, timedelta
 
 # Import symbol functions from main_config
-from ..config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
-from ..utils.market_hours import market_hours_checker
+try:
+    from ..config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
+    from ..utils.market_hours import market_hours_checker
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
+    from utils.market_hours import market_hours_checker
 
 logger = logging.getLogger(__name__)
 
@@ -762,6 +770,199 @@ class CapitalClient:
 
         return all_market_data
 
+    def get_historical_prices(
+        self,
+        epic: str,
+        resolution: str = "HOUR",
+        max_points: int = 100,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get historical price data for a specific instrument
+
+        Args:
+            epic: Capital.com symbol (epic)
+            resolution: Time resolution (MINUTE, MINUTE_2, MINUTE_3, MINUTE_5, MINUTE_10, 
+                       MINUTE_15, MINUTE_30, HOUR, HOUR_2, HOUR_3, HOUR_4, DAY, WEEK)
+            max_points: Maximum number of data points to return (max 1000)
+            from_date: Start date in ISO format (e.g., "2023-01-01T00:00:00")
+            to_date: End date in ISO format (e.g., "2023-01-31T23:59:59")
+
+        Returns:
+            Dict with success status and historical price data
+        """
+        if not self._ensure_valid_session():
+            return {
+                "success": False,
+                "error": "No valid session available",
+                "prices": []
+            }
+
+        # Validate parameters
+        valid_resolutions = [
+            "MINUTE", "MINUTE_2", "MINUTE_3", "MINUTE_5", "MINUTE_10",
+            "MINUTE_15", "MINUTE_30", "HOUR", "HOUR_2", "HOUR_3", 
+            "HOUR_4", "DAY", "WEEK"
+        ]
+        
+        if resolution not in valid_resolutions:
+            return {
+                "success": False,
+                "error": f"Invalid resolution. Must be one of: {valid_resolutions}",
+                "prices": []
+            }
+
+        if max_points > 1000:
+            max_points = 1000
+            logger.warning("max_points limited to 1000 as per API constraints")
+
+        # Build URL and parameters
+        url = f"{self.base_url}/prices/{epic}"
+        params = {
+            "resolution": resolution,
+            "max": max_points
+        }
+
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+
+        try:
+            response = self.session.get(url, params=params, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Process the price data to make it more usable
+                processed_prices = []
+                if "prices" in data:
+                    for price_point in data["prices"]:
+                        # Extract bid/ask prices
+                        open_bid = price_point.get("openPrice", {}).get("bid", 0.0)
+                        open_ask = price_point.get("openPrice", {}).get("ask", 0.0)
+                        high_bid = price_point.get("highPrice", {}).get("bid", 0.0)
+                        high_ask = price_point.get("highPrice", {}).get("ask", 0.0)
+                        low_bid = price_point.get("lowPrice", {}).get("bid", 0.0)
+                        low_ask = price_point.get("lowPrice", {}).get("ask", 0.0)
+                        close_bid = price_point.get("closePrice", {}).get("bid", 0.0)
+                        close_ask = price_point.get("closePrice", {}).get("ask", 0.0)
+                        
+                        # Calculate mid prices as average of bid and ask
+                        open_mid = (open_bid + open_ask) / 2 if open_bid > 0 and open_ask > 0 else 0.0
+                        high_mid = (high_bid + high_ask) / 2 if high_bid > 0 and high_ask > 0 else 0.0
+                        low_mid = (low_bid + low_ask) / 2 if low_bid > 0 and low_ask > 0 else 0.0
+                        close_mid = (close_bid + close_ask) / 2 if close_bid > 0 and close_ask > 0 else 0.0
+                        
+                        processed_point = {
+                            "timestamp": price_point.get("snapshotTime"),
+                            "timestamp_utc": price_point.get("snapshotTimeUTC"),
+                            "open": open_mid,
+                            "high": high_mid,
+                            "low": low_mid,
+                            "close": close_mid,
+                            "volume": price_point.get("lastTradedVolume", 0),
+                            "open_bid": open_bid,
+                            "open_ask": open_ask,
+                            "high_bid": high_bid,
+                            "high_ask": high_ask,
+                            "low_bid": low_bid,
+                            "low_ask": low_ask,
+                            "close_bid": close_bid,
+                            "close_ask": close_ask,
+                        }
+                        processed_prices.append(processed_point)
+
+                return {
+                    "success": True,
+                    "epic": epic,
+                    "resolution": resolution,
+                    "instrument_type": data.get("instrumentType", "UNKNOWN"),
+                    "prices": processed_prices,
+                    "metadata": {
+                        "total_points": len(processed_prices),
+                        "from_date": from_date,
+                        "to_date": to_date,
+                        "max_requested": max_points
+                    }
+                }
+            
+            elif response.status_code == 401:
+                logger.warning("Session expired, attempting to renew")
+                if self.create_session()["success"]:
+                    # Retry once with new session
+                    response = self.session.get(url, params=params, timeout=30)
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Process data same as above
+                        processed_prices = []
+                        if "prices" in data:
+                            for price_point in data["prices"]:
+                                processed_point = {
+                                    "timestamp": price_point.get("snapshotTime"),
+                                    "timestamp_utc": price_point.get("snapshotTimeUTC"),
+                                    "open": price_point.get("openPrice", {}).get("mid", 0.0),
+                                    "high": price_point.get("highPrice", {}).get("mid", 0.0),
+                                    "low": price_point.get("lowPrice", {}).get("mid", 0.0),
+                                    "close": price_point.get("closePrice", {}).get("mid", 0.0),
+                                    "volume": price_point.get("lastTradedVolume", 0),
+                                    "open_bid": price_point.get("openPrice", {}).get("bid", 0.0),
+                                    "open_ask": price_point.get("openPrice", {}).get("ask", 0.0),
+                                    "high_bid": price_point.get("highPrice", {}).get("bid", 0.0),
+                                    "high_ask": price_point.get("highPrice", {}).get("ask", 0.0),
+                                    "low_bid": price_point.get("lowPrice", {}).get("bid", 0.0),
+                                    "low_ask": price_point.get("lowPrice", {}).get("ask", 0.0),
+                                    "close_bid": price_point.get("closePrice", {}).get("bid", 0.0),
+                                    "close_ask": price_point.get("closePrice", {}).get("ask", 0.0),
+                                }
+                                processed_prices.append(processed_point)
+
+                        return {
+                            "success": True,
+                            "epic": epic,
+                            "resolution": resolution,
+                            "instrument_type": data.get("instrumentType", "UNKNOWN"),
+                            "prices": processed_prices,
+                            "metadata": {
+                                "total_points": len(processed_prices),
+                                "from_date": from_date,
+                                "to_date": to_date,
+                                "max_requested": max_points
+                            }
+                        }
+
+            # Handle error responses
+            error_msg = f"HTTP {response.status_code}"
+            try:
+                error_data = response.json()
+                if "errorCode" in error_data:
+                    error_msg = f"{error_data['errorCode']}: {error_data.get('message', 'Unknown error')}"
+            except:
+                error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
+
+            logger.error(f"Failed to get historical prices for {epic}: {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg,
+                "prices": []
+            }
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout getting historical prices for {epic}")
+            return {
+                "success": False,
+                "error": "Request timeout",
+                "prices": []
+            }
+        except Exception as e:
+            logger.error(f"Error getting historical prices for {epic}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "prices": []
+            }
+
     def get_all_supported_symbols(self) -> List[str]:
         """
         Get all symbols supported by this client (from GLOBAL_SYMBOLS)
@@ -1056,7 +1257,6 @@ class CapitalClient:
             logger.info(
                 f"Placing {direction} order for {epic}: size={size}, type={order_type}"
             )
-            logger.info(f"Order payload: {order_data}")
 
             response = self.session.post(url, json=order_data)
 
@@ -1187,11 +1387,79 @@ class CapitalClient:
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
 
+    def find_position_by_symbol(self, symbol: str) -> Dict[str, Any]:
+        """
+        Find open positions for a specific symbol
+        
+        Args:
+            symbol: The symbol to search for (e.g., 'EURUSD')
+            
+        Returns:
+            Dict containing matching positions or error
+        """
+        positions_result = self.get_positions()
+        
+        if not positions_result.get("success"):
+            return positions_result
+            
+        positions = positions_result.get("positions", [])
+        
+        # Convert symbol to Capital.com format for comparison
+        capital_symbol = self.get_capital_symbol(symbol)
+        
+        # Find positions matching the symbol
+        matching_positions = []
+        for position in positions:
+            position_epic = position.get("epic", "")
+            if position_epic == capital_symbol:
+                matching_positions.append(position)
+                
+        return {
+            "success": True,
+            "positions": matching_positions,
+            "symbol": symbol,
+            "capital_symbol": capital_symbol,
+            "count": len(matching_positions)
+        }
+
+    def find_position_by_deal_id(self, deal_id: str) -> Dict[str, Any]:
+        """
+        Find a specific position by deal ID
+        
+        Args:
+            deal_id: The deal ID to search for
+            
+        Returns:
+            Dict containing the position or error
+        """
+        positions_result = self.get_positions()
+        
+        if not positions_result.get("success"):
+            return positions_result
+            
+        positions = positions_result.get("positions", [])
+        
+        # Find position with matching deal ID
+        for position in positions:
+            if position.get("dealId") == deal_id:
+                return {
+                    "success": True,
+                    "position": position,
+                    "found": True
+                }
+                
+        return {
+            "success": True,
+            "position": None,
+            "found": False,
+            "message": f"Position with deal ID {deal_id} not found"
+        }
+
     def close_position(
         self, deal_id: str, direction: str = None, size: float = None
     ) -> Dict[str, Any]:
         """
-        Close an existing position using DELETE method
+        Close an existing position using DELETE method with pre-verification
 
         Args:
             deal_id: Deal ID of the position to close
@@ -1202,7 +1470,31 @@ class CapitalClient:
             Dict containing close result
         """
         if not self._ensure_valid_session():
-            return {"success": False, "error": "Failed to establish valid session"}
+            return {"success": False, "error": "Failed to establish valid session", "error_type": "session"}
+
+        # First, verify the position exists before attempting to close it
+        logger.info(f"Verifying position {deal_id} exists before closing")
+        position_check = self.find_position_by_deal_id(deal_id)
+        
+        if not position_check["success"]:
+            # Error getting positions (session, network, etc.)
+            logger.error(f"Failed to verify position {deal_id}: {position_check.get('error')}")
+            return position_check
+        
+        if not position_check.get("found", False):
+            # Position not found - already closed or invalid
+            logger.warning(f"⚠️ Position {deal_id} not found - already closed or invalid")
+            return {
+                "success": True,  # Treat as success since position is already closed
+                "deal_id": deal_id,
+                "error_type": "already_closed",
+                "message": "Position already closed or not found"
+            }
+
+        # Position exists, proceed with closing
+        position_data = position_check["position"]
+        logger.info(f"Position {deal_id} verified - Symbol: {position_data.get('market', {}).get('instrumentName')}, "
+                   f"Direction: {position_data.get('direction')}, Size: {position_data.get('size')}")
 
         # Use DELETE method with deal_id in URL path as per Capital.com API documentation
         url = f"{self.base_url}/positions/{deal_id}"
@@ -1219,16 +1511,63 @@ class CapitalClient:
                     "deal_reference": result.get("dealReference"),
                     "deal_id": deal_id,
                     "response": result,
+                    "position_data": position_data  # Include original position data
                 }
             else:
+                # Parse error response to get specific error details
+                error_details = self._parse_api_error(response)
                 error_msg = f"Failed to close position: {response.status_code} - {response.text}"
+                
+                # Handle specific error types
+                if error_details.get("errorCode") == "error.invalid.dealId":
+                    logger.warning(f"⚠️ Position {deal_id} became invalid during close attempt - marking as resolved")
+                    return {
+                        "success": True,  # Treat as success since position is no longer available
+                        "deal_id": deal_id,
+                        "error_type": "already_closed",
+                        "message": "Position became invalid during close attempt"
+                    }
+                
                 logger.error(error_msg)
-                return {"success": False, "error": error_msg}
+                return {
+                    "success": False, 
+                    "error": error_msg,
+                    "error_type": error_details.get("errorCode", "api_error"),
+                    "error_details": error_details,
+                    "position_data": position_data
+                }
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Network error closing position: {str(e)}"
             logger.error(error_msg)
-            return {"success": False, "error": error_msg}
+            return {"success": False, "error": error_msg, "error_type": "network", "position_data": position_data}
+
+    def _parse_api_error(self, response) -> Dict[str, Any]:
+        """
+        Parse API error response to extract error details
+        
+        Args:
+            response: HTTP response object
+            
+        Returns:
+            Dict containing parsed error details
+        """
+        try:
+            if response.headers.get('content-type', '').startswith('application/json'):
+                error_data = response.json()
+                return {
+                    "errorCode": error_data.get("errorCode", "unknown"),
+                    "errorMessage": error_data.get("errorMessage", ""),
+                    "status_code": response.status_code
+                }
+        except (ValueError, KeyError):
+            pass
+        
+        return {
+            "errorCode": "parse_error",
+            "errorMessage": response.text,
+            "status_code": response.status_code
+        }
 
     def is_market_tradeable(self, symbol: str) -> Dict[str, Any]:
         """
@@ -1470,17 +1809,17 @@ def create_capital_client_from_env() -> CapitalClient:
     )
 
     # Debug: Log configuration (without sensitive data)
-    logger.info(f"Capital.com config - Demo mode: {config.use_demo}")
-    logger.info(
+    logger.debug(f"Capital.com config - Demo mode: {config.use_demo}")
+    logger.debug(
         f"Capital.com config - Base URL: {config.demo_url if config.use_demo else config.live_url}"
     )
-    logger.info(
+    logger.debug(
         f"Capital.com config - Identifier set: {'Yes' if config.identifier else 'No'}"
     )
-    logger.info(
+    logger.debug(
         f"Capital.com config - Password set: {'Yes' if config.password else 'No'}"
     )
-    logger.info(
+    logger.debug(
         f"Capital.com config - API Key set: {'Yes' if config.api_key else 'No'}"
     )
 
