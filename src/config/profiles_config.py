@@ -243,7 +243,7 @@ PROFILES = {
         # === CONFIGURACIÓN MULTI-TIMEFRAME ===
         "mtf_enhanced_confidence": 78.0,  # Confianza MTF más balanceada
         "mtf_min_confidence": 75.0,  # Confianza mínima MTF coherente
-        "mtf_min_consensus": 0.67,  # Consenso más realista (2 de 3 timeframes)
+        "mtf_min_consensus": 0.66,  # Consenso ajustado para permitir 66.7% (2 de 3 timeframes)
         "mtf_require_trend_alignment": True,  # Requiere alineación de tendencias
         "mtf_min_timeframe_consensus": 2,  # Consenso en 2 de 3 timeframes
         "mtf_trend_alignment_required": True,  # Alineación obligatoria

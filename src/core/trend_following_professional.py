@@ -34,7 +34,7 @@ class TrendFollowingProfessional:
         # Parámetros de la estrategia - OPTIMIZADOS PARA ANTI-LATERAL
         self.ema_fast = 34  # AUMENTADO: de 21 a 34 para señales más suaves
         self.ema_medium = 89  # AUMENTADO: de 50 a 89 para mejor filtrado
-        self.ema_slow = 233  # AUMENTADO: de 200 a 233 para tendencias más sólidas
+        self.ema_slow = 200  # EMA200 estándar para tendencias de largo plazo
         self.atr_period = 21  # AUMENTADO: de 14 a 21 para volatilidad más estable
         self.adx_period = (
             21  # AUMENTADO: de 14 a 21 para fuerza de tendencia más confiable
@@ -43,7 +43,7 @@ class TrendFollowingProfessional:
         self.volume_sma = 34  # AUMENTADO: de 20 a 34 para volumen más estable
 
     def get_market_data(
-        self, symbol: str, timeframe: str = "1h", limit: int = 500
+        self, symbol: str, timeframe: str = "1h", limit: int = 600  # AUMENTADO: de 500 a 600 para EMA200
     ) -> pd.DataFrame:
         """Obtiene datos de mercado - será inyectado por el adaptador"""
         # Este método será sobrescrito por el adaptador con datos reales
@@ -139,7 +139,7 @@ class TrendFollowingProfessional:
             return {"structure": "sideways", "strength": 0.3}
 
     def analyze_trend_alignment(self, df: pd.DataFrame) -> Dict:
-        """Verifica alineación de tendencia en múltiples timeframes"""
+        """Verifica alineación de tendencia en múltiples timeframes - VERSIÓN MENOS ESTRICTA"""
         if df.empty or len(df) < self.ema_slow:
             return {"aligned": False, "direction": "neutral", "strength": 0}
 
@@ -153,18 +153,36 @@ class TrendFollowingProfessional:
         price_above_emas = current["close"] > current["ema_21"]
         price_below_emas = current["close"] < current["ema_21"]
 
-        # Verificar pendiente de EMAs
+        # Verificar pendiente de EMAs (más tolerante)
         ema21_slope = (current["ema_21"] - df["ema_21"].iloc[-5]) / 5
         ema50_slope = (current["ema_50"] - df["ema_50"].iloc[-5]) / 5
 
+        # CRITERIOS MENOS ESTRICTOS - Solo necesita 2 de 3 condiciones
+        
+        # Tendencia alcista fuerte (todas las condiciones)
         if emas_bullish and price_above_emas and ema21_slope > 0 and ema50_slope > 0:
             return {"aligned": True, "direction": "bullish", "strength": 0.9}
+        
+        # Tendencia bajista fuerte (todas las condiciones)
         elif emas_bearish and price_below_emas and ema21_slope < 0 and ema50_slope < 0:
             return {"aligned": True, "direction": "bearish", "strength": 0.9}
-        elif emas_bullish and price_above_emas:
+        
+        # Tendencia alcista moderada (2 de 3 condiciones)
+        elif (emas_bullish and price_above_emas) or (emas_bullish and ema21_slope > 0) or (price_above_emas and ema21_slope > 0):
             return {"aligned": True, "direction": "bullish", "strength": 0.6}
-        elif emas_bearish and price_below_emas:
+        
+        # Tendencia bajista moderada (2 de 3 condiciones) - NUEVO
+        elif (emas_bearish and price_below_emas) or (emas_bearish and ema21_slope < 0) or (price_below_emas and ema21_slope < 0):
             return {"aligned": True, "direction": "bearish", "strength": 0.6}
+        
+        # Tendencia alcista débil (solo EMAs o solo precio)
+        elif emas_bullish or (price_above_emas and ema21_slope > 0):
+            return {"aligned": True, "direction": "bullish", "strength": 0.4}
+        
+        # Tendencia bajista débil (solo EMAs o solo precio) - NUEVO
+        elif emas_bearish or (price_below_emas and ema21_slope < 0):
+            return {"aligned": True, "direction": "bearish", "strength": 0.4}
+        
         else:
             return {"aligned": False, "direction": "neutral", "strength": 0.3}
 
@@ -577,7 +595,7 @@ class TrendFollowingProfessional:
                     f"Alineación MTF alcista (consenso: {mtf_analysis['consensus']:.1%})"
                 )
 
-                if momentum_analysis["strength"] > 0.7:  # AUMENTADO de 0.6 a 0.7
+                if momentum_analysis["strength"] > 0.6:  # AJUSTADO de 0.7 a 0.6 para ser menos estricto
                     confluence_count += 1
                     confluence_details.append("Momentum alcista fuerte")
 
@@ -592,7 +610,7 @@ class TrendFollowingProfessional:
                     )
 
                 # NUEVA CONFLUENCIA: Volatilidad adecuada
-                if volatility_analysis["atr_normalized"] > 0.020:  # ATR > 2%
+                if volatility_analysis["atr_normalized"] > 0.005:  # ATR > 0.5% (ajustado de 1% para ser menos estricto)
                     confluence_count += 1
                     confluence_details.append("Volatilidad favorable para trading")
 
@@ -617,7 +635,7 @@ class TrendFollowingProfessional:
                     f"Alineación MTF bajista (consenso: {mtf_analysis['consensus']:.1%})"
                 )
 
-                if momentum_analysis["strength"] > 0.7:  # AUMENTADO de 0.6 a 0.7
+                if momentum_analysis["strength"] > 0.6:  # AJUSTADO de 0.7 a 0.6 para ser menos estricto
                     confluence_count += 1
                     confluence_details.append("Momentum bajista fuerte")
 
@@ -632,7 +650,7 @@ class TrendFollowingProfessional:
                     )
 
                 # NUEVA CONFLUENCIA: Volatilidad adecuada
-                if volatility_analysis["atr_normalized"] > 0.020:  # ATR > 2%
+                if volatility_analysis["atr_normalized"] > 0.005:  # ATR > 0.5% (ajustado de 1% para ser menos estricto)
                     confluence_count += 1
                     confluence_details.append("Volatilidad favorable para trading")
 
@@ -654,7 +672,7 @@ class TrendFollowingProfessional:
                 confidence_score=0.0,  # Se calculará después
                 strength=(
                     "Strong"
-                    if confluence_count >= 4
+                    if confluence_count >= 5
                     else "Moderate" if confluence_count >= 3 else "Weak"
                 ),
                 strategy_name=self.name,
@@ -722,15 +740,15 @@ class TrendFollowingProfessional:
             )
 
             # 9. Filtros básicos de calidad MEJORADOS
-            if signal.confidence_score < 60.0:  # AJUSTADO temporalmente de 75% a 60%
+            if signal.confidence_score < 55.0:  # AJUSTADO temporalmente de 60% a 55%
                 logger.info(
-                    f"Señal para {symbol} no alcanza confianza mínima (60%): {signal.confidence_score:.1f}%"
+                    f"Señal para {symbol} no alcanza confianza mínima (55%): {signal.confidence_score:.1f}%"
                 )
                 return None
 
-            if confluence_count < 4:  # AUMENTADO de 3 a 4 confluencias
+            if confluence_count < 3:  # AJUSTADO de 4 a 3 confluencias para ser menos estricto
                 logger.info(
-                    f"Señal para {symbol} no tiene suficientes confluencias: {confluence_count} (mínimo 4)"
+                    f"Señal para {symbol} no tiene suficientes confluencias: {confluence_count} (mínimo 3)"
                 )
                 return None
 
@@ -894,7 +912,7 @@ class TrendFollowingProfessional:
 
             # 4. Criterios de volatilidad mínima (ajustados para ser más realistas)
             min_atr_normalized = 0.008  # 0.8% mínimo (reducido de 1.5%)
-            min_historical_vol = 0.05   # 5% anualizada mínima (reducido de 20%)
+            min_historical_vol = 0.03   # 3% anualizada mínima (reducido de 5% para ser menos estricto)
             min_true_range = 0.008      # 0.8% rango verdadero mínimo (reducido de 1.2%)
 
             # 5. Evaluación (al menos 2 de 3 criterios deben cumplirse)
@@ -1043,7 +1061,7 @@ if __name__ == "__main__":
         print(f"Stop Loss: ${signal.stop_loss_price:.2f}")
         print(f"Take Profit: ${signal.take_profit_price:.2f}")
         print(f"R/R Ratio: {signal.risk_reward_ratio:.2f}")
-        print(f"Confluencias: {signal.confluence_count}")
+        print(f"Confluencias: {signal.confluence_score}")
         print(f"Detalles: {', '.join(signal.confluence_details)}")
     else:
         print("❌ No se generó señal o no pasó los filtros profesionales")

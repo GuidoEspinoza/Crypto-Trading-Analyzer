@@ -167,7 +167,7 @@ class ConsensusStrategy:
                 def get_market_data(
                     symbol: str,
                     timeframe: str,
-                    periods: int = 250,
+                    periods: int = 350,  # AUMENTADO: de 250 a 350 para EMA200
                     limit: int = None,
                     **kwargs,
                 ):

@@ -2305,7 +2305,7 @@ class TradingBot:
                     strategy_instance = TrendFollowingProfessional()
 
                     # Obtener ATR para el cálculo
-                    current_price = self._get_current_price(symbol)
+                    current_price = self._get_current_price(signal.symbol)
                     atr = current_price * 0.02  # ATR estimado como 2% del precio
 
                     # Calcular TP/SL basado en ROI usando el tamaño de posición real
