@@ -122,14 +122,18 @@ ssh root@TU_IP_VPS  # o ssh tradingbot@TU_IP_VPS
 ### 📁 **Paso 4.1: Clonar Repositorio**
 
 ```bash
+# Clonar repositorio en el directorio correcto
+git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git ~/trading-bot
+
 # Ir al directorio de trabajo
 cd ~/trading-bot
 
-# Clonar tu repositorio
-git clone https://github.com/TU_USUARIO/Smart-Trading-Bot.git .
-
-# Verificar archivos
+# Verificar archivos (deben estar directamente en ~/trading-bot)
 ls -la
+
+# Verificar estructura correcta
+echo "✅ Verificando estructura de archivos:"
+ls -la | grep -E "(main.py|docker-compose.yml|requirements.txt|src/)"
 ```
 
 ### ⚙️ **Paso 4.2: Configurar Variables de Entorno**
@@ -310,6 +314,98 @@ from src.core.capital_client import CapitalClient
 client = CapitalClient.from_env()
 print('Conexión exitosa!' if client else 'Error de conexión')
 "
+```
+
+#### **Problema: Directorios anidados (~/trading-bot/Smart-Trading-Bot)**
+
+**Síntomas del problema:**
+- Los archivos están en `~/trading-bot/Smart-Trading-Bot/` en lugar de `~/trading-bot/`
+- Al ejecutar `docker-compose up` aparece error "No such file or directory"
+- El comando `ls ~/trading-bot/` muestra una carpeta "Smart-Trading-Bot"
+
+**Solución paso a paso:**
+
+```bash
+# 1. Verificar si tienes el problema
+echo "🔍 Verificando estructura actual:"
+ls -la ~/trading-bot/
+
+# Si ves una carpeta "Smart-Trading-Bot", tienes el problema
+echo "❌ Estructura incorrecta detectada"
+
+# 2. Hacer backup por seguridad (opcional)
+cp -r ~/trading-bot ~/trading-bot-backup-$(date +%Y%m%d)
+
+# 3. Mover todos los archivos al directorio correcto
+echo "📦 Moviendo archivos a la ubicación correcta..."
+
+# Mover archivos visibles
+mv ~/trading-bot/Smart-Trading-Bot/* ~/trading-bot/ 2>/dev/null
+
+# Mover archivos ocultos (como .env, .gitignore, etc.)
+find ~/trading-bot/Smart-Trading-Bot -name ".*" -maxdepth 1 -type f -exec mv {} ~/trading-bot/ \; 2>/dev/null
+
+# 4. Eliminar directorio vacío
+rmdir ~/trading-bot/Smart-Trading-Bot 2>/dev/null
+
+# 5. Verificar estructura correcta
+echo "✅ Verificando estructura corregida:"
+cd ~/trading-bot
+ls -la
+
+# 6. Verificar archivos críticos
+echo "🔍 Verificando archivos críticos del proyecto:"
+for file in main.py docker-compose.yml requirements.txt Dockerfile .env.example; do
+    if [ -f "$file" ]; then
+        echo "✅ $file - Encontrado"
+    else
+        echo "❌ $file - FALTANTE"
+    fi
+done
+
+# 7. Verificar directorio src/
+if [ -d "src/" ]; then
+    echo "✅ Directorio src/ - Encontrado"
+    echo "📁 Contenido de src/:"
+    ls -la src/
+else
+    echo "❌ Directorio src/ - FALTANTE"
+fi
+
+# 8. Verificar que Docker puede leer los archivos
+echo "🐳 Verificando configuración de Docker:"
+docker-compose config --quiet && echo "✅ docker-compose.yml válido" || echo "❌ Error en docker-compose.yml"
+```
+
+**Verificación final:**
+```bash
+# La estructura correcta debe verse así:
+cd ~/trading-bot
+tree -L 2 -a  # Si tienes tree instalado
+
+# O usar ls para verificar:
+echo "📋 Estructura final esperada:"
+ls -la | head -20
+echo ""
+echo "📁 Debe contener directamente:"
+echo "  ✅ main.py"
+echo "  ✅ docker-compose.yml" 
+echo "  ✅ requirements.txt"
+echo "  ✅ Dockerfile"
+echo "  ✅ src/ (directorio)"
+echo "  ✅ .env.example"
+echo "  ✅ README.md"
+```
+
+**Si algo sale mal:**
+```bash
+# Restaurar desde backup
+rm -rf ~/trading-bot
+mv ~/trading-bot-backup-$(date +%Y%m%d) ~/trading-bot
+
+# O empezar desde cero
+rm -rf ~/trading-bot
+git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git ~/trading-bot
 ```
 
 #### **Problema: Poco espacio en disco**
