@@ -1,6 +1,6 @@
 # 🚀 Dockerfile para Smart Trading Bot - Optimizado para Hostinger VPS
 # Imagen base optimizada para Python y análisis técnico
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Metadatos
 LABEL maintainer="Smart Trading Bot"
@@ -17,11 +17,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Crear usuario no-root para seguridad
 RUN groupadd -r tradingbot && useradd -r -g tradingbot tradingbot
 
-# Instalar dependencias del sistema necesarias para TA-Lib
+# Instalar dependencias del sistema necesarias para TA-Lib y git
 RUN apt-get update && apt-get install -y \
     build-essential \
     wget \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar TA-Lib desde fuente (requerido para análisis técnico)

@@ -6,7 +6,7 @@ Desarrollado por: Experto en Trading & Programación
 """
 
 import pandas as pd
-import pandas_ta as ta
+import ta
 import numpy as np
 import warnings
 from typing import Dict, List, Optional, Tuple

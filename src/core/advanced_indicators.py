@@ -4,7 +4,7 @@ Biblioteca completa de indicadores profesionales para análisis técnico
 """
 
 import pandas as pd
-import pandas_ta as ta
+import ta
 import numpy as np
 import warnings
 from typing import Dict, List, Optional, Tuple
