@@ -17,11 +17,14 @@ TA-Lib==0.6.7             # Librería de análisis técnico para estrategias pro
 # Comunicación en tiempo real
 websockets>=15.0          # WebSockets nativos de Python (actualizado)
 aiohttp>=3.12.0           # Cliente HTTP asíncrono (actualizado)
+requests>=2.31.0          # Cliente HTTP síncrono (usado en capital_client.py)
 
 # Utilidades
 python-json-logger==3.3.0 # Logging estructurado (actualizado)
 PyYAML>=6.0.2             # Manejo de archivos de configuración
 pytz>=2023.3              # Manejo de zonas horarias para scheduling UTC
+schedule>=1.2.0           # Programación de tareas (usado en trading_bot.py)
+sqlalchemy>=2.0.0         # ORM para base de datos (usado en position_monitor.py)
 
 # Testing (para desarrollo)
 pytest>=8.4.0            # Framework de testing (actualizado)
