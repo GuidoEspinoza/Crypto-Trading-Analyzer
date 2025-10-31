@@ -31,6 +31,7 @@ class PositionInfo:
     """📊 Información completa de una posición"""
 
     trade_id: int
+    deal_id: str  # dealId original de Capital.com (formato hexadecimal)
     symbol: str
     trade_type: str  # BUY o SELL
     entry_price: float
@@ -326,7 +327,7 @@ class PositionManager:
         """🎯 Cerrar posición específica
 
         Args:
-            trade_id: ID del trade a cerrar (dealId de Capital.com)
+            trade_id: ID del trade a cerrar (hash numérico interno)
             current_price: Precio actual para el cierre
             reason: Razón del cierre
 
@@ -338,8 +339,14 @@ class PositionManager:
                 logger.warning("⚠️ No Capital.com client available for closing position")
                 return False
 
-            # Convertir trade_id a string para Capital.com API
-            deal_id = str(trade_id)
+            # Buscar la posición por trade_id para obtener el deal_id original
+            position = self.get_position_by_id(trade_id)
+            if not position:
+                logger.warning(f"⚠️ Position with trade_id {trade_id} not found")
+                return False
+
+            # Usar el deal_id original de Capital.com
+            deal_id = position.deal_id
 
             # Cerrar posición usando Capital.com API
             result = self.capital_client.close_position(deal_id)
@@ -791,6 +798,7 @@ class PositionManager:
 
             position_info = PositionInfo(
                 trade_id=trade_id,
+                deal_id=deal_id_str,  # Almacenar dealId original
                 symbol=symbol,
                 trade_type=direction,
                 entry_price=entry_price,

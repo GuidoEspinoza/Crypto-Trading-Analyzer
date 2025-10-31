@@ -21,7 +21,7 @@ Versión: 2.0
 """
 
 import pytz
-from datetime import time
+from datetime import datetime, time
 
 # Importar configuración de símbolos para mantener consistencia
 from .symbols_config import (
@@ -55,8 +55,8 @@ UTC_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
 
 # Hora de reinicio diario del sistema (formato 24h)
 # Este es el momento en que se resetean contadores, estadísticas y límites diarios
-DAILY_RESET_HOUR = 0  # Medianoche (00:00)
-DAILY_RESET_MINUTE = 0  # Minuto exacto del reinicio
+DAILY_RESET_HOUR = 15  # Medianoche (00:00)
+DAILY_RESET_MINUTE = 37   # Minuto exacto del reinicio
 
 # ============================================================================
 # 🕐 HORARIOS DE TRADING INTELIGENTES
@@ -449,8 +449,8 @@ def is_trading_day_allowed(profile_name: str = None) -> bool:
     from datetime import datetime
     from .profiles_config import TRADING_PROFILE
 
-    # Obtener el día actual
-    current_day = datetime.now().strftime("%A").lower()
+    # Obtener el día actual en UTC
+    current_day = datetime.now(UTC_TZ).strftime("%A").lower()
 
     # Si no se especifica perfil, usar el actual
     if profile_name is None:
@@ -497,8 +497,8 @@ def get_weekend_trading_params(profile_name: str = None) -> dict:
     if profile_name is None:
         profile_name = TRADING_PROFILE
 
-    # Verificar si es fin de semana
-    current_day = datetime.now().strftime("%A").lower()
+    # Verificar si es fin de semana en UTC
+    current_day = datetime.now(UTC_TZ).strftime("%A").lower()
     is_weekend = current_day in ["saturday", "sunday"]
 
     if not is_weekend:
@@ -775,7 +775,7 @@ def is_high_volatility_session(current_time: time = None) -> dict:
     from datetime import datetime
 
     if current_time is None:
-        current_time = datetime.now().time()
+        current_time = datetime.now(UTC_TZ).time()
 
     for session_name, session_config in HIGH_VOLATILITY_SESSIONS.items():
         start_time = session_config["start"]
@@ -836,7 +836,7 @@ def get_optimized_trading_params(symbol: str, profile_name: str = None) -> dict:
     # Obtener parámetros base del perfil
     base_params = (
         get_weekend_trading_params(profile_name)
-        if datetime.now().strftime("%A").lower() in ["saturday", "sunday"]
+        if datetime.now(UTC_TZ).strftime("%A").lower() in ["saturday", "sunday"]
         else {}
     )
 
@@ -874,7 +874,7 @@ def get_current_market_opportunities() -> dict:
     """
     from datetime import datetime
 
-    current_time = datetime.now()
+    current_time = datetime.now(UTC_TZ)
     current_hour = current_time.time()
 
     opportunities = {

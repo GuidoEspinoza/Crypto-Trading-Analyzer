@@ -1194,8 +1194,10 @@ def get_active_symbols_for_current_time() -> list:
         list: Lista de símbolos recomendados para trading actual
     """
     from datetime import datetime
+    import pytz
 
-    current_hour = datetime.now().hour
+    # Usar UTC para consistencia global
+    current_hour = datetime.now(pytz.UTC).hour
 
     # Lógica simplificada por sesiones
     if 0 <= current_hour < 8:  # Sesión asiática

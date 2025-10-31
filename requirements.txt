@@ -21,10 +21,7 @@ aiohttp>=3.12.0           # Cliente HTTP asíncrono (actualizado)
 # Utilidades
 python-json-logger==3.3.0 # Logging estructurado (actualizado)
 PyYAML>=6.0.2             # Manejo de archivos de configuración
-
-# Visualización y análisis (eliminadas dependencias no utilizadas)
-
-# Base de datos (eliminada SQLAlchemy - no se usa)
+pytz>=2023.3              # Manejo de zonas horarias para scheduling UTC
 
 # Testing (para desarrollo)
 pytest>=8.4.0            # Framework de testing (actualizado)

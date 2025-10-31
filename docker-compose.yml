@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # 🤖 Trading Bot Principal - Optimizado para Hostinger VPS
+  trading-bot:
+    build: .
+    container_name: smart-trading-bot-hostinger
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Amsterdam  # Timezone de Hostinger Europa
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - /etc/localtime:/etc/localtime:ro  # Sincronizar timezone
+    networks:
+      - trading-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s  # Menos frecuente para ahorrar recursos
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    mem_limit: 1g  # Límite de memoria para VPS básico
+    cpus: 1.0      # Límite de CPU para VPS básico
+
+  # 🌐 Nginx Reverse Proxy - Configuración ligera para Hostinger
+  nginx:
+    image: nginx:alpine
+    container_name: trading-nginx-hostinger
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    networks:
+      - trading-network
+    mem_limit: 256m  # Límite conservador para nginx
+    cpus: 0.5
+
+networks:
+  trading-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1500  # MTU estándar para Hostinger
+
+volumes:
+  trading-data:
+    driver: local
+  trading-logs:
+    driver: local

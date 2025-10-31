@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 # Import symbol functions from main_config
 try:
     from ..config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
+    from ..config.time_trading_config import UTC_TZ
     from ..utils.market_hours import market_hours_checker
 except ImportError:
     # Fallback for direct execution
@@ -23,9 +24,45 @@ except ImportError:
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from config.main_config import get_all_capital_symbols, GLOBAL_SYMBOLS
+    from config.time_trading_config import UTC_TZ
     from utils.market_hours import market_hours_checker
 
 logger = logging.getLogger(__name__)
+
+# Capital.com minimum order sizes by asset type
+CAPITAL_MIN_SIZES = {
+    # Forex pairs - minimum 500 units
+    "CURRENCIES": 500.0,
+    # Crypto - minimum 0.01 units  
+    "CRYPTOCURRENCIES": 0.01,
+    # Shares - minimum 0.1 units
+    "SHARES": 0.1,
+    # Commodities - minimum 0.1 units
+    "COMMODITIES": 0.1,
+    # Indices - minimum 0.1 units
+    "INDICES": 0.1,
+}
+
+# Forex pairs that require 500 minimum units
+FOREX_PAIRS = {
+    # Pares mayores
+    "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD",
+    # Pares menores (cross pairs)
+    "EURGBP", "EURJPY", "GBPJPY", "EURCHF", "AUDCAD", "AUDNZD",
+    "AUDJPY", "EURAUD", "GBPAUD", "GBPCAD", "GBPCHF", "NZDJPY", 
+    "AUDCHF", "CADJPY", "CHFJPY", "EURNZD", "GBPNZD", "NZDCAD", 
+    "NZDCHF", "CADCHF",
+    # Pares exóticos con TRY, ZAR, MXN, etc.
+    "USDTRY", "EURTRY", "GBPTRY", "TRYJPY",
+    "USDZAR", "EURZAR", "GBPZAR",
+    "USDMXN", "EURMXN", "GBPMXN",
+    "USDPLN", "EURPLN", "GBPPLN",
+    "USDHUF", "EURHUF", "GBPHUF",
+    "USDCZK", "EURCZK", "GBPCZK",
+    "USDSEK", "EURSEK", "GBPSEK",
+    "USDNOK", "EURNOK", "GBPNOK",
+    "USDDKK", "EURDKK", "GBPDKK"
+}
 
 
 @dataclass
@@ -108,7 +145,7 @@ class CapitalClient:
             return True
 
         # Check if session has exceeded timeout
-        session_age = (datetime.now() - self.session_created_at).total_seconds()
+        session_age = (datetime.now(UTC_TZ) - self.session_created_at).total_seconds()
         return session_age > self.session_timeout
 
     def _should_renew_session(self) -> bool:
@@ -117,7 +154,7 @@ class CapitalClient:
             return True
 
         # Check if we're approaching expiration
-        session_age = (datetime.now() - self.session_created_at).total_seconds()
+        session_age = (datetime.now(UTC_TZ) - self.session_created_at).total_seconds()
         return session_age > self.renewal_threshold
 
     def _is_session_healthy(self) -> bool:
@@ -181,7 +218,7 @@ class CapitalClient:
                     if self.cst_token and self.security_token:
                         self.session_active = True
                         self.last_activity = time.time()
-                        self.session_created_at = datetime.now()
+                        self.session_created_at = datetime.now(UTC_TZ)
                         self.failed_requests = 0  # Reset failure counter
                         self._update_session_headers()
 
@@ -278,7 +315,7 @@ class CapitalClient:
         if not self.last_health_check:
             return True
 
-        time_since_check = (datetime.now() - self.last_health_check).total_seconds()
+        time_since_check = (datetime.now(UTC_TZ) - self.last_health_check).total_seconds()
         return time_since_check > self.health_check_interval
 
     def _perform_health_check(self) -> bool:
@@ -289,7 +326,7 @@ class CapitalClient:
             bool: True if session is healthy, False otherwise
         """
         try:
-            self.last_health_check = datetime.now()
+            self.last_health_check = datetime.now(UTC_TZ)
             ping_result = self._ping_internal()
 
             if ping_result.get("success", False):
@@ -519,6 +556,63 @@ class CapitalClient:
             "max_leverage": max(asset_leverage.get("available", [1])),
         }
 
+    def get_minimum_order_size(self, symbol: str) -> float:
+        """
+        Obtiene el tamaño mínimo de orden para un símbolo según Capital.com
+        
+        Args:
+            symbol: Símbolo del activo
+            
+        Returns:
+            float: Tamaño mínimo de orden en unidades
+        """
+        try:
+            # Usar la función mejorada de clasificación de activos
+            asset_type = self.get_asset_type_from_symbol(symbol)
+            return CAPITAL_MIN_SIZES[asset_type]
+                
+        except Exception as e:
+            logger.warning(f"Error determining minimum size for {symbol}: {e}")
+            # Retornar el mínimo más alto como fallback
+            return CAPITAL_MIN_SIZES["CURRENCIES"]
+
+    def validate_order_size(self, symbol: str, size: float) -> Dict[str, Any]:
+        """
+        Valida si el tamaño de orden cumple con los requisitos mínimos de Capital.com
+        
+        Args:
+            symbol: Símbolo del activo
+            size: Tamaño de la orden
+            
+        Returns:
+            Dict con resultado de validación
+        """
+        try:
+            min_size = self.get_minimum_order_size(symbol)
+            
+            if size < min_size:
+                return {
+                    "valid": False,
+                    "error": f"Order size {size:.4f} is below minimum {min_size} for {symbol}",
+                    "min_size": min_size,
+                    "provided_size": size
+                }
+            
+            return {
+                "valid": True,
+                "min_size": min_size,
+                "provided_size": size
+            }
+            
+        except Exception as e:
+            logger.error(f"Error validating order size for {symbol}: {e}")
+            return {
+                "valid": False,
+                "error": f"Error validating order size: {str(e)}",
+                "min_size": None,
+                "provided_size": size
+            }
+
     def get_asset_type_from_symbol(self, symbol: str) -> str:
         """
         Determine asset type from symbol
@@ -531,74 +625,73 @@ class CapitalClient:
         """
         symbol_upper = symbol.upper()
 
-        # Cryptocurrency symbols
+        # First check if it's a forex pair using our comprehensive FOREX_PAIRS set
+        if symbol_upper in FOREX_PAIRS:
+            return "CURRENCIES"
+
+        # Comprehensive cryptocurrency symbols from symbols_config.py
         crypto_symbols = [
-            "BTC",
-            "ETH",
-            "XRP",
-            "ADA",
-            "SOL",
-            "DOT",
-            "AVAX",
-            "MATIC",
-            "LINK",
-            "UNI",
-            "LTC",
-            "BCH",
-            "XLM",
-            "ALGO",
-            "ATOM",
-            "ICP",
-            "VET",
-            "FIL",
-            "TRX",
-            "ETC",
-            "AAVE",
-            "MKR",
-            "COMP",
-            "YFI",
-            "SNX",
-            "CRV",
-            "BAL",
-            "REN",
-            "KNC",
-            "ZRX",
+            "BTC", "ETH", "XRP", "ADA", "SOL", "DOT", "AVAX", "MATIC", "LINK", "UNI",
+            "LTC", "BCH", "XLM", "ALGO", "ATOM", "ICP", "VET", "FIL", "TRX", "ETC",
+            "AAVE", "MKR", "COMP", "YFI", "SNX", "CRV", "BAL", "REN", "KNC", "ZRX",
+            "DOGE", "SHIB", "NEAR", "APE", "SAND", "MANA", "CRO", "FTM", "HBAR",
+            "EGLD", "THETA", "AXS", "FLOW", "ICP", "KLAY", "CHZ", "ENJ", "BAT",
+            "ZEC", "DASH", "XTZ", "EOS", "NEO", "IOTA", "MIOTA", "XMR", "WAVES"
         ]
 
         # Check if it's a cryptocurrency
         for crypto in crypto_symbols:
             if symbol_upper.startswith(crypto) and (
-                "USD" in symbol_upper or "EUR" in symbol_upper or "GBP" in symbol_upper
+                "USD" in symbol_upper or "EUR" in symbol_upper or "GBP" in symbol_upper or "BTC" in symbol_upper
             ):
                 return "CRYPTOCURRENCIES"
 
-        # Currency pairs (Forex)
-        major_currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]
-        if len(symbol_upper) == 6:  # Standard forex pair format like EURUSD
-            base = symbol_upper[:3]
-            quote = symbol_upper[3:]
-            if base in major_currencies and quote in major_currencies:
-                return "CURRENCIES"
-
-        # Indices (usually contain numbers or specific patterns)
-        index_patterns = ["SPX", "NAS", "DOW", "FTSE", "DAX", "CAC", "NIKKEI", "ASX"]
+        # Comprehensive indices symbols from symbols_config.py
+        index_symbols = [
+            "SPX500", "NAS100", "US30", "FTSE100", "GER40", "FRA40", "ESP35", "ITA40",
+            "AUS200", "JPN225", "HK50", "CHINA50", "IND50", "SING30", "SWISS20",
+            "NLD25", "BEL20", "AUT20", "NOR25", "SWE30", "DEN25", "POL20", "CZE14",
+            "HUN20", "RUS50", "ZAF40", "MEX35", "BRA60", "ARG25", "CHL30", "COL20",
+            "PER15", "ECOM50", "AFRICA40", "GULF20", "MENA30", "ASIA50", "PACIFIC25"
+        ]
+        
+        # Check exact match for indices
+        if symbol_upper in index_symbols:
+            return "INDICES"
+        
+        # Check partial matches for indices
+        index_patterns = ["SPX", "NAS", "DOW", "US30", "FTSE", "DAX", "GER", "CAC", "FRA", 
+                         "NIKKEI", "JPN", "ASX", "AUS", "HK", "CHINA", "IND", "SING"]
         for pattern in index_patterns:
             if pattern in symbol_upper:
                 return "INDICES"
 
-        # Commodities
+        # Comprehensive commodities symbols from symbols_config.py
         commodity_symbols = [
-            "GOLD",
-            "SILVER",
-            "OIL",
-            "BRENT",
-            "GAS",
-            "COPPER",
-            "PLATINUM",
+            "GOLD", "SILVER", "PLATINUM", "PALLADIUM", "COPPER", "ALUMINIUM", "ZINC", "NICKEL",
+            "OIL", "BRENT", "WTI", "CRUDEOIL", "NATURALGAS", "GAS", "HEATING",
+            "WHEAT", "CORN", "SOYBEANS", "SUGAR", "COFFEE", "COCOA", "COTTON", "RICE"
         ]
+        
+        # Check exact match for commodities
+        if symbol_upper in commodity_symbols:
+            return "COMMODITIES"
+            
+        # Check partial matches for commodities
         for commodity in commodity_symbols:
             if commodity in symbol_upper:
                 return "COMMODITIES"
+
+        # Additional forex check for non-standard pairs or exotic currencies
+        exotic_currencies = ["TRY", "ZAR", "MXN", "PLN", "HUF", "CZK", "SEK", "NOK", "DKK", 
+                           "RUB", "CNY", "INR", "KRW", "SGD", "HKD", "THB", "MYR", "IDR", "PHP"]
+        all_currencies = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"] + exotic_currencies
+        
+        if len(symbol_upper) == 6:  # Standard forex pair format like EURUSD
+            base = symbol_upper[:3]
+            quote = symbol_upper[3:]
+            if base in all_currencies and quote in all_currencies:
+                return "CURRENCIES"
 
         # Default to SHARES if no other type matches
         return "SHARES"
@@ -1040,7 +1133,7 @@ class CapitalClient:
             )
 
             # Check if session is still valid (not expired)
-            session_age = (datetime.now() - session_created_at).total_seconds()
+            session_age = (datetime.now(UTC_TZ) - session_created_at).total_seconds()
             if session_age > self.session_timeout:
                 logger.debug("Saved session has expired")
                 self._delete_session_file()
@@ -1080,7 +1173,7 @@ class CapitalClient:
         """
         session_age = 0
         if self.session_created_at:
-            session_age = (datetime.now() - self.session_created_at).total_seconds()
+            session_age = (datetime.now(UTC_TZ) - self.session_created_at).total_seconds()
 
         time_until_expiry = (
             self.session_timeout - session_age if self.session_active else 0
@@ -1137,7 +1230,7 @@ class CapitalClient:
     def _track_session_failure(self, error_msg: str):
         """Track session failures for monitoring"""
         self.session_failures += 1
-        self.last_session_failure = datetime.now()
+        self.last_session_failure = datetime.now(UTC_TZ)
 
         self._log_session_alert(
             "SESSION_FAILURE",
@@ -1196,6 +1289,19 @@ class CapitalClient:
         """
         if not self._ensure_valid_session():
             return {"success": False, "error": "Failed to establish valid session"}
+
+        # Validar tamaño mínimo de orden según Capital.com
+        size_validation = self.validate_order_size(epic, size)
+        if not size_validation["valid"]:
+            error_msg = f"Order size validation failed: {size_validation['error']}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "min_size_required": size_validation.get("min_size"),
+                "provided_size": size_validation.get("provided_size"),
+                "epic": epic
+            }
 
         # Validar parámetros de trailing stop según documentación de Capital.com
         if trailing_stop:
@@ -1440,11 +1546,14 @@ class CapitalClient:
         positions = positions_result.get("positions", [])
         
         # Find position with matching deal ID
-        for position in positions:
+        # Note: Capital.com API returns positions in format: {"position": {...}, "market": {...}}
+        for position_data in positions:
+            position = position_data.get("position", {})
             if position.get("dealId") == deal_id:
+                logger.info(f"✅ Position {deal_id} found successfully")
                 return {
                     "success": True,
-                    "position": position,
+                    "position": position_data,  # Return the full structure
                     "found": True
                 }
                 
@@ -1500,19 +1609,44 @@ class CapitalClient:
         url = f"{self.base_url}/positions/{deal_id}"
 
         try:
-            logger.info(f"Closing position {deal_id} using DELETE method")
+            logger.info(f"🔄 Attempting to close position {deal_id} using DELETE method")
+            logger.info(f"🌐 DELETE URL: {url}")
+            logger.info(f"📋 Headers: {dict(self.session.headers)}")
+            
             response = self.session.delete(url)
+            
+            logger.info(f"📊 Response Status Code: {response.status_code}")
+            logger.info(f"📄 Response Headers: {dict(response.headers)}")
+            logger.info(f"📝 Raw Response Text: {response.text}")
 
             if response.status_code == 200:
-                result = response.json()
-                logger.info(f"Position closed successfully: {result}")
-                return {
-                    "success": True,
-                    "deal_reference": result.get("dealReference"),
-                    "deal_id": deal_id,
-                    "response": result,
-                    "position_data": position_data  # Include original position data
-                }
+                try:
+                    result = response.json()
+                    logger.info(f"✅ Position close response JSON: {result}")
+                    
+                    # Verificar si realmente se cerró la posición
+                    deal_reference = result.get("dealReference")
+                    if deal_reference:
+                        logger.info(f"🎯 Deal reference obtained: {deal_reference}")
+                    else:
+                        logger.warning(f"⚠️ No deal reference in response - position may not have closed")
+                    
+                    return {
+                        "success": True,
+                        "deal_reference": deal_reference,
+                        "deal_id": deal_id,
+                        "response": result,
+                        "position_data": position_data  # Include original position data
+                    }
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Failed to parse JSON response: {e}")
+                    logger.error(f"📝 Raw response: {response.text}")
+                    return {
+                        "success": False,
+                        "error": f"Invalid JSON response: {response.text}",
+                        "error_type": "json_parse_error",
+                        "position_data": position_data
+                    }
             else:
                 # Parse error response to get specific error details
                 error_details = self._parse_api_error(response)
@@ -1580,11 +1714,6 @@ class CapitalClient:
             Dict containing market status information
         """
         try:
-            # Usar tanto searchTerm como epics para obtener el estado correcto del mercado
-            # Esto sigue el patrón de los ejemplos: /markets?searchTerm=btcusd&epics=BTCUSD
-            search_term = symbol.lower()  # searchTerm en minúsculas
-            epics_param = symbol.upper()  # epics en mayúsculas
-
             if not self._ensure_valid_session():
                 return {
                     "success": False,
@@ -1592,11 +1721,11 @@ class CapitalClient:
                     "error": "Failed to establish valid session",
                 }
 
-            url = f"{self.base_url}/markets"
-            params = {"searchTerm": search_term, "epics": epics_param}
+            # Use the correct endpoint format: /markets/:epic
+            url = f"{self.base_url}/markets/{symbol}"
 
             try:
-                response = self.session.get(url, params=params, timeout=10)
+                response = self.session.get(url, timeout=10)
                 self.last_activity = time.time()
 
                 if response.status_code != 200:
@@ -1604,49 +1733,13 @@ class CapitalClient:
                     logger.error(error_msg)
                     return {"success": False, "tradeable": False, "error": error_msg}
 
-                markets_response = response.json()
-                logger.debug(f"Markets response for {symbol}: {markets_response}")
+                market_response = response.json()
+                logger.debug(f"Market response for {symbol}: {market_response}")
 
-                # Handle different response formats
-                markets = []
-                if "markets" in markets_response:
-                    markets = markets_response["markets"]
-                elif "marketDetails" in markets_response:
-                    markets = markets_response["marketDetails"]
-
-                if not markets:
-                    return {
-                        "success": False,
-                        "tradeable": False,
-                        "error": f"Market {symbol} not found",
-                    }
-
-                # Find the specific market
-                market_info = None
-                for market in markets:
-                    # Check both epic and instrument.epic for different response formats
-                    market_epic = market.get("epic") or market.get(
-                        "instrument", {}
-                    ).get("epic")
-                    # Compare with both original symbol and uppercase version
-                    if market_epic == symbol or market_epic == epics_param:
-                        market_info = market
-                        break
-
-                if not market_info:
-                    return {
-                        "success": False,
-                        "tradeable": False,
-                        "error": f"Market {symbol} not found in response",
-                    }
-
-                # Get market status from different possible locations
-                market_status = (
-                    market_info.get("marketStatus")
-                    or market_info.get("snapshot", {}).get("marketStatus")
-                    or "UNKNOWN"
-                )
-
+                # The response should contain the market information directly
+                # Get market status from snapshot.marketStatus
+                market_status = market_response.get("snapshot", {}).get("marketStatus", "UNKNOWN")
+                
                 is_tradeable = market_status == "TRADEABLE"
 
                 logger.info(
@@ -1658,7 +1751,7 @@ class CapitalClient:
                     "tradeable": is_tradeable,
                     "market_status": market_status,
                     "symbol": symbol,
-                    "market_info": market_info,
+                    "market_info": market_response,
                 }
 
             except requests.exceptions.RequestException as e:

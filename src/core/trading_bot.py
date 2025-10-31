@@ -31,6 +31,7 @@ from src.config.time_trading_config import (
     TIMEZONE,
     DAILY_RESET_HOUR,
     DAILY_RESET_MINUTE,
+    UTC_TZ,
     is_trading_day_allowed,
     get_weekend_trading_params,
     is_smart_trading_hours_allowed,
@@ -413,7 +414,7 @@ class TradingBot:
             if self.trade_event_callback:
                 trade_event = {
                     "type": "TRADE_EXECUTED",
-                    "timestamp": datetime.now(),
+                    "timestamp": datetime.now(UTC_TZ),
                     "symbol": signal.symbol,
                     "signal_type": signal.signal_type,
                     "confidence": signal.confidence_score,
@@ -527,11 +528,11 @@ class TradingBot:
             return
 
         self.is_running = True
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(UTC_TZ)
         self.stop_event.clear()
 
         # Inicializar próximo análisis
-        self.next_analysis_time = datetime.now() + timedelta(
+        self.next_analysis_time = datetime.now(UTC_TZ) + timedelta(
             minutes=self.analysis_interval
         )
 
@@ -539,15 +540,48 @@ class TradingBot:
         schedule.clear()
         schedule.every(self.analysis_interval).minutes.do(self._run_analysis_cycle)
 
-        # Programar reset diario exacto a la hora configurada (usa hora local del sistema)
+        # Programar reset diario exacto a la hora configurada en UTC
         try:
-            reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
-            schedule.every().day.at(reset_time_str).do(
-                self._reset_daily_stats_if_needed
-            ).tag("daily_reset")
-            self.logger.info(
-                f"⏰ Daily reset scheduled at {reset_time_str} ({TIMEZONE})"
-            )
+            # Convertir UTC a hora local del sistema para schedule
+            try:
+                import pytz
+                
+                # Crear un datetime UTC para hoy a la hora del reset
+                utc_time = datetime.now(UTC_TZ).replace(
+                    hour=DAILY_RESET_HOUR, 
+                    minute=DAILY_RESET_MINUTE, 
+                    second=0, 
+                    microsecond=0
+                )
+                
+                # Obtener la zona horaria local del sistema (Chile)
+                local_tz = pytz.timezone('America/Santiago')
+                local_time = utc_time.astimezone(local_tz)
+                
+                # Formatear las horas para logging y scheduling
+                local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
+                utc_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+
+                # Programar el reset usando la hora local
+                schedule.every().day.at(local_time_str).do(
+                    self._reset_daily_stats_if_needed
+                ).tag("daily_reset")
+                
+                self.logger.info(
+                    f"⏰ Daily reset scheduled at {utc_time_str} UTC ({local_time_str} local Chile time)"
+                )
+                
+            except ImportError:
+                # Fallback si pytz no está disponible
+                reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+                schedule.every().day.at(reset_time_str).do(
+                    self._reset_daily_stats_if_needed
+                ).tag("daily_reset")
+                
+                self.logger.warning(
+                    f"⚠️ pytz not available, using system timezone. Daily reset scheduled at {reset_time_str}"
+                )
+                
         except Exception as e:
             self.logger.warning(f"⚠️ Could not schedule daily reset: {e}")
 
@@ -881,7 +915,7 @@ class TradingBot:
 
             symbol = signal.symbol
             signal_type = signal.signal_type
-            current_time = datetime.now()
+            current_time = datetime.now(UTC_TZ)
 
             # Verificar si hay un trade previo para este símbolo
             if symbol in self.last_trade_times:
@@ -935,7 +969,7 @@ class TradingBot:
             signal: Señal de trading ejecutada
         """
         try:
-            current_time = datetime.now()
+            current_time = datetime.now(UTC_TZ)
             symbol = signal.symbol
             signal_type = signal.signal_type
 
@@ -955,7 +989,7 @@ class TradingBot:
     def _is_weekend_trading(self) -> bool:
         """🗓️ Determinar si estamos en modo de trading de fin de semana"""
         try:
-            current_day = datetime.now().weekday()  # 0=Monday, 6=Sunday
+            current_day = datetime.now(UTC_TZ).weekday()  # 0=Monday, 6=Sunday
             return current_day >= 5  # Saturday (5) or Sunday (6)
         except Exception as e:
             self.logger.error(f"❌ Error determinando si es fin de semana: {e}")
@@ -1020,7 +1054,7 @@ class TradingBot:
 
             # Verificar si el trading está permitido hoy
             if not is_trading_day_allowed():
-                current_day = datetime.now().strftime("%A")
+                current_day = datetime.now(UTC_TZ).strftime("%A")
                 self.logger.info(
                     f"📅 Trading not allowed on {current_day} - skipping analysis cycle"
                 )
@@ -1093,7 +1127,7 @@ class TradingBot:
 
             # Obtener parámetros de trading para fines de semana (si aplica)
             weekend_params = get_weekend_trading_params()
-            is_weekend = datetime.now().strftime("%A").lower() in ["saturday", "sunday"]
+            is_weekend = datetime.now(UTC_TZ).strftime("%A").lower() in ["saturday", "sunday"]
 
             if is_weekend:
                 self.logger.info(
@@ -1179,7 +1213,7 @@ class TradingBot:
             self._update_strategy_stats()
 
             # Actualizar tiempo del último análisis
-            self.last_analysis_time = datetime.now()
+            self.last_analysis_time = datetime.now(UTC_TZ)
 
             # Actualizar tiempo del próximo análisis
             self.next_analysis_time = self.last_analysis_time + timedelta(
@@ -1390,7 +1424,7 @@ class TradingBot:
         ]
 
         if not high_confidence_signals:
-            is_weekend = datetime.now().strftime("%A").lower() in ["saturday", "sunday"]
+            is_weekend = datetime.now(UTC_TZ).strftime("%A").lower() in ["saturday", "sunday"]
             if is_weekend and adjusted_min_confidence != self.min_confidence_threshold:
                 self.logger.info(
                     f"📉 No signals above weekend confidence threshold ({adjusted_min_confidence:.1f}%, adjusted from {self.min_confidence_threshold}%)"
@@ -1501,7 +1535,7 @@ class TradingBot:
                     adjusted_position_size
                 )
 
-                is_weekend = datetime.now().strftime("%A").lower() in [
+                is_weekend = datetime.now(UTC_TZ).strftime("%A").lower() in [
                     "saturday",
                     "sunday",
                 ]
@@ -1688,7 +1722,7 @@ class TradingBot:
         last_analysis = self.last_analysis_time  # No usar datetime.now() como fallback
 
         if self.is_running and self.start_time:
-            uptime_delta = datetime.now() - self.start_time
+            uptime_delta = datetime.now(UTC_TZ) - self.start_time
             hours, remainder = divmod(int(uptime_delta.total_seconds()), 3600)
             minutes, seconds = divmod(remainder, 60)
             uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
@@ -1875,7 +1909,7 @@ class TradingBot:
                 "min_confidence_threshold": self.min_confidence_threshold,
                 "enable_trading": self.enable_trading,
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC_TZ).isoformat(),
         }
 
     def get_configuration(self) -> Dict:
@@ -1892,7 +1926,7 @@ class TradingBot:
                 "is_running": self.is_running,
                 "total_strategies": len(self.strategies),
                 "uptime_hours": (
-                    (datetime.now() - self.start_time).total_seconds() / 3600
+                    (datetime.now(UTC_TZ) - self.start_time).total_seconds() / 3600
                     if self.start_time
                     else 0
                 ),
@@ -2198,7 +2232,7 @@ class TradingBot:
         try:
             event = {
                 "type": "trade_executed",
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(UTC_TZ),
                 "symbol": signal.symbol,
                 "signal_type": signal.signal_type,
                 "confidence": signal.confidence_score,
@@ -2224,7 +2258,7 @@ class TradingBot:
         try:
             event = {
                 "type": "analysis_completed",
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(UTC_TZ),
                 "signals_generated": signals_count,
                 "daily_trades": daily_trades,
                 "max_daily_trades": self.max_daily_trades,
@@ -2304,11 +2338,27 @@ class TradingBot:
             # 4. Redondear a 4 decimales para crypto (más precisión)
             real_size = round(real_size, 4)
 
-            # Calcular valores para mostrar correctamente
-            total_position_value = (
-                real_size * current_price
-            )  # Valor total de la posición
-            required_margin = total_position_value / leverage_used  # Margen requerido
+            # 5. Validar y ajustar tamaño mínimo según Capital.com
+            if hasattr(self.capital_client, 'get_minimum_order_size'):
+                min_size = self.capital_client.get_minimum_order_size(capital_symbol)
+                if real_size < min_size:
+                    self.logger.warning(f"⚠️ Tamaño calculado {real_size:.4f} es menor al mínimo {min_size} para {capital_symbol}")
+                    self.logger.info(f"🔧 Ajustando tamaño a mínimo requerido: {min_size}")
+                    real_size = min_size
+                    
+                    # Recalcular valores con el nuevo tamaño
+                    total_position_value = real_size * current_price
+                    required_margin = total_position_value / leverage_used
+                    
+                    self.logger.info(f"📊 Valores recalculados:")
+                    self.logger.info(f"   Nuevo tamaño: {real_size:.4f} unidades")
+                    self.logger.info(f"   Nuevo valor posición: {currency_symbol}{total_position_value:.2f}")
+                    self.logger.info(f"   Nuevo margen requerido: {currency_symbol}{required_margin:.2f}")
+
+            # Calcular valores para mostrar correctamente (si no se calcularon arriba)
+            if 'total_position_value' not in locals():
+                total_position_value = real_size * current_price
+                required_margin = total_position_value / leverage_used
 
             # Log detallado del cálculo
             self.logger.info(f"💰 Cálculo de posición real:")
@@ -2833,29 +2883,58 @@ class TradingBot:
         ⏰ Programar el cierre automático de posiciones rentables 15 minutos antes del reset diario
         """
         try:
-            # Calcular la hora de cierre (15 minutos antes del reset)
-            pre_reset_hour = DAILY_RESET_HOUR
-            pre_reset_minute = DAILY_RESET_MINUTE - 15
+            # Calcular la hora de cierre en UTC (15 minutos antes del reset)
+            utc_reset_hour = DAILY_RESET_HOUR
+            utc_reset_minute = DAILY_RESET_MINUTE - 15
 
             # Ajustar si los minutos son negativos
-            if pre_reset_minute < 0:
-                pre_reset_hour -= 1
-                pre_reset_minute += 60
+            if utc_reset_minute < 0:
+                utc_reset_hour -= 1
+                utc_reset_minute += 60
 
             # Asegurar que la hora esté en rango válido
-            if pre_reset_hour < 0:
-                pre_reset_hour += 24
+            if utc_reset_hour < 0:
+                utc_reset_hour += 24
 
-            pre_reset_time_str = f"{pre_reset_hour:02d}:{pre_reset_minute:02d}"
+            # Convertir UTC a hora local del sistema para schedule
+            try:
+                import pytz
+                
+                # Crear un datetime UTC para hoy a la hora del pre-reset
+                utc_time = datetime.now(UTC_TZ).replace(
+                    hour=utc_reset_hour, 
+                    minute=utc_reset_minute, 
+                    second=0, 
+                    microsecond=0
+                )
+                
+                # Obtener la zona horaria local del sistema (Chile)
+                local_tz = pytz.timezone('America/Santiago')
+                local_time = utc_time.astimezone(local_tz)
+                
+                # Formatear las horas para logging y scheduling
+                local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
+                utc_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
 
-            # Programar el cierre automático
-            schedule.every().day.at(pre_reset_time_str).do(
-                self._execute_pre_reset_profit_taking
-            ).tag("pre_reset_profit_taking")
+                # Programar el cierre automático usando la hora local
+                schedule.every().day.at(local_time_str).do(
+                    self._execute_pre_reset_profit_taking
+                ).tag("pre_reset_profit_taking")
 
-            self.logger.info(
-                f"⏰ Pre-reset profit taking scheduled at {pre_reset_time_str} ({TIMEZONE}) - 15 minutes before reset"
-            )
+                self.logger.info(
+                    f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC ({local_time_str} local Chile time) - 15 minutes before reset"
+                )
+                
+            except ImportError:
+                # Fallback si pytz no está disponible
+                pre_reset_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
+                schedule.every().day.at(pre_reset_time_str).do(
+                    self._execute_pre_reset_profit_taking
+                ).tag("pre_reset_profit_taking")
+                
+                self.logger.warning(
+                    f"⚠️ pytz not available, using system timezone. Pre-reset scheduled at {pre_reset_time_str}"
+                )
 
         except Exception as e:
             self.logger.error(f"❌ Error scheduling pre-reset profit taking: {e}")
@@ -2865,7 +2944,20 @@ class TradingBot:
         🎯 Ejecutar el cierre automático de posiciones rentables antes del reset
         """
         try:
-            self.logger.info("🎯 Executing pre-reset profit taking...")
+            # Mostrar la hora actual en UTC y local para claridad
+            try:
+                import pytz
+                
+                utc_now = datetime.now(UTC_TZ)
+                local_tz = pytz.timezone('America/Santiago')
+                local_now = utc_now.astimezone(local_tz)
+                
+                self.logger.info(
+                    f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
+                    f"({local_now.strftime('%H:%M:%S')} Chile time)..."
+                )
+            except ImportError:
+                self.logger.info("🎯 Executing pre-reset profit taking...")
 
             # Cerrar posiciones con UPL > 1 USD
             result = self.close_profitable_positions(min_profit=1.0)
@@ -2884,7 +2976,7 @@ class TradingBot:
                         self.event_queue.put(
                             {
                                 "type": "pre_reset_profit_taking",
-                                "timestamp": datetime.now(),
+                                "timestamp": datetime.now(UTC_TZ),
                                 "positions_closed": positions_closed,
                                 "total_profit": total_profit,
                                 "message": f"Closed {positions_closed} profitable positions before reset",

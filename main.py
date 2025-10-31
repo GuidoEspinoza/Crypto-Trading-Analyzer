@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from typing import List, Optional
 import uvicorn
+import pytz
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import logging
@@ -397,7 +398,7 @@ async def root():
                 ],
             },
         },
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(pytz.UTC).isoformat(),
         "docs": "/docs",
         "redoc": "/redoc",
     }
@@ -426,7 +427,7 @@ async def health_check():
 
         return {
             "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
             "services": {"capital_com": capital_status, "trading_bot": bot_status},
             "version": "4.0.0",
         }
@@ -487,7 +488,7 @@ async def get_bot_dashboard(detailed: bool = False):
                     else None
                 ),
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
 
         # Si se solicita información detallada, agregar reporte completo
@@ -520,7 +521,7 @@ async def start_trading_bot():
                 "status": "warning",
                 "message": "🤖 Trading bot is already running",
                 "bot_status": bot.get_status().is_running,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(pytz.UTC).isoformat(),
             }
 
         bot.start()
@@ -537,7 +538,7 @@ async def start_trading_bot():
                     bot, "min_confidence_threshold", 50
                 ),
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error starting bot: {str(e)}")
@@ -554,7 +555,7 @@ async def stop_trading_bot():
                 "status": "warning",
                 "message": "🤖 Trading bot is not running",
                 "bot_status": False,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(pytz.UTC).isoformat(),
             }
 
         trading_bot.stop()
@@ -574,7 +575,7 @@ async def stop_trading_bot():
                     "successful_trades", 0
                 ),
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error stopping bot: {str(e)}")
@@ -618,7 +619,7 @@ async def get_bot_configuration():
                 ),
                 "trades_executed": getattr(bot, "stats", {}).get("trades_executed", 0),
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -662,7 +663,7 @@ async def get_bot_status():
                     else None
                 ),
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -742,7 +743,7 @@ async def update_bot_configuration(config: BotConfigUpdate):
             "message": "⚙️ Bot configuration updated successfully",
             "updated_config": config_dict,
             "current_config": current_config,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -764,7 +765,7 @@ async def get_trading_mode():
             "description": "Paper trading mode - Virtual trading with simulated funds",
             "live_trading_available": False,
             "warning": "Live trading is not yet implemented. All trades are simulated.",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -803,7 +804,7 @@ async def update_trading_mode(mode_config: TradingModeUpdate):
             "message": "Trading mode confirmed",
             "trading_mode": "paper",
             "description": "Paper trading mode active - All trades are simulated",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
 
     except HTTPException:
@@ -850,7 +851,7 @@ async def get_trading_capabilities():
             "current_mode": "paper",
             "recommended_mode": "paper",
             "safety_note": "Always test strategies thoroughly in paper trading before considering live trading",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -878,7 +879,7 @@ async def force_immediate_analysis():
         return {
             "status": "success",
             "message": "🔄 Immediate market analysis initiated",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
             "note": "Check bot logs or status for analysis results",
         }
     except Exception as e:
@@ -914,7 +915,7 @@ async def emergency_stop_bot():
                 "All open positions logged",
                 "Emergency procedures activated",
             ],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -955,7 +956,7 @@ async def get_current_profile():
                 }
                 for key, profile in TradingProfiles.PROFILES.items()
             ],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting profile: {str(e)}")
@@ -995,7 +996,7 @@ async def update_trading_profile(profile_config: ProfileUpdate):
                 "status": "info",
                 "message": f"El perfil '{profile_config.profile}' ya está activo",
                 "current_profile": current_profile_key,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(pytz.UTC).isoformat(),
             }
 
         # Cambiar el perfil automáticamente
@@ -1054,7 +1055,7 @@ async def update_trading_profile(profile_config: ProfileUpdate):
             "restart_performed": restart_performed,
             "restart_error": bot_restart_error,
             "note": "El cambio se aplicó al archivo de configuración. Reinicia la aplicación para garantizar que todos los módulos usen la nueva configuración.",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
 
     except HTTPException:
@@ -1091,7 +1092,7 @@ async def get_current_symbols():
                     if s not in ["GOLD", "SILVER"] and "USD" not in s and "/" not in s
                 ],
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting symbols: {str(e)}")
@@ -1154,7 +1155,7 @@ async def update_symbols_list(symbols_config: SymbolsUpdate):
                 "total_count": len(symbols_config.symbols),
             },
             "restart_performed": restart_performed,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
 
     except HTTPException:
@@ -1202,7 +1203,7 @@ async def get_enhanced_strategies():
                     ],
                 },
             ],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except HTTPException:
         # Re-lanzar HTTPException para que mantenga su código de estado
@@ -1288,7 +1289,7 @@ async def get_enhanced_risk_analysis(symbol: str):
                 "symbol": symbol,
                 "error": "No se pudo generar una señal válida para este símbolo",
                 "message": "El mercado puede estar en condiciones laterales o sin tendencia clara",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(pytz.UTC).isoformat(),
             }
 
         # Obtener balance real del paper trader
@@ -1321,7 +1322,7 @@ async def get_enhanced_risk_analysis(symbol: str):
                 "recommendations": risk_assessment.recommendations,
                 "market_risk_factors": risk_assessment.market_risk_factors,
             },
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1340,7 +1341,7 @@ async def get_consensus_statistics():
         return {
             "status": "success",
             "consensus_statistics": stats,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -1367,7 +1368,7 @@ async def get_strategy_weights():
             "status": "success",
             "current_weights": current_weights,
             "description": "Pesos actuales de las estrategias en el consenso",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -1437,7 +1438,7 @@ async def update_strategy_weights(weights_config: StrategyWeightsUpdate):
                 "status": "success",
                 "message": "Pesos de estrategias actualizados correctamente",
                 "updated_weights": result.get("updated_weights", {}),
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(pytz.UTC).isoformat(),
             }
         else:
             raise HTTPException(
@@ -1462,7 +1463,7 @@ async def get_last_consensus_details():
         return {
             "status": "success",
             "consensus_details": details,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -1510,7 +1511,7 @@ async def analyze_symbol_with_consensus(symbol: str, timeframe: str = "1h"):
                     ),
                 },
                 "individual_signals": individual_signals.get("individual_signals", {}),
-                "analysis_timestamp": datetime.now().isoformat(),
+                "analysis_timestamp": datetime.now(pytz.UTC).isoformat(),
             }
         else:
             return {
@@ -1523,7 +1524,7 @@ async def analyze_symbol_with_consensus(symbol: str, timeframe: str = "1h"):
                     "message": "No consensus reached",
                 },
                 "individual_signals": individual_signals.get("individual_signals", {}),
-                "analysis_timestamp": datetime.now().isoformat(),
+                "analysis_timestamp": datetime.now(pytz.UTC).isoformat(),
             }
 
     except HTTPException:
@@ -1544,7 +1545,7 @@ async def get_individual_strategy_signals(symbol: str):
         return {
             "status": "success",
             "data": signals,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(pytz.UTC).isoformat(),
         }
     except Exception as e:
         raise HTTPException(
@@ -1577,8 +1578,6 @@ async def get_current_balance():
             status_code=500, detail=f"Error obteniendo balance: {str(e)}"
         )
 
-
-# Historial de balance eliminado - se usa Capital.com directamente
 
 # Ejecutar servidor si se ejecuta directamente
 if __name__ == "__main__":
