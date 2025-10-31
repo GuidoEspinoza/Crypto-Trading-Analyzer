@@ -55,8 +55,8 @@ UTC_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
 
 # Hora de reinicio diario del sistema (formato 24h)
 # Este es el momento en que se resetean contadores, estadísticas y límites diarios
-DAILY_RESET_HOUR = 15  # Medianoche (00:00)
-DAILY_RESET_MINUTE = 37   # Minuto exacto del reinicio
+DAILY_RESET_HOUR = 0  # Medianoche (00:00)
+DAILY_RESET_MINUTE = 0   # Minuto exacto del reinicio
 
 # ============================================================================
 # 🕐 HORARIOS DE TRADING INTELIGENTES
