@@ -36,6 +36,9 @@ from src.config.time_trading_config import (
     get_weekend_trading_params,
     is_smart_trading_hours_allowed,
     get_smart_trading_status_summary,
+    get_current_session_name,
+    get_session_budget,
+    SESSION_BUDGETS,
 )
 
 try:
@@ -246,6 +249,8 @@ class TradingBot:
             "weekend_successful_trades": 0,
             "weekday_pnl": 0.0,
             "weekend_pnl": 0.0,
+            # Presupuestos por sesión
+            "session_trades": {k: 0 for k in SESSION_BUDGETS.keys()},
         }
 
         # Tracking de pérdidas consecutivas para estadísticas
@@ -1454,6 +1459,18 @@ class TradingBot:
                     f"{weekend_indicator} Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}"
                 )
 
+                # Control de presupuesto por sesión (antes de límites diarios)
+                current_session = get_current_session_name()
+                session_budget = get_session_budget(current_session)
+                session_max = int(session_budget.get("max_trades", 0))
+                current_session_count = self.stats["session_trades"].get(current_session, 0)
+                if current_session_count >= session_max:
+                    self.logger.info(
+                        f"⏸️ Session budget reached for {current_session} ({current_session_count}/{session_max})"
+                    )
+                    # Saltar esta señal y continuar con la siguiente
+                    continue
+
                 # Verificar límite diario adaptativo (aplicando multiplicador de fin de semana)
                 weekend_params_loop = get_weekend_trading_params()
                 base_max_trades_loop = int(
@@ -1569,6 +1586,13 @@ class TradingBot:
                     if trade_result.success:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
+                        # Incrementar contador de sesión
+                        try:
+                            self.stats["session_trades"][current_session] = (
+                                self.stats["session_trades"].get(current_session, 0) + 1
+                            )
+                        except Exception:
+                            self.stats["session_trades"][current_session] = 1
                         # Tracking separado para fines de semana
                         if self._is_weekend_trading():
                             self.stats["weekend_trades"] += 1
@@ -1694,6 +1718,11 @@ class TradingBot:
         if now_local >= reset_dt and self.stats.get("last_reset_day") != current_day:
             self.stats["daily_trades"] = 0
             self.stats["last_reset_day"] = current_day
+            # Resetear contadores por sesión
+            try:
+                self.stats["session_trades"] = {k: 0 for k in SESSION_BUDGETS.keys()}
+            except Exception:
+                self.stats["session_trades"] = {"other": 0}
             # Resetear circuit breaker al inicio del nuevo periodo diario
             self.consecutive_losses = 0
             self.circuit_breaker_active = False

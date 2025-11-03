@@ -482,3 +482,128 @@ Si encuentras problemas:
 - [ ] Backup automático configurado
 
 **🎉 ¡Felicidades! Tu Smart Trading Bot está corriendo en Hostinger VPS.**
+
+---
+
+## 🔄 Actualización del Bot tras Cambios de Código
+
+Cuando realices cambios en el repositorio (por ejemplo: presupuestos por sesión, modificación de horarios, o actualización de símbolos), sigue este procedimiento para aplicarlos en Hostinger.
+
+### ✅ Paso A: Confirmar que el código está en GitHub
+
+```bash
+# En tu máquina local
+cd /ruta/a/tu/proyecto
+git status
+git add -A
+git commit -m "Session budgets + horarios + remove USDJPY/EURGBP/USDCHF + docs"
+git push origin main
+```
+
+### 🚀 Paso B: Aplicar actualización en Hostinger
+
+```bash
+# 1) Conectar al servidor
+ssh root@TU_IP_VPS   # o ssh tradingbot@TU_IP_VPS
+
+# 2) Ir al proyecto
+cd ~/trading-bot
+
+# 3) Opcional: backup de .env
+cp .env .env.backup_$(date +%Y%m%d)
+
+# 4) Ver estado y descartar cambios locales si existen
+git status
+# Si hay cambios locales no deseados:
+git reset --hard HEAD
+
+# 5) Traer últimos cambios del repositorio
+git pull origin main
+
+# 6) Verificar actualizaciones críticas
+# a) Verificar símbolos removidos (USDJPY, EURGBP, USDCHF)
+grep -n "USDJPY\|EURGBP\|USDCHF" src/config/symbols_config.py || echo "✅ Símbolos removidos del portafolio base"
+
+# b) Verificar presupuestos por sesión
+grep -n "SESSION_BUDGETS" src/config/time_trading_config.py && \
+  grep -n "high_volatility_sessions" src/config/time_trading_config.py
+
+# 7) Reconstruir y reiniciar contenedores
+docker-compose down
+docker system prune -f
+docker-compose build --no-cache
+docker-compose up -d
+
+# 8) Verificar contenedores y logs
+docker ps
+docker logs -f smart-trading-bot-hostinger
+```
+
+### 🧪 Paso C: Verificar la actualización
+
+```bash
+# Health del bot (API)
+curl -s http://localhost:8000/health | python3 -m json.tool
+
+# Configuración del bot (revisar symbols)
+curl -s http://localhost:8000/bot/config | python3 -m json.tool
+# Buscar que no esté USDJPY/EURGBP/USDCHF
+curl -s http://localhost:8000/bot/config | python3 - <<'PY'
+import sys, json
+cfg = json.load(sys.stdin)
+symbols = cfg.get('configuration',{}).get('symbols', [])
+print('✅ Verificación de símbolos:')
+for bad in ['USDJPY','EURGBP','USDCHF']:
+    print(f" - {bad}: {'PRESENTE' if bad in symbols else 'NO PRESENTE'}")
+PY
+```
+
+### 📈 Qué esperar en los logs
+- Durante `london_open`/`ny_open`, el bot limitará operaciones según `SESSION_BUDGETS`.
+- Verás mensajes tipo: `⏸️ Session budget reached for ny_open (8/8)` cuando se alcance el cupo.
+- A medianoche UTC, verás: `📅 Daily stats reset at 00:00 (UTC) ...` y los contadores vuelven a cero.
+
+### 🧯 Troubleshooting de actualización
+
+```bash
+# Conflictos de git por cambios locales
+cd ~/trading-bot
+# Opción rápida: descartar y traer remoto
+git reset --hard HEAD && git pull origin main
+
+# Reconstrucción limpia si hay errores de dependencia
+docker-compose down
+docker system prune -f
+docker-compose build --no-cache
+docker-compose up -d
+
+# Nginx no levanta por puerto 80 ocupado (servicio del sistema)
+# Puedes usar directamente el puerto 8000 del bot:
+curl -s http://localhost:8000/health | python3 -m json.tool
+# O cambiar el puerto en nginx (ej. 8080) y reiniciar nginx en Docker
+```
+
+### 🧭 Comando único (actualización end-to-end)
+
+```bash
+ssh root@TU_IP_VPS <<'EOS'
+set -e
+cd ~/trading-bot
+cp .env .env.backup_$(date +%Y%m%d) || true
+git reset --hard HEAD
+git pull origin main
+
+# Verificaciones
+grep -n "USDJPY\|EURGBP\|USDCHF" src/config/symbols_config.py || echo "✅ Símbolos removidos"
+grep -n "SESSION_BUDGETS" src/config/time_trading_config.py || echo "⚠️ Revisar presupuestos por sesión"
+
+docker-compose down
+docker system prune -f
+docker-compose build --no-cache
+docker-compose up -d
+
+echo "📋 Containers:" && docker ps
+
+echo "🔎 Health:" && curl -s http://localhost:8000/health | python3 -m json.tool
+EOS
+```

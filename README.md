@@ -39,6 +39,63 @@ El bot utiliza varios "ojos" para ver el mercado:
 3. **Filtro de Confianza**: Solo ejecuta operaciones con 80%+ de probabilidad de éxito
 4. **Gestión Automática**: Establece automáticamente límites de ganancia y pérdida
 
+## ⏰ Horarios y Programación
+
+- Zona horaria base: `UTC` (el bot convierte internamente al horario local de Chile para eventos programados).
+- Intervalo de análisis:
+  - Perfil `INTRADAY` (por defecto): cada `12` minutos.
+  - Perfil `SCALPING`: cada `1` minuto.
+- Ventana principal de trading (UTC): `11:00` → `02:30`.
+- Ventana extendida (UTC): `09:00` → `02:59`.
+- Ventana nocturna (sesión asiática, UTC): `01:00` → `11:00`.
+- Sesiones de alta volatilidad (UTC):
+  - `asian_open`: `22:00` → `02:00`
+  - `london_open`: `08:00` → `12:00`
+  - `ny_open`: `14:30` → `18:30`
+  - `overlap_london_ny`: `14:30` → `17:00`
+- Reinicio diario: `00:00 UTC` (el bot agenda y registra el equivalente en `America/Santiago`).
+- Cierre preventivo: toma ganancias 15 minutos antes del reinicio diario si aplica.
+- Fines de semana:
+  - Habilitado para `CRYPTO` 24/7.
+  - Parámetros específicos por perfil (Scalping/Intraday) con límites y umbrales ajustados.
+- Límites temporales del sistema:
+  - Máximo de horas consecutivas: `8`.
+  - Descanso obligatorio cada `4` horas: `15` minutos.
+  - Máximo diario: `12` horas; máximo semanal: `60` horas.
+  - Cooldown tras pérdida: `15` minutos.
+  - Parada de emergencia: `02:00 UTC`.
+
+### 🕒 Horarios por tipo de mercado (resumen)
+- `CRYPTO`: abierto `24/7` (UTC).
+- `FOREX`: abierto `24/5` (cierra sábado y reabre domingo `22:00 UTC`).
+- `INDICES` (NY): `09:30` → `16:00` `America/New_York`, lunes a viernes.
+- `COMMODITIES` (NY): `09:00` → `17:00` `America/New_York`, lunes a viernes.
+
+### ⚙️ Cómo cambiar los horarios o intervalos
+- Cambiar perfil activo en `src/config/profiles_config.py` usando `TRADING_PROFILE` (`INTRADAY` o `SCALPING`).
+- Actualizar el intervalo de análisis en tiempo real vía API:
+
+```bash
+curl -X PUT http://localhost:8000/bot/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "analysis_interval_minutes": 6,
+    "max_daily_trades": 20,
+    "enable_trading": true
+  }'
+```
+
+- Ver configuración actual, incluyendo horario del próximo análisis:
+
+```bash
+curl http://localhost:8000/bot/config | python3 -m json.tool
+```
+
+### 📝 Notas sobre zona horaria
+- Todos los horarios en esta sección están expresados en `UTC`.
+- El reinicio diario se agenda internamente también en hora local `America/Santiago` para el `scheduler` y se muestra en los logs.
+- Si tu servidor está en otra zona horaria, considera convertir los horarios UTC para tu monitoreo externo; el bot mantiene coherencia interna usando `UTC`.
+
 ## 🛡️ Gestión de Riesgo Inteligente
 
 ### 🎯 Filosofía: "Proteger el Capital es lo Primero"

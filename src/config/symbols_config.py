@@ -48,8 +48,6 @@ CRYPTO_EMERGING = [
 FOREX_MAJOR = [
     "EURUSD",  # Euro/Dólar - Par más líquido del mundo
     "GBPUSD",  # Libra/Dólar - Cable, alta volatilidad
-    "USDJPY",  # Dólar/Yen - Par asiático principal
-    "USDCHF",  # Dólar/Franco - Safe haven pair
     "AUDUSD",  # Dólar Australiano - Commodity currency
     "USDCAD",  # Dólar Canadiense - Petro currency
     "NZDUSD",  # Dólar Neozelandés - Risk-on currency
@@ -57,7 +55,6 @@ FOREX_MAJOR = [
 
 # Pares menores - Buena liquidez, mayor volatilidad
 FOREX_MINOR = [
-    "EURGBP",  # Euro/Libra - European cross
     "EURJPY",  # Euro/Yen - Carry trade popular
     "GBPJPY",  # Libra/Yen - Muy volátil
     "EURCHF",  # Euro/Franco - Low volatility
