@@ -11,7 +11,6 @@ Esta estrategia implementa:
 """
 
 import pandas as pd
-import ta
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -23,6 +22,11 @@ from .enhanced_strategies import TradingSignal, EnhancedSignal
 from .mean_reversion_professional import MarketRegime
 
 logger = logging.getLogger(__name__)
+
+# Importar indicadores desde la librería `ta`
+from ta.trend import EMAIndicator, ADXIndicator, MACD
+from ta.volatility import BollingerBands, AverageTrueRange
+from ta.momentum import RSIIndicator
 
 
 class TrendFollowingProfessional:
@@ -58,38 +62,75 @@ class TrendFollowingProfessional:
             return df
 
         # EMAs para análisis de tendencia
-        df["ema_21"] = ta.ema(df["close"], length=self.ema_fast)
-        df["ema_50"] = ta.ema(df["close"], length=self.ema_medium)
-        df["ema_200"] = ta.ema(df["close"], length=self.ema_slow)
+        try:
+            df["ema_21"] = EMAIndicator(close=df["close"], window=self.ema_fast).ema_indicator()
+            df["ema_50"] = EMAIndicator(close=df["close"], window=self.ema_medium).ema_indicator()
+            df["ema_200"] = EMAIndicator(close=df["close"], window=self.ema_slow).ema_indicator()
+        except Exception:
+            # Fallback simple si alguna serie falla
+            df["ema_21"] = df["close"].rolling(self.ema_fast).mean()
+            df["ema_50"] = df["close"].rolling(self.ema_medium).mean()
+            df["ema_200"] = df["close"].rolling(self.ema_slow).mean()
 
         # ATR para volatilidad y stops
-        df["atr"] = ta.atr(df["high"], df["low"], df["close"], length=self.atr_period)
+        try:
+            df["atr"] = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=self.atr_period).average_true_range()
+        except Exception:
+            # Fallback básico de ATR
+            high_low = (df["high"] - df["low"]).abs()
+            prev_close = df["close"].shift(1)
+            high_prev_close = (df["high"] - prev_close).abs()
+            low_prev_close = (df["low"] - prev_close).abs()
+            tr = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
+            df["atr"] = tr.rolling(self.atr_period).mean()
 
         # ADX para fuerza de tendencia
-        adx_data = ta.adx(df["high"], df["low"], df["close"], length=self.adx_period)
-        df["adx"] = adx_data[f"ADX_{self.adx_period}"]
-        df["di_plus"] = adx_data[f"DMP_{self.adx_period}"]
-        df["di_minus"] = adx_data[f"DMN_{self.adx_period}"]
+        try:
+            adx_ind = ADXIndicator(high=df["high"], low=df["low"], close=df["close"], window=self.adx_period)
+            df["adx"] = adx_ind.adx()
+            df["di_plus"] = adx_ind.adx_pos()
+            df["di_minus"] = adx_ind.adx_neg()
+        except Exception:
+            df["adx"] = 25
+            df["di_plus"] = 0
+            df["di_minus"] = 0
 
         # RSI para momentum
-        df["rsi"] = ta.rsi(df["close"], length=self.rsi_period)
+        try:
+            df["rsi"] = RSIIndicator(close=df["close"], window=self.rsi_period).rsi()
+        except Exception:
+            df["rsi"] = 50
 
         # MACD para momentum y divergencias
-        macd_data = ta.macd(df["close"])
-        df["macd"] = macd_data["MACD_12_26_9"]
-        df["macd_signal"] = macd_data["MACDs_12_26_9"]
-        df["macd_histogram"] = macd_data["MACDh_12_26_9"]
+        try:
+            macd_obj = MACD(close=df["close"])  # default 12,26,9
+            df["macd"] = macd_obj.macd()
+            df["macd_signal"] = macd_obj.macd_signal()
+            df["macd_histogram"] = macd_obj.macd_diff()
+        except Exception:
+            df["macd"] = 0
+            df["macd_signal"] = 0
+            df["macd_histogram"] = 0
 
         # Volumen
-        df["volume_sma"] = ta.sma(df["volume"], length=self.volume_sma)
+        try:
+            df["volume_sma"] = df["volume"].rolling(self.volume_sma).mean()
+        except Exception:
+            df["volume_sma"] = df["volume"]
         df["volume_ratio"] = df["volume"] / df["volume_sma"]
 
         # Bollinger Bands para volatilidad
-        bb_data = ta.bbands(df["close"], length=20)
-        df["bb_upper"] = bb_data["BBU_20_2.0"]
-        df["bb_middle"] = bb_data["BBM_20_2.0"]
-        df["bb_lower"] = bb_data["BBL_20_2.0"]
-        df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
+        try:
+            bb = BollingerBands(close=df["close"], window=20)
+            df["bb_upper"] = bb.bollinger_hband()
+            df["bb_middle"] = bb.bollinger_mavg()
+            df["bb_lower"] = bb.bollinger_lband()
+            df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
+        except Exception:
+            df["bb_upper"] = df["close"].rolling(20).mean()
+            df["bb_middle"] = df["close"].rolling(20).mean()
+            df["bb_lower"] = df["close"].rolling(20).mean()
+            df["bb_width"] = 0
 
         return df
 

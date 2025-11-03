@@ -4,7 +4,10 @@ Biblioteca completa de indicadores profesionales para análisis técnico
 """
 
 import pandas as pd
-import ta
+from ta.trend import IchimokuIndicator, CCIIndicator
+from ta.momentum import StochasticOscillator, WilliamsRIndicator, AwesomeOscillatorIndicator, RSIIndicator, ROCIndicator
+from ta.volatility import BollingerBands, AverageTrueRange
+from ta.volume import OnBalanceVolumeIndicator, MFIIndicator, VolumeWeightedAveragePrice
 import numpy as np
 import warnings
 from typing import Dict, List, Optional, Tuple
@@ -187,7 +190,14 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                ichimoku_data = ta.ichimoku(high_float, low_float, close_float)
+                ichi = IchimokuIndicator(high=high_float, low=low_float, close=close_float)
+                ichimoku_data = pd.DataFrame({
+                    "tenkan": ichi.ichimoku_conversion_line(),
+                    "kijun": ichi.ichimoku_base_line(),
+                    "senkou_a": ichi.ichimoku_a(),
+                    "senkou_b": ichi.ichimoku_b(),
+                    "chikou": df["close"].shift(-26)
+                })
 
             if ichimoku_data is None or ichimoku_data.empty:
                 raise ValueError("No se pudieron calcular los datos de Ichimoku")
@@ -346,9 +356,11 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                stoch_data = ta.stoch(
-                    high_float, low_float, close_float, k=k_period, d=d_period
-                )
+                stoch = StochasticOscillator(high=high_float, low=low_float, close=close_float, window=k_period, smooth_window=d_period)
+                stoch_data = pd.DataFrame({
+                    "stoch_k": stoch.stoch(),
+                    "stoch_d": stoch.stoch_signal()
+                })
 
             if stoch_data is None or stoch_data.empty:
                 # Calcular manualmente
@@ -427,7 +439,7 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                willr = ta.willr(high_float, low_float, close_float, length=period)
+                willr = WilliamsRIndicator(high=high_float, low=low_float, close=close_float, lbp=period).williams_r()
 
             if willr is None or willr.empty:
                 # Calcular manualmente
@@ -475,7 +487,7 @@ class AdvancedIndicators:
             Diccionario con valor y señales del AO
         """
         try:
-            ao = ta.ao(df["high"], df["low"])
+            ao = AwesomeOscillatorIndicator(high=df["high"], low=df["low"]).awesome_oscillator()
 
             if ao is None or ao.empty:
                 # Calcular manualmente
@@ -543,7 +555,7 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                cci = ta.cci(high_float, low_float, close_float, length=period)
+                cci = CCIIndicator(high=high_float, low=low_float, close=close_float, window=period).cci()
 
             if cci is None or cci.empty:
                 # Calcular manualmente
@@ -603,7 +615,11 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                psar = ta.psar(high_float, low_float, close_float)
+                try:
+                    from ta.trend import PSARIndicator
+                    psar = PSARIndicator(high=high_float, low=low_float, close=close_float).psar()
+                except Exception:
+                    psar = pd.Series(index=df.index, data=np.nan)
 
             if psar is None or psar.empty:
                 # Implementación básica manual
@@ -695,21 +711,18 @@ class AdvancedIndicators:
                 lower_band = sma - (std * std_dev)
                 middle_band = sma
             else:
-                bb = ta.bbands(df["close"], length=period, std=std_dev)
-
-                if bb is None or bb.empty:
+                bb_ind = BollingerBands(close=df["close"], window=period, window_dev=std_dev)
+                upper_band = bb_ind.bollinger_hband()
+                middle_band = bb_ind.bollinger_mavg()
+                lower_band = bb_ind.bollinger_lband()
+                
+                if upper_band is None or middle_band is None or lower_band is None:
                     # Fallback a cálculo manual
                     sma = df["close"].rolling(window=period).mean()
                     std = df["close"].rolling(window=period).std()
                     upper_band = sma + (std * std_dev)
                     lower_band = sma - (std * std_dev)
                     middle_band = sma
-                else:
-                    # Usar pandas-ta
-                    columns = bb.columns.tolist()
-                    upper_band = bb[columns[0]]  # BBU
-                    middle_band = bb[columns[1]]  # BBM
-                    lower_band = bb[columns[2]]  # BBL
 
             current_price = df["close"].iloc[-1]
             current_upper = cls.safe_float(upper_band.iloc[-1])
@@ -804,9 +817,10 @@ class AdvancedIndicators:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", FutureWarning)
                     warnings.simplefilter("ignore", UserWarning)
-                    vwap_data = ta.vwap(
-                        high_float, low_float, close_float, volume_float
+                    vwap_ind = VolumeWeightedAveragePrice(
+                        high=high_float, low=low_float, close=close_float, volume=volume_float
                     )
+                    vwap_data = vwap_ind.vwap()
 
                 if vwap_data is None or vwap_data.empty:
                     # Fallback a cálculo manual
@@ -873,7 +887,7 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                obv = ta.obv(close_float, volume_float)
+            obv = OnBalanceVolumeIndicator(close=close_float, volume=volume_float).on_balance_volume()
 
             if obv is None or obv.empty:
                 # Calcular manualmente
@@ -1040,7 +1054,7 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=period)
+                atr = AverageTrueRange(high=high_float, low=low_float, close=close_float, window=period).average_true_range()
 
             if atr is None or atr.empty:
                 # Calcular manualmente
@@ -1119,7 +1133,7 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                rsi = ta.rsi(close_float, length=period)
+                rsi = RSIIndicator(close=close_float, window=period).rsi()
 
             if rsi is None or rsi.empty:
                 # Calcular manualmente
@@ -1184,7 +1198,7 @@ class AdvancedIndicators:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", FutureWarning)
                     warnings.simplefilter("ignore", UserWarning)
-                    rsi = ta.rsi(close_float, length=period)
+                rsi = RSIIndicator(close=close_float, window=period).rsi()
 
                 if rsi is None or rsi.empty:
                     # Fallback a cálculo manual
@@ -1203,8 +1217,8 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                rsi_fast = ta.rsi(close_float, length=7)
-                rsi_slow = ta.rsi(close_float, length=21)
+            rsi_fast = RSIIndicator(close=close_float, window=7).rsi()
+            rsi_slow = RSIIndicator(close=close_float, window=21).rsi()
 
             current_rsi_fast = cls.safe_float(
                 rsi_fast.iloc[-1] if rsi_fast is not None else current_rsi, current_rsi
@@ -1310,7 +1324,7 @@ class AdvancedIndicators:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 warnings.simplefilter("ignore", UserWarning)
-                roc = ta.roc(close_float, length=period)
+            roc = ROCIndicator(close=close_float, window=period).roc()
 
             if roc is None or roc.empty:
                 # Calcular manualmente

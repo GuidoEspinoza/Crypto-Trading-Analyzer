@@ -6,7 +6,6 @@ Desarrollado por: Experto en Trading & Programación
 """
 
 import pandas as pd
-import ta
 import numpy as np
 import warnings
 from typing import Dict, List, Optional, Tuple
@@ -24,6 +23,9 @@ from src.config.main_config import (
     TechnicalAnalysisConfig,
     ConfluenceConfig,
 )
+
+# Importar indicadores desde `ta`
+from ta.trend import EMAIndicator, ADXIndicator
 
 
 # Clases base para estrategias de trading
@@ -639,12 +641,12 @@ class EnhancedTradingStrategy(TradingStrategy):
 
             # Cálculos optimizados de EMA
             close_series = df["close"]
-            ema_20 = ta.ema(
-                close_series, length=TechnicalAnalysisConfig.EMA_PERIODS["fast"]
-            )
-            ema_50 = ta.ema(
-                close_series, length=TechnicalAnalysisConfig.EMA_PERIODS["slow"]
-            )
+            try:
+                ema_20 = EMAIndicator(close=close_series, window=TechnicalAnalysisConfig.EMA_PERIODS["fast"]).ema_indicator()
+                ema_50 = EMAIndicator(close=close_series, window=TechnicalAnalysisConfig.EMA_PERIODS["slow"]).ema_indicator()
+            except Exception:
+                ema_20 = close_series.rolling(TechnicalAnalysisConfig.EMA_PERIODS["fast"]).mean()
+                ema_50 = close_series.rolling(TechnicalAnalysisConfig.EMA_PERIODS["slow"]).mean()
 
             if ema_20 is None or ema_50 is None:
                 return "NEUTRAL"
@@ -658,20 +660,12 @@ class EnhancedTradingStrategy(TradingStrategy):
             low_float = df["low"].astype("float64")
             close_float = df["close"].astype("float64")
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                warnings.simplefilter("ignore", UserWarning)
-                adx_data = ta.adx(high_float, low_float, close_float, length=14)
-            if adx_data is not None and not adx_data.empty:
-                # Buscar la columna ADX dinámicamente
-                adx_columns = [
-                    col for col in adx_data.columns if col.startswith("ADX_")
-                ]
-                if adx_columns:
-                    adx_value = adx_data[adx_columns[0]].iloc[-1]
-                else:
-                    adx_value = 25
-            else:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    warnings.simplefilter("ignore", UserWarning)
+                    adx_value = ADXIndicator(high=high_float, low=low_float, close=close_float, window=14).adx().iloc[-1]
+            except Exception:
                 adx_value = 25
 
             # Determinar tendencia
@@ -716,10 +710,20 @@ class EnhancedTradingStrategy(TradingStrategy):
             low_float = df["low"].astype("float64")
             close_float = df["close"].astype("float64")
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                warnings.simplefilter("ignore", UserWarning)
-                atr = ta.atr(high_float, low_float, close_float, length=14)
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    warnings.simplefilter("ignore", UserWarning)
+                    from ta.volatility import AverageTrueRange
+                    atr = AverageTrueRange(high=high_float, low=low_float, close=close_float, window=14).average_true_range()
+            except Exception:
+                # Fallback ATR manual
+                high_low = (df["high"] - df["low"]).abs()
+                prev_close = df["close"].shift(1)
+                high_prev_close = (df["high"] - prev_close).abs()
+                low_prev_close = (df["low"] - prev_close).abs()
+                tr = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
+                atr = tr.rolling(14).mean()
             if atr is None or atr.empty:
                 return "NORMAL"
 

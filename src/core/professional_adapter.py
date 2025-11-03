@@ -4,7 +4,9 @@ Versión simplificada para diagnóstico.
 """
 
 import pandas as pd
-import ta
+from ta.trend import EMAIndicator
+from ta.momentum import RSIIndicator
+from ta.volatility import AverageTrueRange
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -56,10 +58,10 @@ class ProfessionalStrategyAdapter(TradingStrategy):
             # 2. Análisis técnico básico
             try:
                 # Calcular indicadores básicos
-                df["ema_21"] = ta.ema(df["close"], length=21)
-                df["ema_50"] = ta.ema(df["close"], length=50)
-                df["rsi"] = ta.rsi(df["close"], length=14)
-                df["atr"] = ta.atr(df["high"], df["low"], df["close"], length=14)
+                df["ema_21"] = EMAIndicator(close=df["close"], window=21).ema_indicator()
+                df["ema_50"] = EMAIndicator(close=df["close"], window=50).ema_indicator()
+                df["rsi"] = RSIIndicator(close=df["close"], window=14).rsi()
+                df["atr"] = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=14).average_true_range()
 
                 # Obtener valores actuales
                 current_price = float(df["close"].iloc[-1])
