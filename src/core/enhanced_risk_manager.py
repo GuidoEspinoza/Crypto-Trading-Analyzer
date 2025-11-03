@@ -353,8 +353,10 @@ class EnhancedRiskManager:
 
             # Aplicar ajuste de volatilidad solo para NVDA y BTCUSD (como especifica el prompt)
             if signal.symbol.upper() in ["NVDA", "BTCUSD"]:
+                # Usar timeframe con valor por defecto si la señal no lo proporciona
+                tf = getattr(signal, "timeframe", "1h")
                 atr_info = self._calculate_atr_percentile(
-                    signal.symbol, signal.timeframe
+                    signal.symbol, tf
                 )
                 volatility_adjustment = atr_info.get("volatility_adjustment", 1.0)
 
@@ -370,6 +372,9 @@ class EnhancedRiskManager:
 
             # Aplicar límites mínimos y máximos
             recommended_size = max(self.min_position_size, tamano_posicion)
+            # Asegurar tamaño mínimo negociable por instrumento (contrato mínimo típico 0.01)
+            if recommended_size < 0.01:
+                recommended_size = 0.01
             max_position_value = self.portfolio_value * self.max_position_size
 
             # Determinar nivel de riesgo basado en el porcentaje del portfolio usado
@@ -405,7 +410,7 @@ class EnhancedRiskManager:
                 reasoning += f", Ajuste volatilidad ATR: {volatility_adjustment:.1f}x (Percentil {atr_info.get('atr_percentile', 0):.1f}%)"
 
             return PositionSizing(
-                recommended_size=round(tamano_posicion, 6),  # Más precisión para crypto
+                recommended_size=round(recommended_size, 6),  # Más precisión y mínimo garantizado
                 max_position_size=round(max_position_value, 2),
                 risk_per_trade=round(monto_operacion, 2),  # El monto que arriesgamos
                 position_value=round(
@@ -428,11 +433,13 @@ class EnhancedRiskManager:
                 profile = TradingProfiles.get_current_profile()
                 dynamic_leverage = profile["default_leverage"]
 
+            # Fallback: asegurar tamaño mínimo negociable
+            fallback_size = max(self.min_position_size, 0.01)
             return PositionSizing(
-                recommended_size=self.min_position_size,
+                recommended_size=fallback_size,
                 max_position_size=self.portfolio_value * 0.01,
                 risk_per_trade=self.portfolio_value * 0.01,
-                position_value=self.min_position_size,
+                position_value=fallback_size * (signal.price if getattr(signal, 'price', 0) else 1.0),
                 leverage_used=dynamic_leverage,
                 risk_level=RiskLevel.LOW,
                 reasoning="Error in calculation - using minimum size",
@@ -1244,23 +1251,35 @@ class EnhancedRiskManager:
             Dict con información del percentil de ATR
         """
         try:
-            from .advanced_indicators import AdvancedIndicators
-
             # Obtener datos históricos extendidos para el cálculo del percentil
             # Necesitamos más datos para tener suficiente historia de ATR
-            extended_periods = periods + (
-                lookback_days * 24
-            )  # Aproximadamente 5 días de datos horarios
+            extended_periods = periods + (lookback_days * 24)
 
-            # Obtener datos de mercado
-            market_data = AdvancedIndicators.get_market_data(
-                symbol, timeframe, extended_periods
-            )
-
-            if market_data is None or len(market_data) < periods:
-                logger.warning(
-                    f"Datos insuficientes para calcular percentil ATR de {symbol}"
+            # Usar CapitalClient si está disponible para obtener OHLC reales
+            prices_list = []
+            if hasattr(self, "capital_client") and self.capital_client is not None and hasattr(self.capital_client, "get_historical_prices"):
+                timeframe_mapping = {
+                    "1m": "MINUTE",
+                    "5m": "MINUTE_5",
+                    "15m": "MINUTE_15",
+                    "30m": "MINUTE_30",
+                    "1h": "HOUR",
+                    "2h": "HOUR_2",
+                    "3h": "HOUR_3",
+                    "4h": "HOUR_4",
+                    "1d": "DAY",
+                    "1w": "WEEK",
+                }
+                resolution = timeframe_mapping.get(timeframe, "HOUR")
+                max_points = min(max(extended_periods, periods * 3), 1000)
+                result = self.capital_client.get_historical_prices(
+                    epic=symbol, resolution=resolution, max_points=max_points
                 )
+                prices_list = result.get("prices", []) if isinstance(result, dict) else []
+
+            # Validación de datos
+            if not prices_list or len(prices_list) < periods:
+                logger.warning(f"Datos insuficientes para calcular percentil ATR de {symbol}")
                 return {
                     "current_atr": 0.0,
                     "atr_percentile": 50.0,
@@ -1270,7 +1289,7 @@ class EnhancedRiskManager:
                 }
 
             # Calcular ATR para todo el período
-            df = pd.DataFrame(market_data)
+            df = pd.DataFrame(prices_list)
             df["high"] = pd.to_numeric(df["high"])
             df["low"] = pd.to_numeric(df["low"])
             df["close"] = pd.to_numeric(df["close"])
