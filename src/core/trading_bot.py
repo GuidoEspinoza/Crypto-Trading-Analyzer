@@ -36,11 +36,6 @@ from src.config.time_trading_config import (
     get_weekend_trading_params,
     is_smart_trading_hours_allowed,
     get_smart_trading_status_summary,
-    get_current_session_name,
-    get_session_budget,
-    SESSION_BUDGETS,
-    get_pre_session_rules,
-    get_daily_max_trades_cap,
 )
 
 try:
@@ -251,8 +246,6 @@ class TradingBot:
             "weekend_successful_trades": 0,
             "weekday_pnl": 0.0,
             "weekend_pnl": 0.0,
-            # Presupuestos por sesión
-            "session_trades": {k: 0 for k in SESSION_BUDGETS.keys()},
         }
 
         # Tracking de pérdidas consecutivas para estadísticas
@@ -263,7 +256,6 @@ class TradingBot:
         self.last_signal_types = (
             {}
         )  # {symbol: signal_type} - último tipo de señal por símbolo
-        self.last_trade_global_time = None  # Timestamp del último trade ejecutado (global)
 
         # Thread para ejecución
         self.analysis_thread = None
@@ -272,12 +264,6 @@ class TradingBot:
         self.logger.info(
             "🤖 Trading Bot initialized with Position Monitor and Trade Cooldown System"
         )
-        # Configuración de pre-sesión y cap diario global
-        self.pre_session_rules = get_pre_session_rules()
-        self.daily_max_trades_cap = get_daily_max_trades_cap()
-        self.current_session = get_current_session_name()
-        self.session_open_until = None
-        self.session_budget_adjustments = {k: 0 for k in SESSION_BUDGETS.keys()}
 
     def _initialize_capital_client(self):
         """🔌 Inicializar cliente de Capital.com"""
@@ -1065,14 +1051,6 @@ class TradingBot:
         """
         try:
             self.logger.info("🔄 Starting optimized analysis cycle...")
-            # Detectar cambio de sesión y ejecutar rutina de pre-sesión
-            try:
-                new_session = get_current_session_name()
-                if new_session != self.current_session and self.pre_session_rules.get("enabled", True):
-                    self._run_pre_session_routine(new_session)
-                    self.current_session = new_session
-            except Exception as e:
-                self.logger.warning(f"⚠️ Pre-session routine skipped due to error: {e}")
 
             # Verificar si el trading está permitido hoy
             if not is_trading_day_allowed():
@@ -1417,68 +1395,6 @@ class TradingBot:
                 continue
         
         self.logger.info(f"✅ Sequential symbol-by-symbol analysis completed for {total_symbols} symbols")
-    
-    def _run_pre_session_routine(self, session_name: str):
-        """
-        🧭 Preparar portafolio al inicio de cada sesión:
-        - Resetear contador de trades de la sesión
-        - Activar trailing en ganadores (si está habilitado)
-        - Aplicar límites tempranos (ventana inicial de la sesión)
-        - Ajustar presupuesto por sesión según PnL previo
-        """
-        try:
-            rules = self.pre_session_rules
-            self.logger.info(f"🧭 Pre-session routine for {session_name}")
-
-            # Resetear contador de trades por sesión
-            if session_name in self.stats["session_trades"]:
-                self.stats["session_trades"][session_name] = 0
-                self.logger.info(f"🔄 Reset session trades for {session_name}")
-
-            # Activar trailing en ganadores (best effort)
-            act_trailing = rules.get("activate_trailing", {})
-            if act_trailing.get("enabled", False):
-                try:
-                    market_data = {}
-                    positions = self.position_monitor.position_manager.get_active_positions()
-                    for pos in positions:
-                        try:
-                            market_data[pos.symbol] = self._get_current_price(pos.symbol)
-                        except Exception:
-                            continue
-                    if market_data:
-                        updated = self.position_monitor.position_manager.update_trailing_stops(market_data)
-                        self.logger.info(f"📈 Trailing update triggered for session {session_name} (updated={updated})")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ Could not trigger trailing update: {e}")
-
-            # Límites tempranos: ventana inicial y máximo de posiciones
-            es_limits = rules.get("early_session_limits", {})
-            if es_limits.get("enabled", False):
-                first_minutes = int(es_limits.get("first_minutes", 0))
-                if first_minutes > 0:
-                    self.session_open_until = datetime.now(UTC_TZ) + timedelta(minutes=first_minutes)
-                    self.logger.info(
-                        f"⏳ Early session limits active for {first_minutes} minutes (max positions={es_limits.get('max_concurrent_positions')}, cooldown={es_limits.get('cooldown_minutes')}m)"
-                    )
-
-            # Ajuste dinámico del presupuesto por sesión según PnL
-            dyn_budget = rules.get("dynamic_session_budget", {})
-            if dyn_budget.get("enabled", False):
-                try:
-                    risk_report = self.risk_manager.generate_risk_report()
-                    pm_stats = self.position_monitor.position_manager.get_statistics()
-                    realized_pnl = float(pm_stats.get("total_realized_pnl", 0.0))
-                    pnl_basis = realized_pnl
-                    adjust = dyn_budget.get("positive_pnl_bonus", 0) if pnl_basis > 0 else -dyn_budget.get("negative_pnl_cut", 0)
-                    max_adj = int(dyn_budget.get("max_adjustment", 0))
-                    adjust = max(-max_adj, min(max_adj, int(adjust)))
-                    self.session_budget_adjustments[session_name] = adjust
-                    self.logger.info(f"🎛️ Session budget adjustment for {session_name}: {adjust}")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ Could not compute session budget adjustment: {e}")
-        except Exception as e:
-            self.logger.warning(f"⚠️ Pre-session routine error: {e}")
 
     def _process_signals(self, signals: List[TradingSignal]):
         """
@@ -1538,21 +1454,6 @@ class TradingBot:
                     f"{weekend_indicator} Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}"
                 )
 
-                # Control de presupuesto por sesión (antes de límites diarios)
-                current_session = get_current_session_name()
-                session_budget = get_session_budget(current_session)
-                session_max = int(session_budget.get("max_trades", 0))
-                # Aplicar ajuste dinámico por PnL previo si está habilitado
-                session_adjust = int(self.session_budget_adjustments.get(current_session, 0))
-                session_max = max(0, session_max + session_adjust)
-                current_session_count = self.stats["session_trades"].get(current_session, 0)
-                if current_session_count >= session_max:
-                    self.logger.info(
-                        f"⏸️ Session budget reached for {current_session} ({current_session_count}/{session_max})"
-                    )
-                    # Saltar esta señal y continuar con la siguiente
-                    continue
-
                 # Verificar límite diario adaptativo (aplicando multiplicador de fin de semana)
                 weekend_params_loop = get_weekend_trading_params()
                 base_max_trades_loop = int(
@@ -1584,13 +1485,6 @@ class TradingBot:
                         )
                     break
 
-                # Verificar cap diario global
-                if self.stats["daily_trades"] >= self.daily_max_trades_cap:
-                    self.logger.info(
-                        f"⏸️ Global daily cap reached ({self.daily_max_trades_cap})"
-                    )
-                    break
-
                 # CRÍTICO: Verificar límite de posiciones simultáneas
                 if not self._check_max_positions_limit():
                     self.logger.info("⏸️ Maximum positions limit reached")
@@ -1599,30 +1493,6 @@ class TradingBot:
                 # Verificar cooldown entre trades del mismo símbolo
                 if not self._check_trade_cooldown(signal):
                     continue  # El método ya registra el mensaje de log
-                # Aplicar límites tempranos de sesión
-                es_limits = self.pre_session_rules.get("early_session_limits", {})
-                if es_limits.get("enabled", False) and self.session_open_until:
-                    now_utc = datetime.now(UTC_TZ)
-                    if now_utc < self.session_open_until:
-                        # Limitar posiciones simultáneas
-                        try:
-                            active_positions = self.position_monitor.position_manager.get_active_positions()
-                            if len(active_positions) >= int(es_limits.get("max_concurrent_positions", 0)):
-                                self.logger.info(
-                                    f"⏸️ Early session limit: max concurrent positions reached ({len(active_positions)}/{es_limits.get('max_concurrent_positions')})"
-                                )
-                                continue
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ Could not fetch active positions for early limits: {e}")
-                        # Cooldown global al inicio de sesión
-                        cd_minutes = int(es_limits.get("cooldown_minutes", 0))
-                        if cd_minutes > 0 and self.last_trade_global_time:
-                            diff_min = (now_utc - self.last_trade_global_time).total_seconds() / 60
-                            if diff_min < cd_minutes:
-                                self.logger.info(
-                                    f"🕐 Early session cooldown: {diff_min:.1f}min elapsed, require {cd_minutes}min"
-                                )
-                                continue
 
                 # Verificar horarios de mercado
                 should_trade, market_reason = market_hours_checker.should_trade(
@@ -1699,13 +1569,6 @@ class TradingBot:
                     if trade_result.success:
                         self.stats["trades_executed"] += 1
                         self.stats["daily_trades"] += 1
-                        # Incrementar contador de sesión
-                        try:
-                            self.stats["session_trades"][current_session] = (
-                                self.stats["session_trades"].get(current_session, 0) + 1
-                            )
-                        except Exception:
-                            self.stats["session_trades"][current_session] = 1
                         # Tracking separado para fines de semana
                         if self._is_weekend_trading():
                             self.stats["weekend_trades"] += 1
@@ -1760,8 +1623,6 @@ class TradingBot:
 
                         # Actualizar tracking de cooldown para el símbolo
                         self._update_trade_tracking(signal)
-                        # Marcar timestamp global del último trade
-                        self.last_trade_global_time = datetime.now(UTC_TZ)
 
                         # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
 
@@ -1833,11 +1694,6 @@ class TradingBot:
         if now_local >= reset_dt and self.stats.get("last_reset_day") != current_day:
             self.stats["daily_trades"] = 0
             self.stats["last_reset_day"] = current_day
-            # Resetear contadores por sesión
-            try:
-                self.stats["session_trades"] = {k: 0 for k in SESSION_BUDGETS.keys()}
-            except Exception:
-                self.stats["session_trades"] = {"other": 0}
             # Resetear circuit breaker al inicio del nuevo periodo diario
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
