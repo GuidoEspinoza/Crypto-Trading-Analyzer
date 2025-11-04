@@ -520,21 +520,13 @@ git reset --hard HEAD
 # 5) Traer últimos cambios del repositorio
 git pull origin main
 
-# 6) Verificar actualizaciones críticas
-# a) Verificar símbolos removidos (USDJPY, EURGBP, USDCHF)
-grep -n "USDJPY\|EURGBP\|USDCHF" src/config/symbols_config.py || echo "✅ Símbolos removidos del portafolio base"
-
-# b) Verificar presupuestos por sesión
-grep -n "SESSION_BUDGETS" src/config/time_trading_config.py && \
-  grep -n "high_volatility_sessions" src/config/time_trading_config.py
-
-# 7) Reconstruir y reiniciar contenedores
+# 6) Reconstruir y reiniciar contenedores
 docker-compose down
 docker system prune -f
 docker-compose build --no-cache
 docker-compose up -d
 
-# 8) Verificar contenedores y logs
+# 7) Verificar contenedores y logs
 docker ps
 docker logs -f smart-trading-bot-hostinger
 ```

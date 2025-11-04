@@ -94,16 +94,53 @@ SMART_TRADING_HOURS = {
     "timezone": "UTC",  # Zona horaria base
 }
 
+# Cap diario global de trades para proteger exposición total
+DAILY_MAX_TRADES_CAP = 35
+
+# Reglas de preparación de sesión (pre-sesión)
+PRE_SESSION_RULES = {
+    "enabled": True,
+    "close_winners": {
+        "enabled": True,
+        "min_rr": 1.5,           # cerrar parcialmente si R/R >= 1.5
+        "close_pct": 0.4         # porcentaje a cerrar (40%)
+    },
+    "activate_trailing": {
+        "enabled": True,
+        "min_rr": 1.2,           # activar trailing si R/R >= 1.2
+        "mode": "intelligent",  # usar trailing inteligente del PositionManager
+        "atr_multiplier": 2.0
+    },
+    "early_session_limits": {
+        "enabled": True,
+        "first_minutes": 20,     # primeros minutos de la sesión
+        "max_concurrent_positions": 4,
+        "cooldown_minutes": 3    # enfriamiento para evitar sobreapertura
+    },
+    "dynamic_session_budget": {
+        "enabled": True,
+        "positive_pnl_bonus": 2, # +2 trades si PnL previo fue positivo
+        "negative_pnl_cut": 2,   # -2 trades si PnL previo fue negativo
+        "max_adjustment": 3
+    }
+}
+
+def get_daily_max_trades_cap() -> int:
+    return DAILY_MAX_TRADES_CAP
+
+def get_pre_session_rules() -> dict:
+    return PRE_SESSION_RULES
+
 # =========================================================================
 # 💼 PRESUPUESTOS POR SESIÓN (máximo de trades por ventana horaria)
 # =========================================================================
 
 SESSION_BUDGETS = {
-    "asian_open": {"max_trades": 5},
-    "london_open": {"max_trades": 8},
-    "ny_open": {"max_trades": 8},
-    "overlap_london_ny": {"max_trades": 6},
-    "other": {"max_trades": 5},  # Fuera de ventanas principales
+    "asian_open": {"max_trades": 10},
+    "london_open": {"max_trades": 10},
+    "ny_open": {"max_trades": 10},
+    "overlap_london_ny": {"max_trades": 10},
+    "other": {"max_trades": 6},  # Fuera de ventanas principales
 }
 
 # ============================================================================
