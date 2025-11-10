@@ -257,6 +257,11 @@ class TradingBot:
             {}
         )  # {symbol: signal_type} - último tipo de señal por símbolo
 
+        # Estados adicionales para AntiFlip Policy
+        self.last_signal_confidences = {}  # {symbol: float} - última confianza
+        self.antiflip_opposite_counts = {}  # {(symbol, signal_type): int} persistencia de señales opuestas
+        self.last_exit_times = {}  # {symbol: datetime} - último momento de salida/cierre
+
         # Thread para ejecución
         self.analysis_thread = None
         self.stop_event = threading.Event()
@@ -976,6 +981,15 @@ class TradingBot:
             # Actualizar tracking
             self.last_trade_times[symbol] = current_time
             self.last_signal_types[symbol] = signal_type
+            # Guardar confianza de la última señal
+            try:
+                self.last_signal_confidences[symbol] = float(signal.confidence_score)
+            except Exception:
+                self.last_signal_confidences[symbol] = None
+
+            # Reiniciar contadores de persistencia opuesta para el símbolo
+            self.antiflip_opposite_counts[(symbol, "BUY")] = 0
+            self.antiflip_opposite_counts[(symbol, "SELL")] = 0
 
             self.logger.debug(
                 f"📝 Trade tracking actualizado: {symbol} -> {signal_type} a las {current_time.strftime('%H:%M:%S')}"
@@ -985,6 +999,151 @@ class TradingBot:
             self.logger.error(
                 f"❌ Error actualizando trade tracking para {signal.symbol}: {e}"
             )
+
+    def _get_open_position_direction(self, symbol: str) -> Optional[str]:
+        """🔎 Obtener dirección de posición abierta para un símbolo usando paper trader.
+
+        Returns: "LONG", "SHORT" o None si no hay posición.
+        """
+        try:
+            positions = self.paper_trader.get_open_positions()
+            for pos in positions:
+                if pos.get("symbol") == symbol:
+                    qty = pos.get("quantity", 0)
+                    if qty > 0:
+                        return "LONG"
+                    elif qty < 0:
+                        return "SHORT"
+                    else:
+                        return None
+            return None
+        except Exception:
+            return None
+
+    def _update_antiflip_persistence(self, signal: "TradingSignal"):
+        """🔄 Actualizar contador de persistencia de señales opuestas.
+
+        Si la señal es opuesta a la última señal para el símbolo, incrementa contador.
+        Si es del mismo lado, reinicia el contador del lado opuesto.
+        """
+        try:
+            symbol = signal.symbol
+            signal_type = signal.signal_type
+            last_type = self.last_signal_types.get(symbol)
+
+            key_buy = (symbol, "BUY")
+            key_sell = (symbol, "SELL")
+            # Inicializar si no existen
+            self.antiflip_opposite_counts.setdefault(key_buy, 0)
+            self.antiflip_opposite_counts.setdefault(key_sell, 0)
+
+            if last_type and last_type != signal_type:
+                # Es opuesta: incrementar contador del tipo actual
+                key = (symbol, signal_type)
+                self.antiflip_opposite_counts[key] = (
+                    self.antiflip_opposite_counts.get(key, 0) + 1
+                )
+            else:
+                # Misma dirección: reiniciar contador del opuesto
+                if signal_type == "BUY":
+                    self.antiflip_opposite_counts[key_sell] = 0
+                else:
+                    self.antiflip_opposite_counts[key_buy] = 0
+        except Exception:
+            pass
+
+    def _passes_antiflip_policy(self, signal: "TradingSignal") -> bool:
+        """🛡️ Evaluar si una señal pasa la política AntiFlip.
+
+        Reglas:
+        - Min hold: no cerrar/revertir antes de X minutos desde la última entrada.
+        - Cooldown después de salida: esperar X minutos antes de nueva entrada opuesta.
+        - Persistencia: requerir N señales opuestas consecutivas antes de flip.
+        - Histeresis: elevar umbral de confianza para flip.
+        - Opuesto fuerte: requerir `strength` fuerte o alta confianza.
+        """
+        try:
+            cfg = TradingProfiles.get_current_profile()
+            min_hold = int(cfg.get("antiflip_min_hold_minutes", 0))
+            exit_cd = int(cfg.get("antiflip_cooldown_after_exit_minutes", 0))
+            persist_n = int(cfg.get("antiflip_opposite_persistence_count", 0))
+            hyst_mult = float(cfg.get("antiflip_hysteresis_multiplier", 1.0))
+            strong_required = bool(cfg.get("antiflip_require_strong_opposite", False))
+
+            symbol = signal.symbol
+            signal_type = signal.signal_type
+            now = datetime.now(UTC_TZ)
+
+            # Dirección actual de posición, si existe
+            pos_dir = self._get_open_position_direction(symbol)
+
+            # Regla: Cooldown posterior a salida
+            last_exit = self.last_exit_times.get(symbol)
+            if last_exit and exit_cd > 0:
+                minutes_since_exit = (now - last_exit).total_seconds() / 60
+                if minutes_since_exit < exit_cd:
+                    remaining = exit_cd - minutes_since_exit
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} bloqueado por cooldown post-exit ({minutes_since_exit:.1f}/{exit_cd}min, quedan {remaining:.1f}min)"
+                    )
+                    return False
+
+            # Regla: Min hold si hay posición abierta y la señal pretende flip
+            if pos_dir is not None:
+                # Señal contraria al lado de la posición
+                is_opposite_to_position = (
+                    (pos_dir == "LONG" and signal_type == "SELL")
+                    or (pos_dir == "SHORT" and signal_type == "BUY")
+                )
+                if is_opposite_to_position and min_hold > 0:
+                    last_trade_time = self.last_trade_times.get(symbol)
+                    if last_trade_time:
+                        minutes_since_entry = (now - last_trade_time).total_seconds() / 60
+                        if minutes_since_entry < min_hold:
+                            remaining = min_hold - minutes_since_entry
+                            self.logger.info(
+                                f"🛑 ANTI-FLIP: {symbol} mantener posición {pos_dir} mínimo {min_hold}min (actual {minutes_since_entry:.1f}min, quedan {remaining:.1f}min)"
+                            )
+                            return False
+
+            # Regla: Persistencia de señal opuesta
+            last_type = self.last_signal_types.get(symbol)
+            if last_type and last_type != signal_type and persist_n > 0:
+                count = self.antiflip_opposite_counts.get((symbol, signal_type), 0)
+                if count < persist_n:
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} espera persistencia opuesta {count}/{persist_n} para {signal_type}"
+                    )
+                    return False
+
+            # Regla: Histeresis de confianza para flip
+            if last_type and last_type != signal_type and hyst_mult > 1.0:
+                # Umbral de confianza ajustado por fin de semana y histeresis
+                wk_params = get_weekend_trading_params()
+                base_thr = self._normalize_percentage_threshold(self.min_confidence_threshold) * wk_params["min_confidence_multiplier"]
+                required_conf = base_thr * hyst_mult
+                if float(signal.confidence_score) < required_conf:
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} confianza {signal.confidence_score:.1f}% < requerido {required_conf:.1f}% por histeresis"
+                    )
+                    return False
+
+            # Regla: Opuesto fuerte requerido
+            if last_type and last_type != signal_type and strong_required:
+                # Usar `strength` si existe, si no, umbral de confianza alto
+                strength = getattr(signal, "strength", None)
+                is_strong = bool(strength) and str(strength).upper() in ["STRONG", "HIGH", "VERY_STRONG"]
+                if not is_strong and float(signal.confidence_score) < 80.0:
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} opuesto requiere fuerte/alta confianza (conf={signal.confidence_score:.1f}%)"
+                    )
+                    return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Error evaluando AntiFlip para {signal.symbol}: {e}")
+            # Fail-safe: permitir señal si hay error en evaluación
+            return True
 
     def _is_weekend_trading(self) -> bool:
         """🗓️ Determinar si estamos en modo de trading de fin de semana"""
@@ -1396,6 +1555,19 @@ class TradingBot:
         
         self.logger.info(f"✅ Sequential symbol-by-symbol analysis completed for {total_symbols} symbols")
 
+    def _normalize_percentage_threshold(self, value: float) -> float:
+        """Normaliza umbrales que pueden venir en escala 0–1 a 0–100.
+
+        Si el valor es <= 1.0 se asume fracción y se convierte a porcentaje.
+        De lo contrario se retorna tal cual.
+        """
+        try:
+            v = float(value)
+            return v * 100.0 if v <= 1.0 else v
+        except Exception:
+            # Fallback defensivo
+            return 0.0
+
     def _process_signals(self, signals: List[TradingSignal]):
         """
         🎯 Procesar y ejecutar señales de trading con flujo secuencial
@@ -1412,9 +1584,8 @@ class TradingBot:
 
         # Obtener parámetros de fin de semana para ajustar confianza mínima
         weekend_params = get_weekend_trading_params()
-        adjusted_min_confidence = (
-            self.min_confidence_threshold * weekend_params["min_confidence_multiplier"]
-        )
+        base_threshold = self._normalize_percentage_threshold(self.min_confidence_threshold)
+        adjusted_min_confidence = base_threshold * weekend_params["min_confidence_multiplier"]
 
         # Filtrar señales por confianza mínima (ajustada para fines de semana)
         high_confidence_signals = [
@@ -1453,6 +1624,9 @@ class TradingBot:
                 self.logger.info(
                     f"{weekend_indicator} Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}"
                 )
+
+                # Actualizar persistencia de señales opuestas para AntiFlip
+                self._update_antiflip_persistence(signal)
 
                 # Verificar límite diario adaptativo (aplicando multiplicador de fin de semana)
                 weekend_params_loop = get_weekend_trading_params()
@@ -1493,6 +1667,40 @@ class TradingBot:
                 # Verificar cooldown entre trades del mismo símbolo
                 if not self._check_trade_cooldown(signal):
                     continue  # El método ya registra el mensaje de log
+
+                # Filtro estricto adicional para señales de consenso
+                if getattr(signal, "strategy_name", "") == "ConsensusStrategy":
+                    # Umbrales conservadores para mejorar precisión
+                    min_consensus_pct = 70.0
+                    min_coherence_pct = 65.0
+                    min_contrib = 2
+                    min_rr = 1.30
+
+                    consensus_pct = float(getattr(signal, "consensus_percentage", 0.0))
+                    coherence = float(getattr(signal, "coherence_score", 0.0))
+                    contrib = int(getattr(signal, "contributing_strategies_count", 0))
+                    rr = float(getattr(signal, "risk_reward_ratio", 0.0))
+
+                    if consensus_pct < min_consensus_pct:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: Consenso insuficiente {consensus_pct:.1f}% < {min_consensus_pct}%"
+                        )
+                        continue
+                    if coherence < min_coherence_pct:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: Coherencia insuficiente {coherence:.1f}% < {min_coherence_pct}%"
+                        )
+                        continue
+                    if contrib < min_contrib:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: Estrategias contribuyentes {contrib} < {min_contrib}"
+                        )
+                        continue
+                    if rr < min_rr:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: R/R insuficiente {rr:.2f} < {min_rr:.2f}"
+                        )
+                        continue
 
                 # Verificar horarios de mercado
                 should_trade, market_reason = market_hours_checker.should_trade(
@@ -1556,6 +1764,14 @@ class TradingBot:
 
                 # 🔄 PASO 3: Ejecutar trade si está aprobado
                 if risk_assessment.is_approved and self.enable_trading:
+                    # Verificar política AntiFlip antes de ejecutar
+                    pre_position_dir = self._get_open_position_direction(signal.symbol)
+                    if not self._passes_antiflip_policy(signal):
+                        self.logger.info(
+                            f"🛑 {signal.symbol}: señal filtrada por política AntiFlip"
+                        )
+                        continue
+
                     # Ejecutar paper trade siempre
                     trade_result = self.paper_trader.execute_signal(signal)
 
@@ -1623,6 +1839,19 @@ class TradingBot:
 
                         # Actualizar tracking de cooldown para el símbolo
                         self._update_trade_tracking(signal)
+
+                        # Iniciar cooldown post-exit si la operación cerró una posición
+                        try:
+                            symbol = signal.symbol
+                            closed_long = pre_position_dir == "LONG" and signal.signal_type == "SELL"
+                            closed_short = pre_position_dir == "SHORT" and signal.signal_type == "BUY"
+                            if closed_long or closed_short:
+                                self.last_exit_times[symbol] = datetime.now(UTC_TZ)
+                                self.logger.info(
+                                    f"🕒 Exit cooldown iniciado para {symbol} a las {self.last_exit_times[symbol].strftime('%H:%M:%S')}"
+                                )
+                        except Exception:
+                            pass
 
                         # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
 

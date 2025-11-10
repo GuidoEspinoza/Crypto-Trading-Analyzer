@@ -304,5 +304,11 @@ PROFILES = {
         # === CONFIGURACIÓN DE COOLDOWN ENTRE TRADES ===
         "min_time_between_trades_minutes": 10,  # Tiempo mínimo entre trades del mismo símbolo
         "min_time_between_opposite_signals_minutes": 15,  # Tiempo mínimo entre señales opuestas
+        # === POLÍTICA ANTIFLIP (estabilidad de señales y reducción de pérdidas pequeñas) ===
+        "antiflip_min_hold_minutes": 45,  # Mantener posición al menos N minutos antes de permitir flip
+        "antiflip_opposite_persistence_count": 2,  # Requerir N señales opuestas consecutivas fuertes
+        "antiflip_hysteresis_multiplier": 1.10,  # Confianza opuesta debe ser >= 110% de la última ejecutada
+        "antiflip_require_strong_opposite": True,  # Solo permitir flip con señales Strong/Very Strong
+        "antiflip_cooldown_after_exit_minutes": 20,  # Cooldown adicional tras cerrar una posición
     },
 }
