@@ -863,6 +863,34 @@ class CapitalClient:
 
         return all_market_data
 
+    def get_dealing_rules(self, epic: str) -> Dict[str, Any]:
+        """Get dealing rules (min stop/profit distance, step, increment, trailing preference).
+
+        Returns a dict with keys:
+            success, min_stop_distance, min_step_distance, min_size_increment, trailing_preference, error (optional)
+        """
+        try:
+            result = self.get_markets(epics=[epic])
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+
+            markets_response = result.get("markets", {})
+            details = markets_response.get("marketDetails")
+            if not details:
+                return {"success": False, "error": "No marketDetails found"}
+
+            dealing_rules = details[0].get("dealingRules", {})
+            return {
+                "success": True,
+                "min_stop_distance": dealing_rules.get("minStopOrProfitDistance", {}),
+                "min_step_distance": dealing_rules.get("minStepDistance", {}),
+                "min_size_increment": dealing_rules.get("minSizeIncrement", {}),
+                "trailing_preference": dealing_rules.get("trailingStopsPreference", "NOT_AVAILABLE"),
+            }
+        except Exception as e:
+            logger.error(f"Error getting dealing rules for {epic}: {e}")
+            return {"success": False, "error": str(e)}
+
     def get_historical_prices(
         self,
         epic: str,

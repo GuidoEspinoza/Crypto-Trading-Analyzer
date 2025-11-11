@@ -190,6 +190,9 @@ class TradingBot:
         self.enable_real_trading = (
             os.getenv("ENABLE_REAL_TRADING", "false").lower() == "true"
         )
+
+        # Previews de órdenes calculadas (para pruebas sin enviar a Capital.com)
+        self.order_previews: List[Dict[str, Any]] = []
         self.real_trading_size_multiplier = float(
             os.getenv("REAL_TRADING_SIZE_MULTIPLIER", "0.1")
         )  # 10% del tamaño de paper trading por defecto
@@ -806,6 +809,155 @@ class TradingBot:
     def _get_capital_symbols(self) -> List[str]:
         """📋 Obtener lista de símbolos disponibles en Capital.com desde configuración centralizada"""
         return GLOBAL_SYMBOLS.copy()
+
+    def _build_order_preview(self, signal: "TradingSignal", risk_assessment: "EnhancedRiskAssessment") -> Dict[str, Any]:
+        """
+        🧪 Construir un preview de la orden con SL ajustado por spread y reglas del instrumento.
+
+        No envía trades reales. Útil para validar en pruebas que el SL respeta:
+        - Precio lado (bid/offer)
+        - Spread del instrumento
+        - Dealing rules: minStopOrProfitDistance y minStepDistance
+        """
+        preview: Dict[str, Any] = {
+            "symbol": getattr(signal, "symbol", "UNKNOWN"),
+            "side": getattr(signal, "signal_type", "UNKNOWN"),
+            "entry_price": getattr(signal, "price", None) or getattr(signal, "current_price", None),
+            "bid": None,
+            "offer": None,
+            "spread": None,
+            "dealing_rules": {},
+            "sl_base": None,
+            "sl_after_spread": None,
+            "sl_final": None,
+            "stop_distance_points_preview": None,
+        }
+
+        try:
+            capital_symbol = self._normalize_symbol_for_capital(signal.symbol)
+            current_price = self._get_current_price(signal.symbol)
+
+            # Precios lado y spread
+            bid = None
+            offer = None
+            spread = None
+            if self.capital_client:
+                md = self.capital_client.get_market_data([capital_symbol])
+                if md and capital_symbol in md:
+                    bid = md[capital_symbol].get("bid")
+                    offer = md[capital_symbol].get("offer")
+                    if bid is not None and offer is not None and offer > bid:
+                        spread = offer - bid
+            preview["bid"] = bid
+            preview["offer"] = offer
+            preview["spread"] = spread
+
+            # Dealing rules
+            dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
+            if dr.get("success"):
+                preview["dealing_rules"] = {
+                    "minStopOrProfitDistance": dr.get("min_stop_distance", {}),
+                    "minStepDistance": dr.get("min_step_distance", {}),
+                    "trailingStopsPreference": dr.get("trailing_stops_preference", None),
+                }
+
+            # Base SL: ROI-based si perfil aplica; si no, usar de signal o risk manager
+            sl_price = None
+            take_profit = None
+            risk_reward = None
+            try:
+                current_profile_config = TradingProfiles.get_current_profile()
+                current_profile = current_profile_config.get("name", "")
+                # Usar ROI-based para perfiles que lo soportan
+                if current_profile in ["Scalping", "Intraday"]:
+                    from .trend_following_professional import TrendFollowingProfessional
+                    strategy_instance = TrendFollowingProfessional()
+                    atr = current_price * 0.02  # estimación de ATR
+                    # Usar tamaño recomendado del risk manager como base
+                    size_units = getattr(risk_assessment.position_sizing, "recommended_size", 0.0) or 0.0
+                    position_size_usd = size_units * current_price
+                    sl_price, take_profit, risk_reward = strategy_instance.calculate_roi_based_risk_reward(
+                        current_price, signal.signal_type, position_size_usd, atr
+                    )
+                # Fallbacks
+                if sl_price is None and hasattr(signal, "stop_loss_price") and signal.stop_loss_price:
+                    sl_price = signal.stop_loss_price
+                if sl_price is None and hasattr(risk_assessment, "dynamic_stop_loss"):
+                    sl_price = risk_assessment.dynamic_stop_loss.stop_loss_price
+            except Exception:
+                pass
+
+            preview["sl_base"] = sl_price
+
+            # Ajuste por spread según lado
+            sl_after_spread = sl_price
+            try:
+                if spread is not None and sl_price is not None:
+                    if signal.signal_type == "BUY":
+                        sl_after_spread = sl_price - spread
+                    elif signal.signal_type == "SELL":
+                        sl_after_spread = sl_price + spread
+            except Exception:
+                pass
+            preview["sl_after_spread"] = sl_after_spread
+
+            # Aplicar mínimos y pasos
+            sl_final = sl_after_spread
+            try:
+                import math
+                ref_price = (
+                    bid if signal.signal_type == "BUY" and bid is not None
+                    else offer if signal.signal_type == "SELL" and offer is not None
+                    else current_price
+                )
+                min_stop = preview["dealing_rules"].get("minStopOrProfitDistance", {}) if preview["dealing_rules"] else {}
+                step = preview["dealing_rules"].get("minStepDistance", {}) if preview["dealing_rules"] else {}
+
+                unit = (min_stop.get("unit") or "").upper()
+                value = float(min_stop.get("value") or 0.0)
+                min_points = 0.0
+                if unit == "PERCENTAGE":
+                    min_points = ref_price * value
+                elif unit == "POINTS":
+                    min_points = value
+
+                if sl_final is not None and ref_price is not None and min_points > 0:
+                    if signal.signal_type == "BUY":
+                        dist = ref_price - sl_final
+                        if dist < min_points:
+                            sl_final = ref_price - min_points
+                    else:
+                        dist = sl_final - ref_price
+                        if dist < min_points:
+                            sl_final = ref_price + min_points
+
+                # Redondeo al paso mínimo
+                step_unit = (step.get("unit") or "").upper()
+                step_value = float(step.get("value") or 0.0)
+                if step_unit == "POINTS" and step_value > 0 and sl_final is not None and ref_price is not None:
+                    if signal.signal_type == "BUY":
+                        dist = ref_price - sl_final
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price - dist
+                    else:
+                        dist = sl_final - ref_price
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price + dist
+
+                # Distancia de stop en puntos como preview (útil para TSL)
+                if sl_final is not None and ref_price is not None:
+                    if signal.signal_type == "BUY":
+                        preview["stop_distance_points_preview"] = max(0.0, ref_price - sl_final)
+                    else:
+                        preview["stop_distance_points_preview"] = max(0.0, sl_final - ref_price)
+            except Exception:
+                pass
+
+            preview["sl_final"] = sl_final
+        except Exception as e:
+            self.logger.warning(f"⚠️ No se pudo construir order_preview: {e}")
+
+        return preview
 
     def _check_max_positions_limit(self) -> bool:
         """
@@ -1774,6 +1926,14 @@ class TradingBot:
                         )
                         continue
 
+                    # Construir preview de orden (SL/TSL ajustados por reglas) antes de ejecutar
+                    try:
+                        preview = self._build_order_preview(signal, risk_assessment)
+                        if isinstance(preview, dict):
+                            self.order_previews.append(preview)
+                    except Exception:
+                        pass
+
                     # Ejecutar paper trade siempre
                     trade_result = self.paper_trader.execute_signal(signal)
 
@@ -2659,6 +2819,61 @@ class TradingBot:
                         )
                     )
 
+                    # Ajuste del stop loss sensible al spread del instrumento
+                    try:
+                        md = self.capital_client.get_market_data([capital_symbol]) if self.capital_client else {}
+                        if md and capital_symbol in md:
+                            bid = md[capital_symbol].get("bid")
+                            offer = md[capital_symbol].get("offer")
+                            if bid is not None and offer is not None and offer > bid:
+                                spread = offer - bid
+                                if signal.signal_type == "BUY":
+                                    stop_loss = stop_loss - spread
+                                else:
+                                    stop_loss = stop_loss + spread
+                        # Aplicar mínimos de distancia del SL y redondeo según dealing rules
+                        dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
+                        if dr.get("success"):
+                            import math
+                            min_stop = dr.get("min_stop_distance", {})
+                            step = dr.get("min_step_distance", {})
+                            # Precio de referencia según lado
+                            ref_price = (
+                                bid if signal.signal_type == "BUY" and bid is not None
+                                else offer if signal.signal_type == "SELL" and offer is not None
+                                else current_price
+                            )
+                            unit = (min_stop.get("unit") or "").upper()
+                            value = float(min_stop.get("value") or 0.0)
+                            min_points = 0.0
+                            if unit == "PERCENTAGE":
+                                min_points = ref_price * value
+                            elif unit == "POINTS":
+                                min_points = value
+                            # Enforce mínimo
+                            if signal.signal_type == "BUY":
+                                dist = ref_price - stop_loss
+                                if dist < min_points:
+                                    stop_loss = ref_price - min_points
+                            else:
+                                dist = stop_loss - ref_price
+                                if dist < min_points:
+                                    stop_loss = ref_price + min_points
+                            # Redondeo al paso mínimo
+                            step_unit = (step.get("unit") or "").upper()
+                            step_value = float(step.get("value") or 0.0)
+                            if step_unit == "POINTS" and step_value > 0:
+                                if signal.signal_type == "BUY":
+                                    dist = ref_price - stop_loss
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    stop_loss = ref_price - dist
+                                else:
+                                    dist = stop_loss - ref_price
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    stop_loss = ref_price + dist
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ No se pudo ajustar SL por spread: {e}")
+
                     self.logger.info(
                         f"🎯 {current_profile} ROI-based TP/SL calculated:"
                     )
@@ -2718,32 +2933,47 @@ class TradingBot:
             trailing_stop_available = False
 
             if use_trailing_stop and stop_loss:
-                # Calcular la distancia correcta según el tipo de operación
-                # Para BUY: stopDistance = current_price - stop_loss (protege hacia abajo)
-                # Para SELL: stopDistance = stop_loss - current_price (protege hacia arriba)
-                if signal.signal_type == "BUY":
-                    trailing_distance = current_price - stop_loss
-                else:  # SELL
-                    trailing_distance = stop_loss - current_price
+                # Obtener bid/offer para calcular distancia sensible al spread
+                bid = None
+                offer = None
+                try:
+                    md = self.capital_client.get_market_data([capital_symbol]) if self.capital_client else {}
+                    if md and capital_symbol in md:
+                        bid = md[capital_symbol].get("bid")
+                        offer = md[capital_symbol].get("offer")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error obteniendo bid/offer para {capital_symbol}: {e}")
 
-                # Verificar que la distancia sea positiva
+                spread = 0.0
+                if bid is not None and offer is not None and offer > bid:
+                    spread = offer - bid
+
+                if signal.signal_type == "BUY":
+                    reference_price = bid if bid is not None else current_price
+                    base_distance = reference_price - stop_loss
+                else:
+                    reference_price = offer if offer is not None else current_price
+                    base_distance = stop_loss - reference_price
+
+                trailing_distance = base_distance + spread
+
                 if trailing_distance > 0:
                     trailing_stop_available = True
                     self.logger.info(
                         f"🎯 Trailing stop enabled for {signal.signal_type}"
                     )
                     self.logger.info(
-                        f"🎯 Current price: {current_price:.4f}, Stop loss: {stop_loss:.4f}"
+                        f"🎯 Price ref: {reference_price:.4f}, SL: {stop_loss:.4f}, Spread: {spread:.4f}"
                     )
                     self.logger.info(
-                        f"🎯 Calculated stopDistance: {trailing_distance:.4f} points"
+                        f"🎯 stopDistance ajustado por spread: {trailing_distance:.4f} puntos"
                     )
                 else:
                     trailing_stop_available = False
                     self.logger.warning(
-                        f"⚠️ Invalid trailing distance: {trailing_distance:.4f} (must be positive)"
+                        f"⚠️ Distancia de trailing inválida: {trailing_distance:.4f} (debe ser positiva)"
                     )
-                    self.logger.warning(f"⚠️ Falling back to traditional stop loss")
+                    self.logger.warning("⚠️ Se usará stop loss tradicional")
 
             # Ejecutar orden según el tipo de señal
             if signal.signal_type == "BUY":

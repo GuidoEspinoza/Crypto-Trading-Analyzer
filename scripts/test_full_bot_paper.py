@@ -88,6 +88,11 @@ def build_summary(bot: TradingBot, cycles_run: int) -> dict:
         },
         "antiflip": antiflip_state,
     }
+    # Incluir previews de órdenes (SL/TSL aplicados por reglas del instrumento)
+    try:
+        summary["order_previews"] = getattr(bot, "order_previews", [])
+    except Exception:
+        summary["order_previews"] = []
     return summary
 
 
