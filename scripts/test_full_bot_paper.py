@@ -30,6 +30,7 @@ if PROJECT_ROOT not in sys.path:
 
 from src.core.trading_bot import TradingBot
 from src.config.time_trading_config import UTC_TZ
+from src.config.time_trading_config import SMART_TRADING_HOURS
 
 
 def ensure_outputs_dir() -> str:
@@ -156,6 +157,13 @@ def main():
     # Asegurar configuración de prueba: SIN trading real, CON trading en papel.
     bot.enable_real_trading = False
     bot.enable_trading = True
+
+    # Desactivar horarios inteligentes para permitir análisis inmediato en pruebas
+    try:
+        SMART_TRADING_HOURS["enabled"] = False
+        print("⚙️ Smart trading hours disabled for test run.")
+    except Exception as e:
+        print(f"⚠️ Could not disable smart trading hours: {e}")
 
     outputs_dir = ensure_outputs_dir()
     cycles_run = 0

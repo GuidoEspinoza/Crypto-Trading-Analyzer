@@ -421,6 +421,16 @@ class ConsensusStrategy:
                 raw_signal = strategy_instance.analyze(symbol, timeframe)
 
                 if raw_signal and hasattr(raw_signal, "signal_type"):
+                    # Validar precio de la señal para evitar valores inválidos
+                    import math
+                    price_val = float(raw_signal.price) if raw_signal.price is not None else 0.0
+                    valid_price = (
+                        price_val is not None
+                        and not math.isnan(price_val)
+                        and not math.isinf(price_val)
+                        and price_val > 0
+                    )
+
                     signal_data = StrategySignalData(
                         strategy_name=strategy_name,
                         signal_type=raw_signal.signal_type,
@@ -429,8 +439,10 @@ class ConsensusStrategy:
                         timestamp=raw_signal.timestamp,
                         raw_signal=raw_signal,
                         weight=self.strategy_weights[strategy_name],
-                        is_valid=True,
-                        notes=f"Señal válida de {strategy_name}",
+                        is_valid=bool(valid_price),
+                        notes=(
+                            f"Señal válida de {strategy_name}" if valid_price else f"Precio inválido en {strategy_name}"
+                        ),
                     )
                     signals.append(signal_data)
                     logger.debug(
@@ -726,10 +738,63 @@ class ConsensusStrategy:
         else:
             signal_type = "HOLD"
 
-        # Precio promedio ponderado
-        weighted_price = sum(s.price * s.weight for s in signals) / sum(
-            s.weight for s in signals
-        )
+        # Precio promedio ponderado (solo señales con precio válido)
+        import math
+        valid_signals = [
+            s for s in signals
+            if s.is_valid and s.price is not None and not math.isnan(s.price) and not math.isinf(s.price) and s.price > 0
+        ]
+
+        if valid_signals:
+            weighted_price = sum(s.price * s.weight for s in valid_signals) / sum(
+                s.weight for s in valid_signals
+            )
+        else:
+            # Fallback: obtener precio real desde Capital.com (históricos o snapshot)
+            weighted_price = 0.0
+            try:
+                if hasattr(self, "capital_client") and self.capital_client:
+                    # Primero intentar histórico último close
+                    tf_map = {
+                        "1m": "MINUTE",
+                        "5m": "MINUTE_5",
+                        "15m": "MINUTE_15",
+                        "30m": "MINUTE_30",
+                        "1h": "HOUR",
+                        "2h": "HOUR_2",
+                        "3h": "HOUR_3",
+                        "4h": "HOUR_4",
+                        "1d": "DAY",
+                        "1w": "WEEK",
+                    }
+                    resolution = tf_map.get(timeframe, "HOUR")
+                    hist = self.capital_client.get_historical_prices(
+                        epic=symbol, resolution=resolution, max_points=1
+                    )
+                    if hist.get("success") and hist.get("prices"):
+                        last_close = float(hist["prices"][0].get("close", 0.0))
+                        if last_close and last_close > 0:
+                            weighted_price = last_close
+                    if weighted_price <= 0:
+                        # Snapshot como último recurso
+                        snap = self.capital_client.get_market_data([symbol])
+                        price_data = snap.get(symbol) if snap else None
+                        if price_data:
+                            for key in ["mid", "bid", "offer"]:
+                                val = price_data.get(key)
+                                try:
+                                    num = float(val) if val is not None else 0.0
+                                    if num > 0:
+                                        weighted_price = num
+                                        break
+                                except (ValueError, TypeError):
+                                    continue
+            except Exception as e:
+                logger.warning(f"⚠️ Fallback de precio en consenso falló para {symbol}: {e}")
+
+        # Asegurar que el precio final sea válido, de lo contrario mantener fallback 0.0 controlado
+        if weighted_price is None or math.isnan(weighted_price) or math.isinf(weighted_price):
+            weighted_price = 0.0
 
         # Calcular calidad general
         quality_score = (

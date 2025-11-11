@@ -1673,7 +1673,9 @@ class TradingBot:
                     # Umbrales conservadores para mejorar precisión
                     min_consensus_pct = 70.0
                     min_coherence_pct = 65.0
-                    min_contrib = 2
+                    # Permitir ejecución con una sola estrategia contribuyente si el consenso es fuerte
+                    # (el consenso sigue siendo el decisor principal; las individuales alimentan)
+                    min_contrib = 1
                     min_rr = 1.30
 
                     consensus_pct = float(getattr(signal, "consensus_percentage", 0.0))

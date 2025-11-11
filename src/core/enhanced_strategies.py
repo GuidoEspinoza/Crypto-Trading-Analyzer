@@ -70,91 +70,86 @@ class TradingStrategy(ABC):
     def get_market_data(
         self, symbol: str, timeframe: str = "1h", limit: int = 250
     ) -> pd.DataFrame:
-        """Obtener datos de mercado usando Capital.com - EVITA LOOP INFINITO"""
+        """Obtener datos de mercado usando Capital.com con históricos reales"""
         try:
-            # Si hay TradingBot asignado y tiene capital_client, intentar obtener datos directamente
+            import math
+            # Si hay TradingBot asignado y tiene capital_client, usar históricos reales
             if (
                 hasattr(self, "trading_bot")
                 and self.trading_bot
                 and hasattr(self.trading_bot, "capital_client")
                 and self.trading_bot.capital_client is not None
             ):
+                capital = self.trading_bot.capital_client
+
+                # Mapear timeframe a resolución de Capital.com
+                timeframe_mapping = {
+                    "1m": "MINUTE",
+                    "5m": "MINUTE_5",
+                    "15m": "MINUTE_15",
+                    "30m": "MINUTE_30",
+                    "1h": "HOUR",
+                    "2h": "HOUR_2",
+                    "3h": "HOUR_3",
+                    "4h": "HOUR_4",
+                    "1d": "DAY",
+                    "1w": "WEEK",
+                }
+                resolution = timeframe_mapping.get(timeframe, "HOUR")
 
                 try:
-                    # Intentar obtener precio directamente de Capital.com sin usar get_current_price
-                    # para evitar loop infinito
-                    capital_symbol = symbol  # Asumir que ya está normalizado
-                    market_data = self.trading_bot.capital_client.get_market_data(
-                        [capital_symbol]
+                    result = capital.get_historical_prices(
+                        epic=symbol, resolution=resolution, max_points=limit
                     )
-
-                    if market_data and capital_symbol in market_data:
-                        price_data = market_data[capital_symbol]
-                        current_price = None
-
-                        # Intentar obtener precio válido
-                        for price_key in ["bid", "offer", "mid"]:
-                            if (
-                                price_key in price_data
-                                and price_data[price_key] is not None
-                            ):
+                    if result.get("success") and result.get("prices"):
+                        prices = result["prices"]
+                        df = pd.DataFrame(prices)
+                        if not df.empty:
+                            # Asegurar tipos y filtrar valores inválidos
+                            if "timestamp" in df.columns:
                                 try:
-                                    current_price = float(price_data[price_key])
-                                    if current_price > 0:
-                                        break
-                                except (ValueError, TypeError):
-                                    continue
+                                    df["timestamp"] = pd.to_datetime(
+                                        df["timestamp"], errors="coerce"
+                                    )
+                                except Exception:
+                                    pass
+                            for col in ["open", "high", "low", "close"]:
+                                if col in df.columns:
+                                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                            # Filtrar filas con OHLC inválidos
+                            df = df.dropna(subset=["open", "high", "low", "close"])
+                            df = df[(df["open"] > 0) & (df["high"] > 0) & (df["low"] > 0) & (df["close"] > 0)]
 
-                        if current_price and current_price > 0:
-                            # Crear DataFrame básico con datos simulados para compatibilidad
-                            import pandas as pd
-                            from datetime import datetime, timedelta
-
-                            timestamps = [
-                                datetime.now() - timedelta(hours=i)
-                                for i in range(limit, 0, -1)
-                            ]
-                            # Simular datos OHLCV básicos alrededor del precio actual
-                            data = []
-                            for ts in timestamps:
-                                # Variación pequeña alrededor del precio actual
-                                variation = 0.01 * (
-                                    0.5 - abs(hash(str(ts)) % 100) / 100
+                            if not df.empty:
+                                # Index por timestamp si disponible
+                                if "timestamp" in df.columns:
+                                    df.set_index("timestamp", inplace=True)
+                                df.sort_index(inplace=True)
+                                return df[["open", "high", "low", "close", "volume"]].copy() if "volume" in df.columns else df[["open", "high", "low", "close"]].copy()
+                            else:
+                                logging.warning(
+                                    f"⚠️ Datos históricos inválidos/filtrados para {symbol} ({resolution})"
                                 )
-                                price = current_price * (1 + variation)
-                                data.append(
-                                    {
-                                        "timestamp": ts,
-                                        "open": price,
-                                        "high": price * 1.005,
-                                        "low": price * 0.995,
-                                        "close": price,
-                                        "volume": 1000,
-                                    }
-                                )
-
-                            df = pd.DataFrame(data)
-                            df.set_index("timestamp", inplace=True)
-                            df.sort_index(inplace=True)
-                            return df
-
+                        else:
+                            logging.warning(
+                                f"⚠️ Datos históricos vacíos para {symbol} ({resolution})"
+                            )
+                    else:
+                        logging.warning(
+                            f"⚠️ No se pudieron obtener históricos para {symbol}: {result.get('error', 'Error desconocido')}"
+                        )
                 except Exception as e:
-                    logging.warning(
-                        f"Error obteniendo datos de Capital.com para {symbol}: {e}"
+                    logging.error(
+                        f"Error obteniendo históricos para {symbol} ({resolution}): {e}"
                     )
 
-            # Fallback: DataFrame vacío (NO intentar get_current_price para evitar loop)
-            import pandas as pd
-
+            # Fallback: DataFrame vacío para evitar loops
             logging.warning(
-                f"No se pudieron obtener datos de mercado para {symbol} - retornando DataFrame vacío"
+                f"No se pudieron obtener datos reales para {symbol} - retornando DataFrame vacío"
             )
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-
         except Exception as e:
             logging.error(f"Error getting market data for {symbol}: {e}")
-            import pandas as pd
-
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
     def get_current_price(self, symbol: str) -> float:

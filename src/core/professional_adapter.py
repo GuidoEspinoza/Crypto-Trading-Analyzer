@@ -51,7 +51,19 @@ class ProfessionalStrategyAdapter(TradingStrategy):
 
             if df.empty:
                 logger.warning(f"No hay datos disponibles para {symbol}")
-                return self._create_hold_signal(symbol, 0.0, "Sin datos disponibles")
+                # Intentar obtener precio actual real
+                current_price = 0.0
+                try:
+                    current_price = float(self.get_current_price(symbol))
+                except Exception:
+                    try:
+                        df_fallback = self.get_market_data(symbol, timeframe, 1)
+                        if df_fallback is not None and not df_fallback.empty:
+                            current_price = float(df_fallback["close"].iloc[-1])
+                    except Exception:
+                        current_price = 0.0
+
+                return self._create_hold_signal(symbol, current_price, "Sin datos disponibles")
 
             logger.info(f"✅ Datos obtenidos para {symbol}: {len(df)} velas")
 
