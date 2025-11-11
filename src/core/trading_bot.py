@@ -831,6 +831,8 @@ class TradingBot:
             "sl_after_spread": None,
             "sl_final": None,
             "stop_distance_points_preview": None,
+            "tp_base": None,
+            "tp_final": None,
         }
 
         try:
@@ -888,6 +890,72 @@ class TradingBot:
                 pass
 
             preview["sl_base"] = sl_price
+            preview["tp_base"] = take_profit
+
+            # Aplicar los mismos ajustes de preferencia TP/SL que en ejecución real
+            try:
+                adjustments_info = {
+                    "tp_multiplier": None,
+                    "sl_multiplier": None,
+                    "risk_usd_estimate": None,
+                    "adjustments_applied": False,
+                }
+
+                # Tamaño recomendado en unidades (para estimar riesgoUSD)
+                size_units = getattr(risk_assessment.position_sizing, "recommended_size", 0.0) or 0.0
+
+                # Precio de referencia sensible al lado
+                ref_price_adj = None
+                try:
+                    ref_price_adj = (
+                        bid if signal.signal_type == "BUY" and bid is not None
+                        else offer if signal.signal_type == "SELL" and offer is not None
+                        else current_price
+                    )
+                except Exception:
+                    ref_price_adj = current_price
+
+                if sl_price is not None and take_profit is not None and ref_price_adj is not None:
+                    # Distancias actuales
+                    if signal.signal_type == "BUY":
+                        tp_dist = max(take_profit - ref_price_adj, 0.0)
+                        sl_dist = max(ref_price_adj - sl_price, 0.0)
+                    else:
+                        tp_dist = max(ref_price_adj - take_profit, 0.0)
+                        sl_dist = max(sl_price - ref_price_adj, 0.0)
+
+                    # Estimar riesgo en USD: asume CFD, riesgo ≈ distancia * size_units
+                    risk_usd_estimate = sl_dist * size_units
+                    adjustments_info["risk_usd_estimate"] = risk_usd_estimate
+
+                    # Aplicar reducción TP 50%
+                    new_tp_dist = tp_dist * 0.5
+                    adjustments_info["tp_multiplier"] = 0.5
+
+                    # SL: +50% solo si riesgoUSD en [10, 20] y símbolo != US30
+                    symbol_upper = (getattr(signal, "symbol", "") or "").upper()
+                    keep_sl_unchanged = symbol_upper == "US30"
+                    increase_sl = (not keep_sl_unchanged) and (10.0 <= risk_usd_estimate <= 20.0)
+                    new_sl_dist = sl_dist * (1.5 if increase_sl else 1.0)
+                    adjustments_info["sl_multiplier"] = 1.5 if increase_sl else 1.0
+
+                    # Reconstruir niveles manteniendo orientación
+                    if signal.signal_type == "BUY":
+                        take_profit = ref_price_adj + new_tp_dist
+                        sl_price = ref_price_adj - new_sl_dist
+                    else:
+                        take_profit = ref_price_adj - new_tp_dist
+                        sl_price = ref_price_adj + new_sl_dist
+
+                    adjustments_info["adjustments_applied"] = True
+
+                # Actualizar bases en preview tras ajustes
+                preview["sl_base"] = sl_price
+                preview["tp_base"] = take_profit
+                preview["adjustments"] = adjustments_info
+            except Exception:
+                # Si algo falla, continuar sin bloquear el preview
+                pass
 
             # Ajuste por spread según lado
             sl_after_spread = sl_price
@@ -950,6 +1018,40 @@ class TradingBot:
                         preview["stop_distance_points_preview"] = max(0.0, ref_price - sl_final)
                     else:
                         preview["stop_distance_points_preview"] = max(0.0, sl_final - ref_price)
+
+                # TP enforcement y redondeo
+                tp_final = None
+                if take_profit is not None and ref_price is not None:
+                    tp_base = take_profit
+                    # Orientación
+                    if signal.signal_type == "BUY" and tp_base <= ref_price:
+                        tp_base = ref_price + max(min_points, step_value)
+                    elif signal.signal_type == "SELL" and tp_base >= ref_price:
+                        tp_base = ref_price - max(min_points, step_value)
+
+                    # Enforce mínimo
+                    if signal.signal_type == "BUY":
+                        dist_tp = tp_base - ref_price
+                        if dist_tp < min_points:
+                            tp_base = ref_price + min_points
+                    else:
+                        dist_tp = ref_price - tp_base
+                        if dist_tp < min_points:
+                            tp_base = ref_price - min_points
+
+                    # Redondeo por pasos
+                    if step_unit == "POINTS" and step_value > 0:
+                        if signal.signal_type == "BUY":
+                            dist_tp = tp_base - ref_price
+                            dist_tp = math.ceil(dist_tp / step_value) * step_value
+                            tp_final = ref_price + dist_tp
+                        else:
+                            dist_tp = ref_price - tp_base
+                            dist_tp = math.ceil(dist_tp / step_value) * step_value
+                            tp_final = ref_price - dist_tp
+                    else:
+                        tp_final = tp_base
+                preview["tp_final"] = tp_final
             except Exception:
                 pass
 
@@ -958,6 +1060,100 @@ class TradingBot:
             self.logger.warning(f"⚠️ No se pudo construir order_preview: {e}")
 
         return preview
+
+    def _apply_dealing_rules_to_tp_sl(self, signal_type: str, bid: float, offer: float, sl_price: float, tp_price: float, dealing_rules: dict) -> tuple:
+        """
+        Aplicar reglas del instrumento y orientación por spread a SL/TP.
+        Retorna (sl_final, tp_final, stop_distance_points).
+        """
+        try:
+            import math
+            ref_price = offer if signal_type == "BUY" else bid
+            min_stop = dealing_rules.get("min_stop_distance", {}) if dealing_rules else {}
+            step = dealing_rules.get("min_step_distance", {}) if dealing_rules else {}
+
+            unit = (min_stop.get("unit") or "").upper()
+            value = float(min_stop.get("value") or 0.0)
+            min_points = 0.0
+            if unit == "PERCENTAGE" and ref_price:
+                min_points = ref_price * value
+            elif unit == "POINTS":
+                min_points = value
+
+            step_unit = (step.get("unit") or "").upper()
+            step_value = float(step.get("value") or 0.0)
+
+            # SL
+            sl_base = sl_price
+            if sl_base is not None and ref_price is not None:
+                if signal_type == "BUY" and sl_base >= ref_price:
+                    sl_base = ref_price - max(min_points, step_value)
+                elif signal_type == "SELL" and sl_base <= ref_price:
+                    sl_base = ref_price + max(min_points, step_value)
+
+                if signal_type == "BUY":
+                    dist = ref_price - sl_base
+                    if dist < min_points:
+                        sl_base = ref_price - min_points
+                else:
+                    dist = sl_base - ref_price
+                    if dist < min_points:
+                        sl_base = ref_price + min_points
+
+                if step_unit == "POINTS" and step_value > 0:
+                    if signal_type == "BUY":
+                        dist = ref_price - sl_base
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price - dist
+                    else:
+                        dist = sl_base - ref_price
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price + dist
+                else:
+                    sl_final = sl_base
+            else:
+                sl_final = sl_price
+
+            # TP
+            tp_final = tp_price
+            if tp_price is not None and ref_price is not None:
+                tp_base = tp_price
+                if signal_type == "BUY" and tp_base <= ref_price:
+                    tp_base = ref_price + max(min_points, step_value)
+                elif signal_type == "SELL" and tp_base >= ref_price:
+                    tp_base = ref_price - max(min_points, step_value)
+
+                if signal_type == "BUY":
+                    dist_tp = tp_base - ref_price
+                    if dist_tp < min_points:
+                        tp_base = ref_price + min_points
+                else:
+                    dist_tp = ref_price - tp_base
+                    if dist_tp < min_points:
+                        tp_base = ref_price - min_points
+
+                if step_unit == "POINTS" and step_value > 0:
+                    if signal_type == "BUY":
+                        dist_tp = tp_base - ref_price
+                        dist_tp = math.ceil(dist_tp / step_value) * step_value
+                        tp_final = ref_price + dist_tp
+                    else:
+                        dist_tp = ref_price - tp_base
+                        dist_tp = math.ceil(dist_tp / step_value) * step_value
+                        tp_final = ref_price - dist_tp
+                else:
+                    tp_final = tp_base
+
+            stop_distance_points = None
+            if sl_final is not None and ref_price is not None:
+                stop_distance_points = (
+                    ref_price - sl_final if signal_type == "BUY" else sl_final - ref_price
+                )
+                stop_distance_points = max(0.0, stop_distance_points)
+
+            return sl_final, tp_final, stop_distance_points
+        except Exception:
+            return sl_price, tp_price, None
 
     def _check_max_positions_limit(self) -> bool:
         """
@@ -2919,6 +3115,82 @@ class TradingBot:
                     f"🎯 Take Profit (from risk assessment): ${take_profit:.4f}"
                 )
 
+            # Ajuste de distancias TP/SL según preferencia del usuario:
+            # - Reducir TP en 50% para todos los símbolos
+            # - Aumentar SL en 50% solo si el riesgo en USD está entre 10–20 y el símbolo no es US30
+            try:
+                if stop_loss is not None and take_profit is not None:
+                    # Obtener precio actual para calcular distancias
+                    ref_price = None
+                    try:
+                        ref_price = self._get_current_price(signal.symbol)
+                    except Exception:
+                        ref_price = None
+
+                    # Si no se puede obtener precio actual, usar heurística con TP/SL existentes
+                    if ref_price is None:
+                        # Para BUY, ref es el punto medio; para SELL, igual
+                        ref_price = (take_profit + stop_loss) / 2.0
+
+                    # Calcular distancias actuales
+                    if signal.signal_type == "BUY":
+                        tp_dist = max(take_profit - ref_price, 0.0)
+                        sl_dist = max(ref_price - stop_loss, 0.0)
+                    else:
+                        tp_dist = max(ref_price - take_profit, 0.0)
+                        sl_dist = max(stop_loss - ref_price, 0.0)
+
+                    # Calcular riesgo en USD aproximado para decidir aumento de SL
+                    # Asume relación CFD: riesgo ≈ distancia * tamaño real
+                    risk_usd = sl_dist * real_size
+
+                    # Determinar si aplicar aumento de SL (50%)
+                    symbol_upper = (signal.symbol or "").upper()
+                    keep_sl_unchanged = symbol_upper == "US30"
+                    increase_sl = (not keep_sl_unchanged) and (10.0 <= risk_usd <= 20.0)
+
+                    # Aplicar reducción de TP (50%)
+                    new_tp_dist = tp_dist * 0.5
+
+                    # Aplicar aumento de SL (50%) si corresponde
+                    new_sl_dist = sl_dist * (1.5 if increase_sl else 1.0)
+
+                    # Reconstruir niveles TP/SL manteniendo orientación
+                    if signal.signal_type == "BUY":
+                        take_profit = ref_price + new_tp_dist
+                        stop_loss = ref_price - new_sl_dist
+                    else:
+                        take_profit = ref_price - new_tp_dist
+                        stop_loss = ref_price + new_sl_dist
+
+                    self.logger.info(
+                        f"⚙️ Ajustes TP/SL aplicados: TP -50% (distancia), SL {'+50%' if increase_sl else 'sin cambio'} (distancia), riesgoUSD≈{risk_usd:.2f}"
+                    )
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudo aplicar ajustes de TP/SL preferidos: {e}")
+
+            # 7. Aplicar estrictamente reglas del instrumento (min distance, steps, orientación)
+            try:
+                bid = None
+                offer = None
+                md = self.capital_client.get_market_data([capital_symbol]) if self.capital_client else {}
+                if md and capital_symbol in md:
+                    bid = md[capital_symbol].get("bid")
+                    offer = md[capital_symbol].get("offer")
+                dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
+                if not dr.get("success"):
+                    dr = {}
+                sl_adj, tp_adj, stop_points = self._apply_dealing_rules_to_tp_sl(
+                    signal.signal_type, bid, offer, stop_loss, take_profit, dr
+                )
+                stop_loss = sl_adj
+                take_profit = tp_adj
+                self.logger.info(
+                    f"🔧 Reglas aplicadas: SL={stop_loss}, TP={take_profit}, stopDistance={stop_points}"
+                )
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudo aplicar reglas de instrumento a TP/SL: {e}")
+
             self.logger.info(
                 f"🔴 Executing REAL trade: {signal.signal_type} {capital_symbol} size={real_size}"
             )
@@ -2954,6 +3226,10 @@ class TradingBot:
                 else:
                     reference_price = offer if offer is not None else current_price
                     base_distance = stop_loss - reference_price
+
+                # Si ya calculamos stopDistance por reglas, úsalo como base
+                if 'stop_points' in locals() and isinstance(stop_points, (int, float)) and stop_points > 0:
+                    base_distance = stop_points
 
                 trailing_distance = base_distance + spread
 

@@ -22,7 +22,7 @@ Notas importantes:
 | Apertura Asiática | 22:00–02:00 (cruza medianoche) | 19:00–23:00 (día previo) | 18:00–22:00 (día previo) |
 | Apertura Londres | 08:00–12:00 | 05:00–09:00 | 04:00–08:00 |
 | Apertura NY | 14:30–18:30 | 11:30–15:30 | 10:30–14:30 |
-| Solape Londres–NY | 14:30–17:00 | 11:30–14:00 | 10:30–13:00 |
+| Solape Londres–NY | 13:00–17:00 | 10:00–14:00 | 09:00–13:00 |
 
 ## Horarios por Tipo de Activo
 
@@ -32,6 +32,21 @@ Notas importantes:
 | Crypto | 24/7 | 24/7 | 24/7 |
 | Índices EE. UU. (mercado cash) | EDT: 13:30–20:00 / EST: 14:30–21:00 | CLST: 10:30–17:00 (EDT) / 11:30–18:00 (EST) | CLT: 09:30–16:00 (EDT) / 10:30–17:00 (EST) |
 | Commodities EE. UU. | EDT: 13:00–21:00 / EST: 14:00–22:00 | CLST: 10:00–18:00 (EDT) / 11:00–19:00 (EST) | CLT: 09:00–17:00 (EDT) / 10:00–18:00 (EST) |
+
+### Ventanas específicas por activo (UTC)
+
+- Índices (EU/US):
+  - EU Open (DAX/UK100): 07:00–09:00
+  - US Cash (NYSE/NASDAQ): 14:30–21:00
+  - Solape EU–US: 13:00–17:00
+- Oro (XAU):
+  - Alta actividad: 13:30–16:00
+  - Fijación Londres AM: 10:30–11:00
+  - Fijación Londres PM: 15:00–15:30
+- Petróleo WTI (CL):
+  - Alta actividad: 14:00–18:00
+  - Inventarios EIA (miércoles): 14:30–16:30
+- Agrícolas (CBOT día): 13:30–18:30
 
 ## Observaciones
 
