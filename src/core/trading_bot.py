@@ -810,6 +810,46 @@ class TradingBot:
         """📋 Obtener lista de símbolos disponibles en Capital.com desde configuración centralizada"""
         return GLOBAL_SYMBOLS.copy()
 
+    def _get_tp_max_percent(self, symbol: str) -> Optional[float]:
+        """
+        🎯 Retorna el máximo porcentaje permitido para Take Profit por grupo de instrumentos.
+        - Índices: 0.4%
+        - FX mayores: 0.28%
+        - Otros: None (sin clamp)
+        """
+        try:
+            s = (symbol or "").upper()
+            indices = {"US500", "US30", "US100", "DE40", "UK100", "J225", "HK50"}
+            fx_majors = {
+                "EURUSD", "GBPUSD", "USDJPY", "EURJPY", "EURCHF",
+                "USDCAD", "AUDUSD", "NZDUSD", "GBPJPY"
+            }
+            if s in indices:
+                return 0.004  # 0.4%
+            if s in fx_majors:
+                return 0.0028  # 0.28%
+        except Exception:
+            pass
+        return None
+
+    def _get_sl_max_percent(self, symbol: str) -> Optional[float]:
+        """
+        🛡️ Retorna el máximo porcentaje permitido para Stop Loss por grupo de instrumentos.
+        - FX mayores: 0.50%
+        - Otros: None (sin clamp)
+        """
+        try:
+            s = (symbol or "").upper()
+            fx_majors = {
+                "EURUSD", "GBPUSD", "USDJPY", "EURJPY", "EURCHF",
+                "USDCAD", "AUDUSD", "NZDUSD", "GBPJPY"
+            }
+            if s in fx_majors:
+                return 0.005  # 0.50%
+        except Exception:
+            pass
+        return None
+
     def _build_order_preview(self, signal: "TradingSignal", risk_assessment: "EnhancedRiskAssessment") -> Dict[str, Any]:
         """
         🧪 Construir un preview de la orden con SL ajustado por spread y reglas del instrumento.
@@ -1012,6 +1052,32 @@ class TradingBot:
                         dist = math.ceil(dist / step_value) * step_value
                         sl_final = ref_price + dist
 
+                # Clamp SL por instrumento (FX mayores)
+                try:
+                    max_sl_pct = self._get_sl_max_percent(getattr(signal, "symbol", ""))
+                    if max_sl_pct is not None and sl_final is not None and ref_price is not None:
+                        max_dist_sl = ref_price * max_sl_pct
+                        if signal.signal_type == "BUY":
+                            dist_sl = ref_price - sl_final
+                            if dist_sl > max_dist_sl:
+                                sl_final = ref_price - max_dist_sl
+                        else:
+                            dist_sl = sl_final - ref_price
+                            if dist_sl > max_dist_sl:
+                                sl_final = ref_price + max_dist_sl
+                        # Reaplicar redondeo al paso si corresponde
+                        if step_unit == "POINTS" and step_value > 0:
+                            if signal.signal_type == "BUY":
+                                dist_sl = ref_price - sl_final
+                                dist_sl = math.ceil(dist_sl / step_value) * step_value
+                                sl_final = ref_price - dist_sl
+                            else:
+                                dist_sl = sl_final - ref_price
+                                dist_sl = math.ceil(dist_sl / step_value) * step_value
+                                sl_final = ref_price + dist_sl
+                except Exception:
+                    pass
+
                 # Distancia de stop en puntos como preview (útil para TSL)
                 if sl_final is not None and ref_price is not None:
                     if signal.signal_type == "BUY":
@@ -1051,6 +1117,33 @@ class TradingBot:
                             tp_final = ref_price - dist_tp
                     else:
                         tp_final = tp_base
+
+                    # Clamp por instrumento (índices / FX)
+                    try:
+                        max_pct = self._get_tp_max_percent(getattr(signal, "symbol", ""))
+                        if max_pct is not None and tp_final is not None:
+                            max_dist = ref_price * max_pct
+                            if signal.signal_type == "BUY":
+                                dist = tp_final - ref_price
+                                if dist > max_dist:
+                                    tp_final = ref_price + max_dist
+                            else:
+                                dist = ref_price - tp_final
+                                if dist > max_dist:
+                                    tp_final = ref_price - max_dist
+                            # Reaplicar redondeo al paso si corresponde
+                            if step_unit == "POINTS" and step_value > 0:
+                                import math
+                                if signal.signal_type == "BUY":
+                                    dist = tp_final - ref_price
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    tp_final = ref_price + dist
+                                else:
+                                    dist = ref_price - tp_final
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    tp_final = ref_price - dist
+                    except Exception:
+                        pass
                 preview["tp_final"] = tp_final
             except Exception:
                 pass
@@ -1114,6 +1207,34 @@ class TradingBot:
             else:
                 sl_final = sl_price
 
+            # Clamp SL por instrumento (FX mayores) basado en ref_price
+            try:
+                symbol = getattr(self, "current_signal_symbol", None)
+                max_sl_pct = self._get_sl_max_percent(symbol) if symbol else None
+                if max_sl_pct is not None and sl_final is not None and ref_price is not None:
+                    max_dist_sl = ref_price * max_sl_pct
+                    if signal_type == "BUY":
+                        dist_sl = ref_price - sl_final
+                        if dist_sl > max_dist_sl:
+                            sl_final = ref_price - max_dist_sl
+                    else:
+                        dist_sl = sl_final - ref_price
+                        if dist_sl > max_dist_sl:
+                            sl_final = ref_price + max_dist_sl
+                    # Reaplicar redondeo al paso si corresponde
+                    if step_unit == "POINTS" and step_value > 0:
+                        import math
+                        if signal_type == "BUY":
+                            dist_sl = ref_price - sl_final
+                            dist_sl = math.ceil(dist_sl / step_value) * step_value
+                            sl_final = ref_price - dist_sl
+                        else:
+                            dist_sl = sl_final - ref_price
+                            dist_sl = math.ceil(dist_sl / step_value) * step_value
+                            sl_final = ref_price + dist_sl
+            except Exception:
+                pass
+
             # TP
             tp_final = tp_price
             if tp_price is not None and ref_price is not None:
@@ -1143,6 +1264,36 @@ class TradingBot:
                         tp_final = ref_price - dist_tp
                 else:
                     tp_final = tp_base
+
+                # Clamp por instrumento (índices / FX) basado en ref_price
+                try:
+                    # No tenemos símbolo aquí; se aplicará en contexto de ejecución
+                    # Usaremos una heurística: si existe atributo 'current_signal_symbol' en self
+                    symbol = getattr(self, "current_signal_symbol", None)
+                    max_pct = self._get_tp_max_percent(symbol) if symbol else None
+                    if max_pct is not None and tp_final is not None:
+                        max_dist = ref_price * max_pct
+                        if signal_type == "BUY":
+                            dist = tp_final - ref_price
+                            if dist > max_dist:
+                                tp_final = ref_price + max_dist
+                        else:
+                            dist = ref_price - tp_final
+                            if dist > max_dist:
+                                tp_final = ref_price - max_dist
+                        # Reaplicar redondeo al paso si corresponde
+                        if step_unit == "POINTS" and step_value > 0:
+                            import math
+                            if signal_type == "BUY":
+                                dist = tp_final - ref_price
+                                dist = math.ceil(dist / step_value) * step_value
+                                tp_final = ref_price + dist
+                            else:
+                                dist = ref_price - tp_final
+                                dist = math.ceil(dist / step_value) * step_value
+                                tp_final = ref_price - dist
+                except Exception:
+                    pass
 
             stop_distance_points = None
             if sl_final is not None and ref_price is not None:
@@ -3180,9 +3331,19 @@ class TradingBot:
                 dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
                 if not dr.get("success"):
                     dr = {}
+                # Proveer símbolo actual al helper para clampeo por instrumento
+                try:
+                    self.current_signal_symbol = signal.symbol
+                except Exception:
+                    self.current_signal_symbol = None
                 sl_adj, tp_adj, stop_points = self._apply_dealing_rules_to_tp_sl(
                     signal.signal_type, bid, offer, stop_loss, take_profit, dr
                 )
+                # Limpiar símbolo temporal
+                try:
+                    self.current_signal_symbol = None
+                except Exception:
+                    pass
                 stop_loss = sl_adj
                 take_profit = tp_adj
                 self.logger.info(
