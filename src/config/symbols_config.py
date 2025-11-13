@@ -55,7 +55,7 @@ FOREX_MAJOR = [
 
 # Pares menores - Buena liquidez, mayor volatilidad
 FOREX_MINOR = [
-    "EURJPY",  # Euro/Yen - Carry trade popular
+    # "EURJPY",  # Euro/Yen - Carry trade popular (comentado por pérdidas)
     "GBPJPY",  # Libra/Yen - Muy volátil
     "EURCHF",  # Euro/Franco - Low volatility
     "AUDCAD",  # Dólar Australiano/Canadiense
@@ -64,8 +64,8 @@ FOREX_MINOR = [
 
 # Pares exóticos - Alta volatilidad, spreads más amplios
 FOREX_EXOTIC = [
-    "USDZAR",  # Dólar/Rand Sudafricano
-    "USDTRY",  # Dólar/Lira Turca - Muy volátil
+    # "USDZAR",  # Dólar/Rand Sudafricano (comentado por pérdidas)
+    # "USDTRY",  # Dólar/Lira Turca - Muy volátil (comentado por pérdidas)
     "USDSEK",  # Dólar/Corona Sueca
     "USDNOK",  # Dólar/Corona Noruega
     "USDPLN",  # Dólar/Zloty Polaco
@@ -86,7 +86,7 @@ METALS_PRECIOUS = [
 
 # Energía - Commodities energéticos
 ENERGY_COMMODITIES = [
-    "OIL_CRUDE",  # Petróleo crudo - WTI
+    # "OIL_CRUDE",  # Petróleo crudo - WTI (comentado por pérdidas)
     "OIL_BRENT",  # Petróleo Brent - Benchmark europeo
     "NATURALGAS",  # Gas natural - Energía limpia
     "GASOLINE",  # Gasolina - Derivado del petróleo
@@ -94,8 +94,8 @@ ENERGY_COMMODITIES = [
 
 # Agricultura - Soft commodities
 AGRICULTURAL = [
-    "WHEAT",  # Trigo - Commodity alimentario básico
-    "CORN",  # Maíz - Grano más comercializado
+    # "WHEAT",  # Trigo - Commodity alimentario básico (comentado por pérdidas)
+    # "CORN",  # Maíz - Grano más comercializado (comentado por pérdidas)
     "SOYBEAN",  # Soja - Proteína vegetal
     "SB",  # Azúcar - Commodity dulce
     "LRC",  # Café - Bebida global
@@ -104,8 +104,8 @@ AGRICULTURAL = [
 
 # Metales industriales
 METALS_INDUSTRIAL = [
-    "COPPER",  # Cobre - Barómetro económico
-    "ALUMINUM",  # Aluminio - Metal ligero
+    # "COPPER",  # Cobre - Barómetro económico (comentado por pérdidas)
+    # "ALUMINUM",  # Aluminio - Metal ligero (comentado por pérdidas)
     "MZN3",  # Zinc - Galvanización
     "NICKEL",  # Níquel - Baterías y acero inoxidable
 ]
@@ -117,14 +117,14 @@ METALS_INDUSTRIAL = [
 # Índices americanos
 INDICES_US = [
     "US500",  # S&P 500 - Mercado americano amplio
-    "US30",  # Dow Jones - Blue chips americanas
+    # "US30",  # Dow Jones - Blue chips americanas (comentado por pérdidas)
     "US100",  # Nasdaq 100 - Tecnología americana
 ]
 
 # Índices europeos
 INDICES_EUROPE = [
     "DE40",  # DAX - Alemania
-    "UK100",  # FTSE 100 - Reino Unido
+    # "UK100",  # FTSE 100 - Reino Unido (comentado por pérdidas)
     "FR40",  # CAC 40 - Francia
     "IT40",  # FTSE MIB - Italia
     "EU50",  # Euro Stoxx 50 - Eurozona
@@ -133,7 +133,7 @@ INDICES_EUROPE = [
 # Índices asiáticos
 INDICES_ASIA = [
     "J225",  # Nikkei 225 - Japón
-    "HK50",  # Hang Seng - Hong Kong
+    # "HK50",  # Hang Seng - Hong Kong (comentado por pérdidas)
     "AU200",  # ASX 200 - Australia
     "SG25",  # STI - Singapur
 ]
@@ -144,11 +144,11 @@ INDICES_ASIA = [
 
 # Lista principal de símbolos - Balanceada para máxima diversificación
 GLOBAL_SYMBOLS = (
-    # Criptomonedas (40% del portfolio de símbolos)
-    CRYPTO_MAJOR  # 6 símbolos - Core crypto
-    + CRYPTO_LARGE_CAP[:4]  # 4 símbolos - Growth crypto
-    + CRYPTO_EMERGING[:2]  # 2 símbolos - High risk/reward
-    +
+    # Criptomonedas (eliminadas temporalmente por rendimiento)
+    # CRYPTO_MAJOR  # 6 símbolos - Core crypto
+    # + CRYPTO_LARGE_CAP[:4]  # 4 símbolos - Growth crypto
+    # + CRYPTO_EMERGING[:2]  # 2 símbolos - High risk/reward
+    # +
     # Forex (30% del portfolio de símbolos)
     FOREX_MAJOR  # 7 símbolos - Major pairs
     + FOREX_MINOR[:3]  # 3 símbolos - Cross pairs
@@ -309,7 +309,7 @@ SYMBOL_SPECIFIC_CONFIG = {
         "liquidity": "very_high",
     },
     # === COMMODITIES ENERGÉTICOS ===
-    "OIL": {
+    "OIL_BRENT": {
         "category": "energy",
         "volatility": "high",
         "avg_daily_range": 3.2,
@@ -964,17 +964,21 @@ VOLATILITY_CATEGORIES = {
     "low": ["EURUSD", "USDCHF", "EURGBP"],  # 0.5% - 1.0%
     "medium": [
         # Forex majors estables
-        "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD",
+        "GBPUSD", # "USDJPY", # Comentado por pérdidas
+        "AUDUSD", "USDCAD", "NZDUSD",
         # Forex minors
-        "EURJPY", "AUDCAD", "AUDNZD",
+        # "EURJPY", # Comentado por pérdidas
+        "AUDCAD", "AUDNZD",
         # Metales preciosos
         "GOLD",
         # Índices estables
-        "US500", "US30", "DE40", "UK100", "FR40", "IT40", "EU50", "J225", "AU200", "SG25",
+        "US500", # "US30", # Comentado por pérdidas
+        "DE40", # "UK100", # Comentado por pérdidas
+        "FR40", "IT40", "EU50", "J225", "AU200", "SG25",
         # Metales industriales
-        "ALUMINUM",
-        # Crypto major estable
-        "BTCUSD"
+        # "ALUMINUM", # Comentado por pérdidas
+        # Crypto major estable (eliminado temporalmente)
+        # "BTCUSD"
     ],  # 1.0% - 2.0%
     "high": [
         # Forex exóticos
@@ -982,19 +986,25 @@ VOLATILITY_CATEGORIES = {
         # Metales preciosos volátiles
         "SILVER", "PLATINUM",
         # Energía
-        "OIL", "OIL_CRUDE", "OIL_BRENT", "GASOLINE",
+        # "OIL_CRUDE", # Comentado por pérdidas
+        "OIL_BRENT", "GASOLINE",
         # Agricultura
-        "WHEAT", "CORN", "SOYBEAN", "LRC", "USCOTTON",
+        # "WHEAT", # Comentado por pérdidas
+        # "CORN", # Comentado por pérdidas
+        "SOYBEAN", "LRC", "USCOTTON",
         # Metales industriales
-        "COPPER", "MZN3",
+        # "COPPER", # Comentado por pérdidas
+        "MZN3",
         # Índices volátiles
-        "US100", "HK50",
-        # Crypto majors
-        "ETHUSD", "BNBUSD", "ADAUSD", "XRPUSD", "LTCUSD"
+        "US100", # "HK50", # Comentado por pérdidas
+        # Crypto majors (eliminados temporalmente)
+        # "ETHUSD", "BNBUSD", "ADAUSD", "XRPUSD", "LTCUSD"
     ],  # 2.0% - 4.0%
     "very_high": [
         # Forex exóticos muy volátiles
-        "USDZAR", "USDTRY", "USDPLN", "USDHUF",
+        # "USDZAR", # Comentado por pérdidas
+        # "USDTRY", # Comentado por pérdidas
+        "USDPLN", "USDHUF",
         # Energía muy volátil
         "NATURALGAS",
         # Agricultura volátil
@@ -1003,66 +1013,75 @@ VOLATILITY_CATEGORIES = {
         "NICKEL",
         # Metales preciosos muy volátiles
         "PALLADIUM",
-        # Crypto large cap
-        "SOLUSD", "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD",
-        # Crypto emerging
-        "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD"
+        # Crypto large cap (eliminados temporalmente)
+        # "SOLUSD", "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD",
+        # Crypto emerging (eliminados temporalmente)
+        # "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD"
     ]  # > 4.0%
 }
 
 # Símbolos por nivel de liquidez
 LIQUIDITY_CATEGORIES = {
     "very_high": [
-        # Crypto majors con máxima liquidez
-        "BTCUSD", "ETHUSD", "XRPUSD",
+        # Crypto majors con máxima liquidez (eliminados temporalmente)
+        # "BTCUSD", "ETHUSD", "XRPUSD",
         # Forex majors
-        "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD",
+        "EURUSD", "GBPUSD", # "USDJPY", # Comentado por pérdidas
+        "USDCHF", "AUDUSD",
         # Metales preciosos principales
         "GOLD",
         # Índices principales
-        "US500", "US30", "US100",
+        "US500", # "US30", # Comentado por pérdidas
+        "US100",
         # Energía principal
-        "OIL_CRUDE"
+        # "OIL_CRUDE" # Comentado por pérdidas
     ],
     "high": [
-        # Crypto majors
-        "BNBUSD", "ADAUSD", "SOLUSD", "LTCUSD",
+        # Crypto majors (eliminados temporalmente)
+        # "BNBUSD", "ADAUSD", "SOLUSD", "LTCUSD",
         # Forex majors
         "USDCAD", "NZDUSD",
         # Forex minors principales
-        "EURJPY", "EURGBP", "GBPJPY",
+        # "EURJPY", # Comentado por pérdidas
+        "EURGBP", "GBPJPY",
         # Metales preciosos
         "SILVER",
         # Índices europeos principales
-        "DE40", "UK100", "FR40", "EU50",
+        "DE40", # "UK100", # Comentado por pérdidas
+        "FR40", "EU50",
         # Índices asiáticos principales
         "J225",
         # Energía
-        "OIL", "OIL_BRENT",
+        "OIL_BRENT",
         # Metales industriales principales
-        "COPPER"
+        # "COPPER" # Comentado por pérdidas
     ],
     "medium": [
-        # Crypto large cap
-        "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD",
+        # Crypto large cap (eliminados temporalmente)
+        # "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD",
         # Forex minors
         "AUDCAD", "AUDNZD", "EURCHF",
         # Metales preciosos
         "PLATINUM",
         # Índices secundarios
-        "IT40", "HK50", "AU200",
+        "IT40", # "HK50", # Comentado por pérdidas
+        "AU200",
         # Energía secundaria
         "NATURALGAS", "GASOLINE",
         # Agricultura principal
-        "WHEAT", "CORN", "SOYBEAN", "LRC",
+        # "WHEAT", # Comentado por pérdidas
+        # "CORN", # Comentado por pérdidas
+        "SOYBEAN", "LRC",
         # Metales industriales
-        "ALUMINUM"
+        # "ALUMINUM" # Comentado por pérdidas
     ],
     "low": [
-        # Crypto emerging
-        "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD",
+        # Crypto emerging (eliminados temporalmente)
+        # "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD",
         # Forex exóticos
-        "USDZAR", "USDTRY", "USDSEK", "USDNOK", "USDPLN", "USDHUF",
+        # "USDZAR", # Comentado por pérdidas
+        # "USDTRY", # Comentado por pérdidas
+        "USDSEK", "USDNOK", "USDPLN", "USDHUF",
         # Metales preciosos especializados
         "PALLADIUM",
         # Índices menores
@@ -1078,9 +1097,12 @@ LIQUIDITY_CATEGORIES = {
 MARKET_SESSION_SYMBOLS = {
     "asian": [
         # Forex con yen y monedas asiáticas/oceánicas
-        "USDJPY", "AUDUSD", "NZDUSD", "EURJPY", "GBPJPY", "AUDCAD", "AUDNZD",
+        # "USDJPY",  # Comentado temporalmente
+        "AUDUSD", "NZDUSD", # "EURJPY", # Comentado por pérdidas
+        "GBPJPY", "AUDCAD", "AUDNZD",
         # Índices asiáticos
-        "J225", "HK50", "AU200", "SG25"
+        "J225", # "HK50",  # Comentado por pérdidas
+        "AU200", "SG25"
     ],
     "european": [
         # Forex europeos
@@ -1090,28 +1112,36 @@ MARKET_SESSION_SYMBOLS = {
         # Metales preciosos (Londres es centro principal)
         "GOLD", "SILVER", "PLATINUM", "PALLADIUM",
         # Metales industriales (LME en Londres)
-        "COPPER", "ALUMINUM", "MZN3", "NICKEL",
+        # "COPPER", # Comentado por pérdidas
+        # "ALUMINUM", # Comentado por pérdidas
+        "MZN3", "NICKEL",
         # Índices europeos
-        "DE40", "UK100", "FR40", "IT40", "EU50"
+        "DE40", # "UK100", # Comentado por pérdidas
+        "FR40", "IT40", "EU50"
     ],
     "american": [
         # Forex con USD como base en horario americano
-        "USDCAD", "USDZAR", "USDTRY",
+        "USDCAD", # "USDZAR", # Comentado por pérdidas
+        # "USDTRY", # Comentado por pérdidas
         # Índices americanos
-        "US500", "US30", "US100",
+        "US500", # "US30", # Comentado por pérdidas
+        "US100",
         # Energía (mercados principales en NY)
-        "OIL", "OIL_CRUDE", "OIL_BRENT", "NATURALGAS", "GASOLINE",
+        # "OIL_CRUDE", # Comentado por pérdidas
+        "OIL_BRENT", "NATURALGAS", "GASOLINE",
         # Agricultura (Chicago/NY)
-        "WHEAT", "CORN", "SOYBEAN", "SB", "LRC", "USCOTTON"
+        # "WHEAT", # Comentado por pérdidas
+        # "CORN", # Comentado por pérdidas
+        "SOYBEAN", "SB", "LRC", "USCOTTON"
     ],
-    "crypto_24_7": [
-        # Crypto majors
-        "BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "ADAUSD", "SOLUSD",
-        # Crypto large cap
-        "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD", "LTCUSD",
-        # Crypto emerging
-        "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD"
-    ]
+    # "crypto_24_7": [
+    #     # Crypto majors
+    #     "BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "ADAUSD", "SOLUSD",
+    #     # Crypto large cap
+    #     "DOTUSD", "AVAXUSD", "MATICUSD", "LINKUSD", "UNIUSD", "LTCUSD",
+    #     # Crypto emerging
+    #     "ATOMUSD", "ALGOUSD", "VETUSD", "FILUSD", "SANDUSD", "MANAUSD"
+    # ]
 }
 
 # ============================================================================
@@ -1198,15 +1228,11 @@ def get_active_symbols_for_current_time() -> list:
 
     # Lógica simplificada por sesiones
     if 0 <= current_hour < 8:  # Sesión asiática
-        return get_symbols_by_session("asian") + get_symbols_by_session("crypto_24_7")
+        return get_symbols_by_session("asian")
     elif 8 <= current_hour < 16:  # Sesión europea
-        return get_symbols_by_session("european") + get_symbols_by_session(
-            "crypto_24_7"
-        )
+        return get_symbols_by_session("european")
     else:  # Sesión americana
-        return get_symbols_by_session("american") + get_symbols_by_session(
-            "crypto_24_7"
-        )
+        return get_symbols_by_session("american")
 
 
 # ============================================================================
@@ -1217,14 +1243,14 @@ def get_active_symbols_for_current_time() -> list:
 CONSERVATIVE_PORTFOLIO = (
     get_symbols_by_volatility("low")
     + get_symbols_by_volatility("medium")[:3]
-    + ["BTCUSD", "ETHUSD"]  # Core crypto
+    # + ["BTCUSD", "ETHUSD"]  # Core crypto (eliminado temporalmente)
 )
 
 # Portfolio agresivo - Alta volatilidad, mayores oportunidades
 AGGRESSIVE_PORTFOLIO = (
     get_symbols_by_volatility("high")
     + get_symbols_by_volatility("very_high")
-    + CRYPTO_EMERGING[:4]
+    # + CRYPTO_EMERGING[:4]  # Eliminado temporalmente
 )
 
 # Portfolio balanceado - Mix óptimo de riesgo/recompensa
