@@ -469,10 +469,14 @@ class PaperTrader:
                 position = self.portfolio[symbol]
                 current_quantity = position["quantity"]
 
-                # Si ya tenemos posición corta, cerrarla primero
+                # Si ya tenemos posición corta, cerrarla primero y luego abrir larga
                 if current_quantity < 0:
-                    return self._close_short_position(symbol, price)
-                # Si ya tenemos posición larga, aumentarla o cerrarla según la estrategia
+                    close_result = self._close_short_position(symbol, price)
+                    if not close_result.success:
+                        return close_result
+                    # Abrir nueva posición larga después de cerrar la corta
+                    return self._open_long_position(symbol, price)
+                # Si ya tenemos posición larga, aumentarla según la estrategia
                 elif current_quantity > 0:
                     return self._increase_long_position(symbol, price)
 
@@ -665,10 +669,14 @@ class PaperTrader:
                 position = self.portfolio[symbol]
                 current_quantity = position["quantity"]
 
-                # Si ya tenemos posición larga, cerrarla primero
+                # Si ya tenemos posición larga, cerrarla primero y luego abrir corta
                 if current_quantity > 0:
-                    return self._close_long_position(symbol, price)
-                # Si ya tenemos posición corta, aumentarla o cerrarla según la estrategia
+                    close_result = self._close_long_position(symbol, price)
+                    if not close_result.success:
+                        return close_result
+                    # Abrir nueva posición corta después de cerrar la larga
+                    return self._open_short_position(symbol, price)
+                # Si ya tenemos posición corta, aumentarla según la estrategia
                 elif current_quantity < 0:
                     return self._increase_short_position(symbol, price)
 

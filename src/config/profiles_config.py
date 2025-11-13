@@ -190,7 +190,7 @@ PROFILES = {
         "max_daily_trades_adaptive": True,  # Permite trades adicionales con alta confianza
         "daily_trades_quality_threshold": 82.0,  # Umbral para trades adicionales
         "max_daily_trades_bonus": 10,  # Máximo de trades adicionales con alta confianza (total: 35)
-        "max_positions": 15,  # Posiciones simultáneas para máxima diversificación
+        "max_positions": 5,  # Posiciones simultáneas para máxima diversificación
         # === CONFIGURACIÓN DE PAPER TRADING ===
         "max_position_size_percent": 12,  # 12% del balance por posición - OPTIMIZADO PARA MEJORES RETORNOS
         "max_total_exposure_percent": 75,  # 75% de exposición total - OPTIMIZADO PARA MEJORES RETORNOS

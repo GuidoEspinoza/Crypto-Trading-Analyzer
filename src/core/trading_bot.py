@@ -1811,11 +1811,13 @@ class TradingBot:
             base_max_trades = int(
                 self.max_daily_trades * weekend_params["max_daily_trades_multiplier"]
             )
-            # Usar límite adaptativo que permite trades adicionales para señales de alta confianza
+            # Usar el umbral de calidad del perfil para calcular el máximo adaptativo
+            profile = TradingProfiles.get_current_profile()
+            quality_threshold = profile.get("daily_trades_quality_threshold", 80.0)
             adaptive_max_trades = int(
                 TradingProfiles.get_adaptive_daily_trades_limit(
                     current_trades_count=self.stats["daily_trades"],
-                    signal_confidence=85.0,  # Usar confianza alta como referencia para el límite máximo
+                    signal_confidence=quality_threshold,
                 )
                 * weekend_params["max_daily_trades_multiplier"]
             )
@@ -2292,13 +2294,38 @@ class TradingBot:
                         )
 
                     if trade_result.success:
+                        # Siempre contar trades ejecutados y métricas por día de semana/fin de semana
                         self.stats["trades_executed"] += 1
-                        self.stats["daily_trades"] += 1
-                        # Tracking separado para fines de semana
                         if self._is_weekend_trading():
                             self.stats["weekend_trades"] += 1
                         else:
                             self.stats["weekday_trades"] += 1
+
+                        # Contar daily_trades SOLO para entradas (aperturas, incrementos y flips de dirección)
+                        post_position_dir = self._get_open_position_direction(
+                            signal.symbol
+                        )
+                        # Apertura: antes no había posición y ahora sí
+                        opened_new_position = (
+                            pre_position_dir is None and post_position_dir is not None
+                        )
+                        # Incremento: misma dirección antes y después, y existe posición
+                        increased_same_direction = (
+                            pre_position_dir == post_position_dir
+                            and post_position_dir is not None
+                        )
+                        # Flip: había posición y ahora hay en dirección opuesta
+                        flipped_direction_open = (
+                            pre_position_dir is not None
+                            and post_position_dir is not None
+                            and pre_position_dir != post_position_dir
+                        )
+                        if (
+                            opened_new_position
+                            or increased_same_direction
+                            or flipped_direction_open
+                        ):
+                            self.stats["daily_trades"] += 1
 
                         # Determinar si fue exitoso basándose en el tipo de trade y PnL real
                         trade_was_profitable = False
@@ -3414,6 +3441,63 @@ class TradingBot:
 
             # Ejecutar orden según el tipo de señal
             if signal.signal_type == "BUY":
+                # Verificar modo hedging y posición existente para posible flip
+                self.logger.info(
+                    f"🔴 Verificando modo hedging y posiciones existentes para BUY..."
+                )
+
+                preferences_result = self.capital_client.get_account_preferences()
+                hedging_mode = False
+                if preferences_result.get("success"):
+                    hedging_mode = preferences_result.get("hedging_mode", False)
+                    self.logger.info(
+                        f"🔄 Modo hedging: {'ACTIVADO' if hedging_mode else 'DESACTIVADO'}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"⚠️ No se pudo obtener preferencias de cuenta: {preferences_result.get('error')}"
+                    )
+
+                positions_result = self.capital_client.get_positions()
+                if not positions_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": f"Failed to get positions: {positions_result.get('error')}",
+                    }
+
+                open_position = None
+                for position in positions_result.get("positions", []):
+                    if position.get("market", {}).get("epic") == capital_symbol:
+                        open_position = position
+                        break
+
+                # Si existe posición SELL y no hay hedging, cerrar completamente y luego abrir BUY
+                if (
+                    open_position
+                    and not hedging_mode
+                    and str(open_position.get("position", {}).get("direction", "")).upper() == "SELL"
+                ):
+                    deal_id = open_position.get("position", {}).get("dealId")
+                    position_size = abs(
+                        float(open_position.get("position", {}).get("size", 0))
+                    )
+                    close_size = position_size  # cerrar toda la posición opuesta
+
+                    self.logger.info(
+                        f"🔴 Cerrando posición SELL existente antes de abrir BUY - Deal ID: {deal_id}, Size: {close_size}"
+                    )
+                    close_result = self.capital_client.close_position(
+                        deal_id=deal_id, direction="BUY", size=close_size
+                    )
+                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {close_result}")
+
+                    if not close_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": f"Failed to close opposite position: {close_result.get('error')}",
+                        }
+
+                # Abrir BUY (en modo hedging siempre abre; en modo normal abre tras cierre o si no había opuesta)
                 self.logger.info(f"🔴 Enviando orden BUY a Capital.com...")
                 if trailing_stop_available and trailing_distance:
                     result = self.capital_client.buy_market_order(
@@ -3474,57 +3558,65 @@ class TradingBot:
                         open_position = position
                         break
 
-                if open_position and not hedging_mode:
-                    # Solo cerrar posición existente si NO está en modo hedging
+                # Si existe posición BUY y no hay hedging, cerrar completamente y luego abrir SELL
+                if (
+                    open_position
+                    and not hedging_mode
+                    and str(open_position.get("position", {}).get("direction", "")).upper() == "BUY"
+                ):
                     deal_id = open_position.get("position", {}).get("dealId")
                     position_size = abs(
                         float(open_position.get("position", {}).get("size", 0))
                     )
-                    close_size = min(real_size, position_size)
+                    close_size = position_size  # cerrar toda la posición opuesta
 
                     self.logger.info(
-                        f"🔴 Cerrando posición existente (modo normal) - Deal ID: {deal_id}, Size: {close_size}"
+                        f"🔴 Cerrando posición BUY existente antes de abrir SELL - Deal ID: {deal_id}, Size: {close_size}"
                     )
-                    result = self.capital_client.close_position(
+                    close_result = self.capital_client.close_position(
                         deal_id=deal_id, direction="SELL", size=close_size
                     )
-                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {result}")
-                else:
-                    # Abrir nueva posición de venta (siempre en modo hedging, o si no hay posición existente)
-                    if hedging_mode and open_position:
-                        self.logger.info(
-                            f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)"
-                        )
-                    else:
-                        self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {close_result}")
 
-                    if trailing_stop_available and trailing_distance:
-                        result = self.capital_client.sell_market_order(
-                            epic=capital_symbol,
-                            size=real_size,
-                            take_profit=take_profit,
-                            trailing_stop=True,
-                            stop_distance=trailing_distance,
-                        )
+                    if not close_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": f"Failed to close opposite position: {close_result.get('error')}",
+                        }
+
+                # Abrir nueva posición SELL (en hedging siempre abre; en normal abre tras cierre o si no había opuesta)
+                if hedging_mode and open_position:
+                    self.logger.info(
+                        f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)"
+                    )
+                else:
+                    self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+
+                if trailing_stop_available and trailing_distance:
+                    result = self.capital_client.sell_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        take_profit=take_profit,
+                        trailing_stop=True,
+                        stop_distance=trailing_distance,
+                    )
+                    self.logger.info(
+                        f"🎯 SELL order with trailing stop - Distance: {trailing_distance}"
+                    )
+                else:
+                    result = self.capital_client.sell_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                    )
+                    if use_trailing_stop and not trailing_stop_available:
                         self.logger.info(
-                            f"🎯 SELL order with trailing stop - Distance: {trailing_distance}"
+                            f"🔄 SELL order with traditional stop loss (trailing stop not available)"
                         )
                     else:
-                        result = self.capital_client.sell_market_order(
-                            epic=capital_symbol,
-                            size=real_size,
-                            stop_loss=stop_loss,
-                            take_profit=take_profit,
-                        )
-                        if use_trailing_stop and not trailing_stop_available:
-                            self.logger.info(
-                                f"🔄 SELL order with traditional stop loss (trailing stop not available)"
-                            )
-                        else:
-                            self.logger.info(
-                                f"🔴 SELL order with traditional stop loss"
-                            )
-                    self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
+                        self.logger.info(f"🔴 SELL order with traditional stop loss")
+                self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
             else:
                 return {
                     "success": False,
