@@ -106,8 +106,8 @@ AGRICULTURAL = [
 METALS_INDUSTRIAL = [
     # "COPPER",  # Cobre - Barómetro económico (comentado por pérdidas)
     # "ALUMINUM",  # Aluminio - Metal ligero (comentado por pérdidas)
-    "MZN3",  # Zinc - Galvanización
-    "NICKEL",  # Níquel - Baterías y acero inoxidable
+    # "MZN3",  # Zinc - Galvanización (pausado)
+    # "NICKEL",  # Níquel - Baterías y acero inoxidable (pausado)
 ]
 
 # ============================================================================
@@ -315,7 +315,7 @@ SYMBOL_SPECIFIC_CONFIG = {
         "avg_daily_range": 3.2,
         "optimal_hours": ["14:30-21:00", "08:00-17:00"],
         "spread_typical": 0.03,
-        "min_confidence_adjustment": -2,
+        "min_confidence_adjustment": 1,
         "max_trades_multiplier": 1.1,
         "risk_level": "high",
         "liquidity": "high",
@@ -994,7 +994,7 @@ VOLATILITY_CATEGORIES = {
         "SOYBEAN", "LRC", "USCOTTON",
         # Metales industriales
         # "COPPER", # Comentado por pérdidas
-        "MZN3",
+        # "MZN3",  # Pausado
         # Índices volátiles
         "US100", # "HK50", # Comentado por pérdidas
         # Crypto majors (eliminados temporalmente)
@@ -1010,7 +1010,7 @@ VOLATILITY_CATEGORIES = {
         # Agricultura volátil
         "SB",
         # Metales industriales volátiles
-        "NICKEL",
+        # "NICKEL",  # Pausado
         # Metales preciosos muy volátiles
         "PALLADIUM",
         # Crypto large cap (eliminados temporalmente)
@@ -1089,7 +1089,7 @@ LIQUIDITY_CATEGORIES = {
         # Agricultura especializada
         "SB", "USCOTTON",
         # Metales industriales especializados
-        "MZN3", "NICKEL"
+        # "MZN3", "NICKEL"  # Pausados
     ]
 }
 
@@ -1114,7 +1114,7 @@ MARKET_SESSION_SYMBOLS = {
         # Metales industriales (LME en Londres)
         # "COPPER", # Comentado por pérdidas
         # "ALUMINUM", # Comentado por pérdidas
-        "MZN3", "NICKEL",
+        # "MZN3", "NICKEL",  # Pausados
         # Índices europeos
         "DE40", # "UK100", # Comentado por pérdidas
         "FR40", "IT40", "EU50"
