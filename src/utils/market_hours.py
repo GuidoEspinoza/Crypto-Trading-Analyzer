@@ -65,15 +65,23 @@ class MarketHoursChecker:
             # Indices
             "US100": "INDICES",
             "US500": "INDICES",
+            "UK100": "INDICES",
+            "FR40": "INDICES",
+            "HK50": "INDICES",
             "DE40": "INDICES",
             # Commodities
             "GOLD": "COMMODITIES",
             "SILVER": "COMMODITIES",
+            "COPPER": "COMMODITIES",
+            "WHEAT": "COMMODITIES",
+            "CORN": "COMMODITIES",
             "OIL_CRUDE": "COMMODITIES",
             # Forex
             "EURUSD": "FOREX",
             "GBPUSD": "FOREX",
             "USDJPY": "FOREX",
+            "NZDUSD": "FOREX",
+            "USDNOK": "FOREX",
         }
 
     def get_market_type(self, symbol: str) -> str:

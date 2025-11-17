@@ -2428,7 +2428,7 @@ class TradingBot:
 
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias a las 14:00 UTC (11:00 AM Chile convertido)
+        📅 Resetear estadísticas diarias según configuración
         """
         try:
             tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
