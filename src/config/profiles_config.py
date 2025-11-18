@@ -187,9 +187,9 @@ PROFILES = {
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
         "min_confidence": 80.0,  # Confianza mínima balanceada para intraday
         "max_daily_trades": 20,  # Límite optimizado para aprovechar diversificación de 42 símbolos
-        "max_daily_trades_adaptive": True,  # Permite trades adicionales con alta confianza
-        "daily_trades_quality_threshold": 82.0,  # Umbral para trades adicionales
-        "max_daily_trades_bonus": 10,  # Máximo de trades adicionales con alta confianza (total: 35)
+        "max_daily_trades_adaptive": False,  # Desactivado: solo trades base, sin adicionales
+        "daily_trades_quality_threshold": 82.0,  # Umbral para trades adicionales (sin uso con adaptive desactivado)
+        "max_daily_trades_bonus": 0,  # Sin trades adicionales; el límite efectivo se mantiene en 20
         "max_positions": 7,  # Posiciones simultáneas para máxima diversificación
         # === CONFIGURACIÓN DE PAPER TRADING ===
         "max_position_size_percent": 12,  # 12% del balance por posición - OPTIMIZADO PARA MEJORES RETORNOS

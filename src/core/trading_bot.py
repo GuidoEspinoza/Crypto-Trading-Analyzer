@@ -550,46 +550,30 @@ class TradingBot:
 
         # Programar reset diario exacto a la hora configurada en UTC
         try:
-            # Convertir UTC a hora local del sistema para schedule
-            try:
-                import pytz
-                
-                # Crear un datetime UTC para hoy a la hora del reset
-                utc_time = datetime.now(UTC_TZ).replace(
-                    hour=DAILY_RESET_HOUR, 
-                    minute=DAILY_RESET_MINUTE, 
-                    second=0, 
-                    microsecond=0
-                )
-                
-                # Obtener la zona horaria local del sistema (Chile)
-                local_tz = pytz.timezone('America/Santiago')
-                local_time = utc_time.astimezone(local_tz)
-                
-                # Formatear las horas para logging y scheduling
-                local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
-                utc_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+            # Convertir UTC a la zona horaria local del sistema para el scheduler
+            # El scheduler ejecuta en hora local del sistema, por lo que convertimos desde UTC
+            utc_time = datetime.now(UTC_TZ).replace(
+                hour=DAILY_RESET_HOUR,
+                minute=DAILY_RESET_MINUTE,
+                second=0,
+                microsecond=0,
+            )
 
-                # Programar el reset usando la hora local
-                schedule.every().day.at(local_time_str).do(
-                    self._reset_daily_stats_if_needed
-                ).tag("daily_reset")
-                
-                self.logger.info(
-                    f"⏰ Daily reset scheduled at {utc_time_str} UTC ({local_time_str} local Chile time)"
-                )
-                
-            except ImportError:
-                # Fallback si pytz no está disponible
-                reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
-                schedule.every().day.at(reset_time_str).do(
-                    self._reset_daily_stats_if_needed
-                ).tag("daily_reset")
-                
-                self.logger.warning(
-                    f"⚠️ pytz not available, using system timezone. Daily reset scheduled at {reset_time_str}"
-                )
-                
+            system_local_tz = datetime.now().astimezone().tzinfo
+            local_time = utc_time.astimezone(system_local_tz)
+            local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
+            utc_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+            local_tz_name = getattr(system_local_tz, "key", getattr(system_local_tz, "zone", str(system_local_tz)))
+
+            # Programar el reset usando la hora local del sistema
+            schedule.every().day.at(local_time_str).do(
+                self._reset_daily_stats_if_needed
+            ).tag("daily_reset")
+
+            self.logger.info(
+                f"⏰ Daily reset scheduled at {utc_time_str} UTC ({local_time_str} {local_tz_name} local time)"
+            )
+
         except Exception as e:
             self.logger.warning(f"⚠️ Could not schedule daily reset: {e}")
 
@@ -3886,45 +3870,28 @@ class TradingBot:
             if utc_reset_hour < 0:
                 utc_reset_hour += 24
 
-            # Convertir UTC a hora local del sistema para schedule
-            try:
-                import pytz
-                
-                # Crear un datetime UTC para hoy a la hora del pre-reset
-                utc_time = datetime.now(UTC_TZ).replace(
-                    hour=utc_reset_hour, 
-                    minute=utc_reset_minute, 
-                    second=0, 
-                    microsecond=0
-                )
-                
-                # Obtener la zona horaria local del sistema (Chile)
-                local_tz = pytz.timezone('America/Santiago')
-                local_time = utc_time.astimezone(local_tz)
-                
-                # Formatear las horas para logging y scheduling
-                local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
-                utc_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
+            # Convertir UTC a la zona horaria local del sistema para el scheduler
+            utc_time = datetime.now(UTC_TZ).replace(
+                hour=utc_reset_hour,
+                minute=utc_reset_minute,
+                second=0,
+                microsecond=0,
+            )
 
-                # Programar el cierre automático usando la hora local
-                schedule.every().day.at(local_time_str).do(
-                    self._execute_pre_reset_profit_taking
-                ).tag("pre_reset_profit_taking")
+            system_local_tz = datetime.now().astimezone().tzinfo
+            local_time = utc_time.astimezone(system_local_tz)
+            local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
+            utc_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
+            local_tz_name = getattr(system_local_tz, "key", getattr(system_local_tz, "zone", str(system_local_tz)))
 
-                self.logger.info(
-                    f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC ({local_time_str} local Chile time) - 15 minutes before reset"
-                )
-                
-            except ImportError:
-                # Fallback si pytz no está disponible
-                pre_reset_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
-                schedule.every().day.at(pre_reset_time_str).do(
-                    self._execute_pre_reset_profit_taking
-                ).tag("pre_reset_profit_taking")
-                
-                self.logger.warning(
-                    f"⚠️ pytz not available, using system timezone. Pre-reset scheduled at {pre_reset_time_str}"
-                )
+            # Programar el cierre automático usando la hora local
+            schedule.every().day.at(local_time_str).do(
+                self._execute_pre_reset_profit_taking
+            ).tag("pre_reset_profit_taking")
+
+            self.logger.info(
+                f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC ({local_time_str} {local_tz_name} local time) - 15 minutes before reset"
+            )
 
         except Exception as e:
             self.logger.error(f"❌ Error scheduling pre-reset profit taking: {e}")
@@ -3935,19 +3902,13 @@ class TradingBot:
         """
         try:
             # Mostrar la hora actual en UTC y local para claridad
-            try:
-                import pytz
-                
-                utc_now = datetime.now(UTC_TZ)
-                local_tz = pytz.timezone('America/Santiago')
-                local_now = utc_now.astimezone(local_tz)
-                
-                self.logger.info(
-                    f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
-                    f"({local_now.strftime('%H:%M:%S')} Chile time)..."
-                )
-            except ImportError:
-                self.logger.info("🎯 Executing pre-reset profit taking...")
+            utc_now = datetime.now(UTC_TZ)
+            local_now = utc_now.astimezone(datetime.now().astimezone().tzinfo)
+            local_tz_name = getattr(local_now.tzinfo, "key", getattr(local_now.tzinfo, "zone", str(local_now.tzinfo)))
+            self.logger.info(
+                f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
+                f"({local_now.strftime('%H:%M:%S')} {local_tz_name} local time)..."
+            )
 
             # Cerrar posiciones con UPL > 1 USD
             result = self.close_profitable_positions(min_profit=1.0)
