@@ -1290,9 +1290,11 @@ class TradingBot:
         except Exception:
             return sl_price, tp_price, None
 
-    def _check_max_positions_limit(self) -> bool:
+    def _check_max_positions_limit(self, symbol: str | None = None) -> bool:
         """
-        🛡️ Verificar si se puede abrir una nueva posición según el límite max_positions
+        🛡️ Verificar si se puede abrir una nueva posición según:
+        - Límite global `max_positions`
+        - Límite por símbolo `max_positions_per_symbol` (si se provee `symbol`)
 
         Returns:
             bool: True si se puede abrir nueva posición, False si se alcanzó el límite
@@ -1303,6 +1305,9 @@ class TradingBot:
             max_positions = current_profile.get(
                 "max_positions", 8
             )  # Default 8 si no está configurado
+            max_positions_per_symbol = current_profile.get(
+                "max_positions_per_symbol", None
+            )
 
             # Contar posiciones abiertas usando Capital.com
             if self.capital_client and self.enable_real_trading:
@@ -1312,10 +1317,26 @@ class TradingBot:
                 if positions_result.get("success"):
                     open_positions = positions_result.get("positions", [])
                     current_positions_count = len(open_positions)
+                    # Conteo por símbolo si aplica
+                    symbol_count = None
+                    if symbol and max_positions_per_symbol is not None:
+                        try:
+                            symbol_count = sum(
+                                1
+                                for pos in open_positions
+                                if pos.get("market", {}).get("epic") == symbol
+                                or pos.get("market", {}).get("instrumentName") == symbol
+                            )
+                        except Exception:
+                            symbol_count = None
 
                     self.logger.info(
                         f"📊 Posiciones abiertas: {current_positions_count}/{max_positions}"
                     )
+                    if symbol_count is not None:
+                        self.logger.info(
+                            f"📊 Posiciones en {symbol}: {symbol_count}/{max_positions_per_symbol}"
+                        )
 
                     # Log detalle de posiciones si hay alguna
                     if open_positions:
@@ -1342,7 +1363,12 @@ class TradingBot:
                                 f"   ... y {len(open_positions) - 5} posiciones más"
                             )
 
-                    return current_positions_count < max_positions
+                    # Validar límites
+                    if current_positions_count >= max_positions:
+                        return False
+                    if symbol_count is not None and symbol_count >= max_positions_per_symbol:
+                        return False
+                    return True
                 else:
                     self.logger.warning(
                         f"⚠️ No se pudo obtener posiciones de Capital.com: {positions_result.get('error')}"
@@ -1353,10 +1379,23 @@ class TradingBot:
                 # Para paper trading, usar el paper trader
                 paper_positions = self.paper_trader.get_open_positions()
                 current_positions_count = len(paper_positions)
+                # Conteo por símbolo si aplica
+                symbol_count = None
+                if symbol and max_positions_per_symbol is not None:
+                    try:
+                        symbol_count = sum(
+                            1 for pos in paper_positions if pos.get("symbol") == symbol
+                        )
+                    except Exception:
+                        symbol_count = None
 
                 self.logger.info(
                     f"📊 Posiciones paper: {current_positions_count}/{max_positions}"
                 )
+                if symbol_count is not None:
+                    self.logger.info(
+                        f"📊 Posiciones paper en {symbol}: {symbol_count}/{max_positions_per_symbol}"
+                    )
 
                 # Log detalle de posiciones paper si hay alguna
                 if paper_positions:
@@ -1374,7 +1413,12 @@ class TradingBot:
                             f"   ... y {len(paper_positions) - 5} posiciones más"
                         )
 
-                return current_positions_count < max_positions
+                # Validar límites
+                if current_positions_count >= max_positions:
+                    return False
+                if symbol_count is not None and symbol_count >= max_positions_per_symbol:
+                    return False
+                return True
 
         except Exception as e:
             self.logger.error(f"❌ Error verificando límite de posiciones: {e}")
@@ -2144,8 +2188,8 @@ class TradingBot:
                         )
                     break
 
-                # CRÍTICO: Verificar límite de posiciones simultáneas
-                if not self._check_max_positions_limit():
+                # CRÍTICO: Verificar límite de posiciones simultáneas (global y por símbolo)
+                if not self._check_max_positions_limit(symbol=signal.symbol):
                     self.logger.info("⏸️ Maximum positions limit reached")
                     break
 
