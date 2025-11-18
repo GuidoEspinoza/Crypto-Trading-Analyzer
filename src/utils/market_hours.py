@@ -22,7 +22,7 @@ class MarketHoursChecker:
         self.ny_tz = pytz.timezone("America/New_York")
         self.london_tz = pytz.timezone("Europe/London")
 
-        # Horarios de mercado por tipo de activo
+        # Horarios de mercado por tipo de activo (fallback por tipo)
         self.market_hours = {
             "FOREX": {
                 "timezone": self.utc,
@@ -41,8 +41,8 @@ class MarketHoursChecker:
             "INDICES": {
                 "timezone": self.ny_tz,
                 "days": [0, 1, 2, 3, 4],  # Lunes a Viernes
-                "open_time": time(9, 30),  # 9:30 AM EST
-                "close_time": time(16, 0),  # 4:00 PM EST
+                "open_time": time(9, 30),  # 9:30 AM New York
+                "close_time": time(16, 0),  # 16:00 New York
                 "always_open": False,
             },
             "COMMODITIES": {
@@ -84,6 +84,58 @@ class MarketHoursChecker:
             "USDNOK": "FOREX",
         }
 
+        # Horarios específicos por símbolo para índices (sesión principal de cada mercado)
+        # Estos override se aplican antes del fallback por tipo
+        self.symbol_specific_hours = {
+            # USA
+            "US100": {
+                "timezone": self.ny_tz,
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 30),
+                "close_time": time(16, 0),
+                "always_open": False,
+            },
+            "US500": {
+                "timezone": self.ny_tz,
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 30),
+                "close_time": time(16, 0),
+                "always_open": False,
+            },
+            # Reino Unido
+            "UK100": {
+                "timezone": self.london_tz,
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(8, 0),   # 08:00 London
+                "close_time": time(16, 30),  # 16:30 London
+                "always_open": False,
+            },
+            # Alemania (Xetra)
+            "DE40": {
+                "timezone": pytz.timezone("Europe/Berlin"),
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 0),   # 09:00 Berlin
+                "close_time": time(17, 30),  # 17:30 Berlin
+                "always_open": False,
+            },
+            # Francia (Euronext Paris)
+            "FR40": {
+                "timezone": pytz.timezone("Europe/Paris"),
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 0),   # 09:00 Paris
+                "close_time": time(17, 30),  # 17:30 Paris
+                "always_open": False,
+            },
+            # Hong Kong (HKEX) - simplificado sin pausa de mediodía
+            "HK50": {
+                "timezone": pytz.timezone("Asia/Hong_Kong"),
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 30),   # 09:30 HKT
+                "close_time": time(16, 0),  # 16:00 HKT
+                "always_open": False,
+            },
+        }
+
     def get_market_type(self, symbol: str) -> str:
         """
         Obtener el tipo de mercado para un símbolo
@@ -113,7 +165,8 @@ class MarketHoursChecker:
             current_time = datetime.now(self.utc)
 
         market_type = self.get_market_type(symbol)
-        market_config = self.market_hours[market_type]
+        # Config por símbolo si existe, si no, fallback por tipo
+        market_config = self.symbol_specific_hours.get(symbol, self.market_hours[market_type])
 
         # Si el mercado está siempre abierto (Crypto, Forex)
         if market_config["always_open"]:
@@ -145,12 +198,12 @@ class MarketHoursChecker:
         if open_time <= current_time_only <= close_time:
             return (
                 True,
-                f"{market_type} market is open ({open_time} - {close_time} {market_tz.zone})",
+                f"{market_type} market is open ({open_time} - {close_time} {market_tz.zone}) | now {local_time.strftime('%H:%M:%S')} {market_tz.zone} / {current_time.strftime('%H:%M:%S')} UTC",
             )
         else:
             return (
                 False,
-                f"{market_type} market is closed (opens at {open_time} {market_tz.zone})",
+                f"{market_type} market is closed (opens at {open_time} {market_tz.zone}) | now {local_time.strftime('%H:%M:%S')} {market_tz.zone} / {current_time.strftime('%H:%M:%S')} UTC",
             )
 
     def get_market_status_summary(self, symbols: list) -> Dict[str, Dict]:
@@ -222,8 +275,9 @@ class MarketHoursChecker:
                 else:
                     closed_markets.append(market_type)
             else:
-                # Para INDICES y COMMODITIES, verificar horario de NY
+                # Para INDICES y COMMODITIES, verificar horario de NY (resumen general)
                 ny_time = current_time.astimezone(self.ny_tz)
+                weekday = ny_time.weekday()
                 current_time_only = ny_time.time()
 
                 if weekday < 5 and time(9, 30) <= current_time_only <= time(16, 0):
