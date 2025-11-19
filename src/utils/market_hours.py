@@ -260,20 +260,13 @@ class MarketHoursChecker:
         open_markets = []
         closed_markets = []
 
-        # Verificar cada tipo de mercado
-        market_types = ["FOREX", "CRYPTO", "INDICES", "COMMODITIES"]
+        # Verificar cada tipo de mercado (sin FOREX en core)
+        market_types = ["CRYPTO", "INDICES", "COMMODITIES"]
 
         for market_type in market_types:
             if market_type == "CRYPTO":
                 # Crypto siempre está abierto
                 open_markets.append(market_type)
-            elif market_type == "FOREX":
-                # Verificar horario de Forex (24/5)
-                weekday = current_time.weekday()
-                if weekday < 5:  # Lunes a Viernes
-                    open_markets.append(market_type)
-                else:
-                    closed_markets.append(market_type)
             else:
                 # Para INDICES y COMMODITIES, verificar horario de NY (resumen general)
                 ny_time = current_time.astimezone(self.ny_tz)

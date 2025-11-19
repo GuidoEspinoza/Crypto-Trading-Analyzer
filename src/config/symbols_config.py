@@ -24,19 +24,13 @@ CRYPTO_EMERGING = []
 # ============================================================================
 
 # Pares mayores - Máxima liquidez, spreads bajos
-FOREX_MAJOR = [
-    "EURUSD",
-    "USDJPY",
-    "NZDUSD",
-]
+FOREX_MAJOR = []
 
 # Pares menores - Buena liquidez, mayor volatilidad
 FOREX_MINOR = []
 
 # Pares exóticos - Alta volatilidad, spreads más amplios
-FOREX_EXOTIC = [
-    "USDNOK",
-]
+FOREX_EXOTIC = []
 
 # ============================================================================
 # 🥇 COMMODITIES - MATERIAS PRIMAS Y METALES PRECIOSOS
@@ -85,14 +79,12 @@ INDICES_ASIA = [
 # 🎯 CONFIGURACIÓN GLOBAL OPTIMIZADA
 # ============================================================================
 
-# Portafolio core definitivo (v1), basado en rendimiento y ejecución reciente
+# Portafolio core definitivo (v1) sin forex: índices, metales y commodities
 CORE_SYMBOLS_V1 = [
     # Metales
     "GOLD",
     # Índices
     "US500", "UK100", "FR40", "HK50",
-    # Forex
-    "EURUSD", "USDJPY", "USDNOK", "NZDUSD",
     # Commodities
     "COPPER", "CORN", "WHEAT",
 ]
@@ -102,50 +94,6 @@ GLOBAL_SYMBOLS = CORE_SYMBOLS_V1
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
 SYMBOL_SPECIFIC_CONFIG_CORE = {
-    "EURUSD": {
-        "category": "forex_major",
-        "volatility": "low",
-        "avg_daily_range": 0.8,
-        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
-        "spread_typical": 0.0001,
-        "min_confidence_adjustment": 5,
-        "max_trades_multiplier": 0.8,
-        "risk_level": "low",
-        "liquidity": "very_high",
-    },
-    "USDJPY": {
-        "category": "forex_major",
-        "volatility": "medium",
-        "avg_daily_range": 1.0,
-        "optimal_hours": ["00:00-09:00", "13:00-22:00"],
-        "spread_typical": 0.001,
-        "min_confidence_adjustment": 3,
-        "max_trades_multiplier": 0.9,
-        "risk_level": "medium",
-        "liquidity": "very_high",
-    },
-    "NZDUSD": {
-        "category": "forex_major",
-        "volatility": "medium",
-        "avg_daily_range": 1.3,
-        "optimal_hours": ["22:00-08:00"],
-        "spread_typical": 0.0003,
-        "min_confidence_adjustment": 1,
-        "max_trades_multiplier": 1.0,
-        "risk_level": "medium",
-        "liquidity": "high",
-    },
-    "USDNOK": {
-        "category": "forex_exotic",
-        "volatility": "high",
-        "avg_daily_range": 1.9,
-        "optimal_hours": ["08:00-17:00"],
-        "spread_typical": 0.006,
-        "min_confidence_adjustment": -2,
-        "max_trades_multiplier": 1.1,
-        "risk_level": "medium_high",
-        "liquidity": "low",
-    },
     "GOLD": {
         "category": "metals_precious",
         "volatility": "medium",
@@ -243,21 +191,19 @@ SYMBOL_SPECIFIC_CONFIG = SYMBOL_SPECIFIC_CONFIG_CORE
 MARKET_SESSION_SYMBOLS = {
     "asian": [
         "HK50",
-        "USDJPY",
-        "NZDUSD",
+        "GOLD",
     ],
     "european": [
-        "EURUSD",
-        "USDNOK",
-        "GOLD",
-        "COPPER",
         "UK100",
         "FR40",
+        "GOLD",
+        "COPPER",
     ],
     "american": [
         "US500",
         "CORN",
         "WHEAT",
+        "GOLD",
     ],
 }
 
@@ -297,17 +243,17 @@ def get_symbol_config(symbol: str) -> dict:
 # Esto evita referencias a símbolos fuera del core aunque existan definiciones históricas arriba.
 VOLATILITY_CATEGORIES = {
     "very_low": [],
-    "low": ["EURUSD"],
-    "medium": ["USDJPY", "NZDUSD", "GOLD", "US500", "UK100", "FR40"],
-    "high": ["USDNOK", "HK50", "COPPER", "CORN", "WHEAT"],
+    "low": [],
+    "medium": ["GOLD", "US500", "UK100", "FR40"],
+    "high": ["HK50", "COPPER", "CORN", "WHEAT"],
     "very_high": [],
 }
 
 LIQUIDITY_CATEGORIES = {
-    "very_high": ["EURUSD", "USDJPY", "GOLD", "US500"],
-    "high": ["NZDUSD", "UK100", "FR40", "COPPER"],
+    "very_high": ["GOLD", "US500"],
+    "high": ["UK100", "FR40", "COPPER"],
     "medium": ["HK50", "CORN", "WHEAT"],
-    "low": ["USDNOK"],
+    "low": [],
 }
 
 def get_symbols_by_volatility(volatility_level: str) -> list:

@@ -301,9 +301,8 @@ def _get_symbols_by_category(category_type: str) -> list:
         return crypto_symbols
     
     elif category_type == "forex":
-        # Obtener todos los símbolos forex de GLOBAL_SYMBOLS
-        forex_symbols = FOREX_MAJOR + FOREX_MINOR[:3] + FOREX_EXOTIC[:2]
-        return forex_symbols
+        # Forex deshabilitado en core: no retornar símbolos
+        return []
     
     elif category_type == "commodities":
         # Obtener todos los símbolos commodities de GLOBAL_SYMBOLS
@@ -344,27 +343,19 @@ MARKET_SPECIFIC_CONFIG = {
         "min_confidence_adjustment": -5.0,  # Reducir 5% confianza mínima (más oportunidades)
         "max_trades_multiplier": 1.3,  # 30% más trades permitidos
     },
+    # Forex deshabilitado explícitamente en el portafolio CORE
     "forex": {
         "high_volatility_hours": {
-            # Horarios de mayor volatilidad para forex
-            "london_open": {
-                "start": time(8, 0),
-                "end": time(10, 0),
-            },  # Apertura Londres
-            "ny_open": {
-                "start": time(14, 0),
-                "end": time(16, 0),
-            },  # Apertura Nueva York
-            "london_ny_overlap": {
-                "start": time(14, 0),
-                "end": time(17, 0),
-            },  # Overlap principal
-            "asian_close": {"start": time(7, 0), "end": time(9, 0)},  # Cierre asiático
+            # Mantener estructura por compatibilidad, pero no activar recomendaciones
+            "london_open": {"start": time(8, 0), "end": time(10, 0)},
+            "ny_open": {"start": time(14, 0), "end": time(16, 0)},
+            "london_ny_overlap": {"start": time(14, 0), "end": time(17, 0)},
+            "asian_close": {"start": time(7, 0), "end": time(9, 0)},
         },
-        # Usar símbolos principales de forex desde GLOBAL_SYMBOLS
-        "optimal_symbols": FOREX_MAJOR[:4],  # Top 4 pares mayores
-        "min_confidence_adjustment": 0.0,  # Sin ajuste (mantener estándar)
-        "max_trades_multiplier": 1.0,  # Sin multiplicador
+        # No sugerir ni permitir símbolos FX
+        "optimal_symbols": [],
+        "min_confidence_adjustment": 0.0,
+        "max_trades_multiplier": 0.0,
     },
     "commodities": {
         "high_volatility_hours": {
@@ -748,9 +739,9 @@ def get_smart_trading_status_summary() -> dict:
         # Estado general
         general_status = is_smart_trading_hours_allowed()
 
-        # Estado por tipo de mercado
+        # Estado por tipo de mercado (excluye forex en core)
         market_statuses = {}
-        for market_type in ["crypto", "forex", "indices", "stocks_us"]:
+        for market_type in ["crypto", "indices", "stocks_us"]:
             market_statuses[market_type] = is_smart_trading_hours_allowed(
                 f"sample_{market_type}"
             )
@@ -786,7 +777,8 @@ def get_market_specific_config(symbol: str) -> dict:
         dict: Configuración específica del mercado
     """
     market_type = _detect_market_type(symbol)
-    return MARKET_SPECIFIC_CONFIG.get(market_type, MARKET_SPECIFIC_CONFIG["forex"])
+    # Fallback seguro: usar configuración de índices en lugar de forex
+    return MARKET_SPECIFIC_CONFIG.get(market_type, MARKET_SPECIFIC_CONFIG["indices"])
 
 
 def is_high_volatility_session(current_time: time = None) -> dict:

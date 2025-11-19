@@ -6,7 +6,7 @@
 
 ### 🚀 ¿Qué hace exactamente?
 
-El bot **observa constantemente** los precios de activos financieros seleccionados (Oro, Bitcoin, Ethereum, Euro-Dolar y S&P500) y **busca oportunidades de trading** basándose en patrones técnicos probados. Cuando encuentra una oportunidad con alta probabilidad de éxito, **abre una posición automáticamente** con límites de ganancia y pérdida predefinidos.
+El bot **observa constantemente** los precios de un portafolio core sin Forex, compuesto por **Oro, S&P500 (US500), UK100, CAC40 (FR40), Hang Seng 50 (HK50), Cobre (COPPER), Maíz (CORN) y Trigo (WHEAT)**, y **busca oportunidades de trading** basándose en patrones técnicos probados. Cuando encuentra una oportunidad con alta probabilidad de éxito, **abre una posición automáticamente** con límites de ganancia y pérdida predefinidos.
 
 ## 🧠 ¿Cómo funciona la inteligencia del bot?
 
@@ -67,7 +67,6 @@ El bot utiliza varios "ojos" para ver el mercado:
 
 ### 🕒 Horarios por tipo de mercado (resumen)
 - `CRYPTO`: abierto `24/7` (UTC).
-- `FOREX`: abierto `24/5` (cierra sábado y reabre domingo `22:00 UTC`).
 - `INDICES` (NY): `09:30` → `16:00` `America/New_York`, lunes a viernes.
 - `COMMODITIES` (NY): `09:00` → `17:00` `America/New_York`, lunes a viernes.
 
@@ -114,20 +113,21 @@ curl http://localhost:8000/bot/config | python3 -m json.tool
 
 ## 💎 Activos Seleccionados (Configuración Base)
 
-### ¿Por qué estos 5 activos específicos?
+### Portafolio Core (8 activos)
 
 **🥇 Metales Preciosos**
 - **GOLD**: Refugio de valor tradicional, alta liquidez, estabilidad en crisis
 
-**💰 Criptomonedas**
-- **BTCUSD**: El "oro digital", líder del mercado crypto, alta volatilidad
-- **ETHUSD**: Ecosistema tecnológico robusto, segunda criptomoneda más importante
-
-**💱 Forex**
-- **EURUSD**: Par de divisas más líquido del mundo, volatilidad predecible
-
 **📊 Índices**
-- **US500**: S&P 500, representa el mercado estadounidense, alta volatilidad en aperturas
+- **US500**: S&P 500, representa el mercado estadounidense
+- **UK100**: FTSE 100, exposición a mercado británico
+- **FR40**: CAC 40, principales empresas francesas
+- **HK50**: Hang Seng 50, mercado asiático de Hong Kong
+
+**🌾 Commodities**
+- **COPPER**: Indicador económico cíclico, alta sensibilidad a crecimiento
+- **CORN**: Commodity agrícola con estacionalidad marcada
+- **WHEAT**: Commodity agrícola, buena diversificación
 
 ### 🎯 Ventajas de esta Selección Base
 - **Diversificación inteligente**: Cuatro clases de activos con comportamientos diferentes
@@ -138,6 +138,7 @@ curl http://localhost:8000/bot/config | python3 -m json.tool
 
 ### ⚙️ Configuración Flexible
 > **Nota importante**: Esta es la configuración base del bot. Puedes modificar los activos desde el endpoint de configuración sin necesidad de reiniciar el sistema. El bot está diseñado para adaptarse a cualquier combinación de activos que prefieras.
+> Por defecto, **Forex está deshabilitado** y el portafolio core **no incluye Crypto**; puedes habilitar Crypto de forma opcional si deseas operar 24/7.
 
 ## 📈 ¿Qué puedes esperar?
 

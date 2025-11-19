@@ -28,7 +28,6 @@ Notas importantes:
 
 | Activo | Horario UTC | Chile Verano (CLST) | Chile Invierno (CLT) |
 |---|---|---|---|
-| Forex | 24/5 (Dom 22:00 – Vie 22:00) | Dom 19:00 – Vie 19:00 | Dom 18:00 – Vie 18:00 |
 | Crypto | 24/7 | 24/7 | 24/7 |
 | Índices EE. UU. (mercado cash) | EDT: 13:30–20:00 / EST: 14:30–21:00 | CLST: 10:30–17:00 (EDT) / 11:30–18:00 (EST) | CLT: 09:30–16:00 (EDT) / 10:30–17:00 (EST) |
 | Commodities EE. UU. | EDT: 13:00–21:00 / EST: 14:00–22:00 | CLST: 10:00–18:00 (EDT) / 11:00–19:00 (EST) | CLT: 09:00–17:00 (EDT) / 10:00–18:00 (EST) |
@@ -53,3 +52,4 @@ Notas importantes:
 - Los horarios “cruza medianoche” implican que el rango se divide en dos tramos al observarse en hora local de Chile.
 - La ejecución real del bot considera además filtros de coherencia, calidad y riesgo; estos horarios reflejan ventanas potenciales, no garantías de trade.
 - En fin de semana, el perfil `SCALPING` puede operar crypto con parámetros ajustados según `SCALPING_WEEKEND_TRADING`.
+- El bot tiene Forex deshabilitado por defecto y no lo incluye en resúmenes ni selección de símbolos.

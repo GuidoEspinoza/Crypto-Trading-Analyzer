@@ -163,6 +163,13 @@ def main():
     bot.enable_real_trading = False
     bot.enable_trading = True
 
+    # Resetear el portfolio del PaperTrader para limpieza total de posiciones previas
+    try:
+        bot.paper_trader.reset_portfolio()
+        print("🔄 PaperTrader portfolio reset for clean test run.")
+    except Exception as e:
+        print(f"⚠️ Could not reset PaperTrader portfolio: {e}")
+
     # Desactivar horarios inteligentes para permitir análisis inmediato en pruebas
     try:
         SMART_TRADING_HOURS["enabled"] = False

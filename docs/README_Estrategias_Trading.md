@@ -446,7 +446,7 @@ def test_breakout_strategy():
     strategy = BreakoutProfessional()
     # Mock data
     df = create_test_data_with_triangle_pattern()
-    signal = strategy.analyze("BTCUSD")
+signal = strategy.analyze("GOLD")
     assert signal.signal_type == "BUY"
     assert signal.confidence_score > 70
 ```

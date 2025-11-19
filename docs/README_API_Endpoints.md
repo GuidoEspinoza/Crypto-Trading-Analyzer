@@ -255,7 +255,7 @@ http://localhost:8000
       "requirements": ["Additional security", "Real money management"]
     },
     "supported_exchanges": ["Capital.com"],
-    "supported_instruments": ["Forex", "Commodities", "Crypto", "Indices"]
+    "supported_instruments": ["Commodities", "Indices", "Crypto (opcional)"]
   },
   "timestamp": "2025-01-XX..."
 }
@@ -343,9 +343,9 @@ http://localhost:8000
 ```json
 {
   "status": "success",
-  "current_symbols": ["GOLD", "SILVER", "BTCUSD", "ETHUSD"],
-  "total_symbols": 4,
-  "available_symbols": ["GOLD", "SILVER", "COPPER", "BTCUSD", "ETHUSD", "LTCUSD"],
+  "current_symbols": ["GOLD", "US500", "UK100", "FR40", "HK50", "COPPER", "CORN", "WHEAT"],
+  "total_symbols": 8,
+  "available_symbols": ["GOLD", "US500", "UK100", "FR40", "HK50", "COPPER", "CORN", "WHEAT"],
   "timestamp": "2025-01-XX..."
 }
 ```
@@ -356,7 +356,7 @@ http://localhost:8000
 **Modelo de Datos**: `SymbolsUpdate`
 ```json
 {
-  "symbols": ["GOLD", "SILVER", "BTCUSD", "ETHUSD"],
+  "symbols": ["GOLD", "US500", "UK100", "FR40", "HK50", "COPPER", "CORN", "WHEAT"],
   "restart_bot": true
 }
 ```
