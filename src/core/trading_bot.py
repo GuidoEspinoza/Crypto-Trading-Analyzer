@@ -2642,7 +2642,16 @@ class TradingBot:
                     status.successful_trades / max(1, status.total_trades_executed)
                 )
                 * 100,
-                "daily_trades": self.stats["daily_trades"],
+                # Mostrar daily_trades como trades realmente ejecutados hoy
+                # (separado por fin de semana vs semana laboral)
+                "daily_trades": (
+                    self.stats.get("weekend_trades", 0)
+                    if datetime.now(UTC_TZ).strftime("%A").lower() in [
+                        "saturday",
+                        "sunday",
+                    ]
+                    else self.stats.get("weekday_trades", 0)
+                ),
                 "daily_limit": self.max_daily_trades,
                 "weekday_stats": {
                     "signals_generated": self.stats.get("weekday_signals", 0),
