@@ -305,8 +305,8 @@ def _get_symbols_by_category(category_type: str) -> list:
         return []
     
     elif category_type == "commodities":
-        # Obtener todos los símbolos commodities de GLOBAL_SYMBOLS
-        commodities_symbols = METALS_PRECIOUS + ENERGY_COMMODITIES[:2] + AGRICULTURAL[:2] + METALS_INDUSTRIAL[:2]
+        # Portafolio actual: sólo metales preciosos (GOLD)
+        commodities_symbols = METALS_PRECIOUS
         return commodities_symbols
     
     elif category_type == "indices":
@@ -374,8 +374,8 @@ MARKET_SPECIFIC_CONFIG = {
             },  # Actividad general
             "agri_active": {"start": time(13, 30), "end": time(18, 30)},  # Activos agrícolas (CBOT día) ventana aproximada en UTC
         },
-        # Usar símbolos principales de commodities desde GLOBAL_SYMBOLS
-        "optimal_symbols": METALS_PRECIOUS + ENERGY_COMMODITIES[:2] + METALS_INDUSTRIAL[:1],  # Metales preciosos + energía + industrial
+        # Usar sólo metales preciosos (portafolio actual: GOLD)
+        "optimal_symbols": METALS_PRECIOUS,
         "min_confidence_adjustment": 2.0,  # Aumentar 2% confianza (más conservador)
         "max_trades_multiplier": 0.8,  # 20% menos trades (más selectivo)
     },

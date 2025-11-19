@@ -58,6 +58,80 @@ def build_summary(bot: TradingBot, cycles_run: int) -> dict:
     paper_stats = paper.get_statistics()
     trade_history = paper.get_trade_history()
 
+    # Métricas del tope diario desde el bot
+    bot_daily_cap = {
+        "mode": getattr(bot, "daily_profit_cap_mode", "equity"),
+        "max_daily_profit_percent": getattr(bot, "max_daily_profit_percent", 0.0),
+        "baseline_capital": getattr(bot, "daily_start_value", None),
+        "baseline_fonds": getattr(bot, "daily_start_funds", None),
+        "pause_active": getattr(bot, "daily_pause_active", False),
+    }
+
+    # Cálculo explícito de porcentajes para modo compuesto
+    try:
+        baseline_capital = bot_daily_cap.get("baseline_capital")
+        baseline_fonds = bot_daily_cap.get("baseline_fonds")
+
+        current_equity = portfolio_summary.get("total_value")
+        current_funds = portfolio_summary.get("funds_balance")
+
+        def _pct(current, baseline):
+            try:
+                if baseline is None or baseline == 0:
+                    return None
+                return ((float(current) - float(baseline)) / float(baseline)) * 100.0
+            except Exception:
+                return None
+
+        equity_pct = _pct(current_equity, baseline_capital)
+        realized_pct = _pct(current_funds, baseline_fonds)
+
+        # pnl% del portfolio (ya normalizado por el PaperTrader); si falta, calcularlo
+        pnl_pct = portfolio_summary.get("total_pnl_percentage")
+        if pnl_pct is None:
+            pnl = portfolio_summary.get("total_pnl")
+            # Si no hay baseline capital, intentar usar initial_balance del portfolio
+            baseline_for_pnl = portfolio_summary.get("initial_balance") or baseline_capital or baseline_fonds
+            pnl_pct = _pct(float(baseline_for_pnl) + float(pnl or 0.0), baseline_for_pnl)
+
+        # Determinar métrica que predomina (para composite_or)
+        candidates = {
+            "equity_pct": equity_pct,
+            "pnl_pct": pnl_pct,
+            "realized_pct": realized_pct,
+        }
+        # Filtrar None y obtener máximo
+        max_metric = None
+        max_value = None
+        for k, v in candidates.items():
+            if v is None:
+                continue
+            if (max_value is None) or (v > max_value):
+                max_metric = k
+                max_value = v
+
+        bot_daily_cap_metrics = {
+            "equity_pct": equity_pct,
+            "pnl_pct": pnl_pct,
+            "realized_pct": realized_pct,
+            "max_pct": max_value,
+            "trigger_metric": max_metric,
+            "trigger_reached": (
+                (max_value is not None)
+                and (bot_daily_cap.get("max_daily_profit_percent") is not None)
+                and (max_value >= bot_daily_cap.get("max_daily_profit_percent"))
+            ),
+        }
+    except Exception:
+        bot_daily_cap_metrics = {
+            "equity_pct": None,
+            "pnl_pct": None,
+            "realized_pct": None,
+            "max_pct": None,
+            "trigger_metric": None,
+            "trigger_reached": False,
+        }
+
     # Estado antiflip útil para análisis post-run
     antiflip_state = {
         "last_signal_confidences": getattr(bot, "last_signal_confidences", {}),
@@ -80,6 +154,8 @@ def build_summary(bot: TradingBot, cycles_run: int) -> dict:
             "symbols": bot.symbols,
             "strategies": list(bot.strategies.keys()),
             "stats": bot.stats,
+            "daily_cap": bot_daily_cap,
+            "daily_cap_metrics": bot_daily_cap_metrics,
         },
         "paper_trader": {
             "portfolio_summary": portfolio_summary,
@@ -126,6 +202,9 @@ def print_console_summary(summary: dict):
     meta = summary["meta"]
     bot_stats = summary["bot"]["stats"]
     paper_stats = summary["paper_trader"]["statistics"]
+    daily_cap = summary["bot"].get("daily_cap", {})
+    daily_cap_metrics = summary["bot"].get("daily_cap_metrics", {})
+    portfolio = summary["paper_trader"]["portfolio_summary"]
 
     print("\n===== Resumen de ejecución del bot (modo papel) =====")
     print(f"Timestamp: {meta['timestamp']}")
@@ -137,9 +216,27 @@ def print_console_summary(summary: dict):
     print("- Estadísticas del bot:")
     for k, v in bot_stats.items():
         print(f"  * {k}: {v}")
+    print("- Tope diario:")
+    print(
+        f"  * modo: {daily_cap.get('mode')} | umbral: {daily_cap.get('max_daily_profit_percent')}% | pausa: {daily_cap.get('pause_active')}"
+    )
+    print(
+        f"  * baseline Capital: {daily_cap.get('baseline_capital')} | baseline Fondos: {daily_cap.get('baseline_fonds')}"
+    )
+    print("  * métricas (%):")
+    print(
+        f"    - equity%: {daily_cap_metrics.get('equity_pct')} | pnl%: {daily_cap_metrics.get('pnl_pct')} | realized%: {daily_cap_metrics.get('realized_pct')}"
+    )
+    print(
+        f"    - max%: {daily_cap_metrics.get('max_pct')} | trigger: {daily_cap_metrics.get('trigger_metric')} | reached: {daily_cap_metrics.get('trigger_reached')}"
+    )
     print("- Estadísticas del PaperTrader:")
     for k, v in paper_stats.items():
         print(f"  * {k}: {v}")
+    print("- Portfolio (paper):")
+    print(
+        f"  * Fondos: {portfolio.get('funds_balance')} | Capital: {portfolio.get('total_value')} | P&L: {portfolio.get('total_pnl')} | Disponible: {portfolio.get('available_balance')}"
+    )
     print("====================================================\n")
 
 
@@ -156,26 +253,22 @@ def main():
     )
     args = parser.parse_args()
 
-    # Inicializa el bot con el intervalo por defecto (minutos). No es crítico aquí.
-    bot = TradingBot()
+    # Inicializa el bot con el intervalo de 2 minutos
+    bot = TradingBot(analysis_interval_minutes=2)
 
     # Asegurar configuración de prueba: SIN trading real, CON trading en papel.
     bot.enable_real_trading = False
     bot.enable_trading = True
 
-    # Resetear el portfolio del PaperTrader para limpieza total de posiciones previas
+    # Ajuste temporal para esta prueba: umbral del tope diario a 0.1%
+    # Esto fuerza la validación end-to-end de cierre y pausa cuando cualquier
+    # métrica (equity/pnl/realized) alcance el 0.1% en modo composite_or.
     try:
-        bot.paper_trader.reset_portfolio()
-        print("🔄 PaperTrader portfolio reset for clean test run.")
-    except Exception as e:
-        print(f"⚠️ Could not reset PaperTrader portfolio: {e}")
+        bot.max_daily_profit_percent = 0.001
+    except Exception:
+        pass
 
-    # Desactivar horarios inteligentes para permitir análisis inmediato en pruebas
-    try:
-        SMART_TRADING_HOURS["enabled"] = False
-        print("⚙️ Smart trading hours disabled for test run.")
-    except Exception as e:
-        print(f"⚠️ Could not disable smart trading hours: {e}")
+    # Mantener horarios inteligentes tal como en configuración inicial
 
     outputs_dir = ensure_outputs_dir()
     cycles_run = 0

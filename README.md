@@ -6,7 +6,7 @@
 
 ### 🚀 ¿Qué hace exactamente?
 
-El bot **observa constantemente** los precios de un portafolio core sin Forex, compuesto por **Oro, S&P500 (US500), UK100, CAC40 (FR40), Hang Seng 50 (HK50), Cobre (COPPER), Maíz (CORN) y Trigo (WHEAT)**, y **busca oportunidades de trading** basándose en patrones técnicos probados. Cuando encuentra una oportunidad con alta probabilidad de éxito, **abre una posición automáticamente** con límites de ganancia y pérdida predefinidos.
+El bot **observa constantemente** los precios de un portafolio core sin Forex, compuesto por **Oro (GOLD), S&P500 (US500), UK100, CAC40 (FR40) y Hang Seng 50 (HK50)**, y **busca oportunidades de trading** basándose en patrones técnicos probados. Cuando encuentra una oportunidad con alta probabilidad de éxito, **abre una posición automáticamente** con límites de ganancia y pérdida predefinidos.
 
 ## 🧠 ¿Cómo funciona la inteligencia del bot?
 
@@ -113,7 +113,7 @@ curl http://localhost:8000/bot/config | python3 -m json.tool
 
 ## 💎 Activos Seleccionados (Configuración Base)
 
-### Portafolio Core (8 activos)
+### Portafolio Core (5 activos)
 
 **🥇 Metales Preciosos**
 - **GOLD**: Refugio de valor tradicional, alta liquidez, estabilidad en crisis
@@ -124,10 +124,7 @@ curl http://localhost:8000/bot/config | python3 -m json.tool
 - **FR40**: CAC 40, principales empresas francesas
 - **HK50**: Hang Seng 50, mercado asiático de Hong Kong
 
-**🌾 Commodities**
-- **COPPER**: Indicador económico cíclico, alta sensibilidad a crecimiento
-- **CORN**: Commodity agrícola con estacionalidad marcada
-- **WHEAT**: Commodity agrícola, buena diversificación
+<!-- Se elimina la subsección de commodities agrícolas e industriales del portafolio base -->
 
 ### 🎯 Ventajas de esta Selección Base
 - **Diversificación inteligente**: Cuatro clases de activos con comportamientos diferentes

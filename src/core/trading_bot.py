@@ -23,6 +23,7 @@ import weakref
 from src.config.main_config import (
     TradingBotConfig,
     TradingProfiles,
+    RiskManagerConfig,
     APIConfig,
     CacheConfig,
     GLOBAL_SYMBOLS,
@@ -253,6 +254,14 @@ class TradingBot:
 
         # Tracking de pérdidas consecutivas para estadísticas
         self.consecutive_losses = 0
+
+        # Línea base diaria y flag de pausa por tope de ganancia diaria
+        self.daily_start_value: Optional[float] = None
+        self.daily_pause_active: bool = False
+        self.max_daily_profit_percent: float = RiskManagerConfig.get_max_daily_profit_percent()
+        self.daily_profit_cap_mode: str = RiskManagerConfig.get_daily_profit_cap_mode()
+        # Baseline para modo 'realized': usar FONDOS (balance sin P&L)
+        self.daily_start_funds: Optional[float] = None
 
         # Sistema de tracking de trades para cooldown
         self.last_trade_times = {}  # {symbol: datetime} - último trade por símbolo
@@ -1835,6 +1844,80 @@ class TradingBot:
             # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
 
+            # Inicializar línea base diaria si no está definida
+            try:
+                if self.daily_start_value is None:
+                    portfolio_init = self.get_portfolio_summary()
+                    self.daily_start_value = float(portfolio_init.get("total_value", 0.0))
+                    self.daily_start_funds = float(portfolio_init.get("funds_balance", 0.0))
+                    self.logger.info(
+                        f"📈 Línea base diaria inicializada: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}"
+                    )
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudo inicializar línea base diaria: {e}")
+
+            # Verificación de tope diario de ganancia y pausa de trading
+            if self.max_daily_profit_percent and self.max_daily_profit_percent > 0:
+                try:
+                    portfolio_now = self.get_portfolio_summary()
+                    current_total = float(portfolio_now.get("total_value", 0.0))
+                    current_funds = float(portfolio_now.get("funds_balance", 0.0))
+                    current_pnl = float(portfolio_now.get("total_pnl", 0.0))
+
+                    # Calcular porcentajes por cada métrica con manejo seguro de división
+                    daily_gain_equity_pct = 0.0
+                    daily_gain_pnl_pct = 0.0
+                    daily_gain_realized_pct = 0.0
+
+                    base_equity = self.daily_start_value or 0.0
+                    base_funds = self.daily_start_funds or 0.0
+
+                    if base_equity > 0:
+                        daily_gain_equity_pct = ((current_total - base_equity) / base_equity) * 100.0
+                        daily_gain_pnl_pct = (current_pnl / base_equity) * 100.0
+                    if base_funds > 0:
+                        daily_gain_realized_pct = ((current_funds - base_funds) / base_funds) * 100.0
+                    else:
+                        # Fallback si no hay baseline de fondos: usar equity
+                        daily_gain_realized_pct = daily_gain_equity_pct
+
+                    # Seleccionar métrica según modo
+                    if self.daily_profit_cap_mode == "equity":
+                        daily_gain_pct = daily_gain_equity_pct
+                    elif self.daily_profit_cap_mode == "pnl":
+                        daily_gain_pct = daily_gain_pnl_pct
+                    elif self.daily_profit_cap_mode == "realized":
+                        daily_gain_pct = daily_gain_realized_pct
+                    elif self.daily_profit_cap_mode == "composite_or":
+                        daily_gain_pct = max(
+                            daily_gain_equity_pct, daily_gain_pnl_pct, daily_gain_realized_pct
+                        )
+                        self.logger.info(
+                            f"📊 Modo compuesto (OR): equity={daily_gain_equity_pct:.2f}%, pnl={daily_gain_pnl_pct:.2f}%, realized={daily_gain_realized_pct:.2f}%"
+                        )
+                    else:
+                        daily_gain_pct = daily_gain_equity_pct
+
+                    if daily_gain_pct >= self.max_daily_profit_percent:
+                        self.logger.info(
+                            f"🎯 Tope diario alcanzado (modo={self.daily_profit_cap_mode}): base=${base_equity:,.2f}, equity=${current_total:,.2f}, ganancia={daily_gain_pct:.2f}%"
+                        )
+                        self._liquidate_all_positions_due_to_daily_cap("DAILY_PROFIT_CAP")
+                        if not self.daily_pause_active:
+                            self.daily_pause_active = True
+                            self.logger.info(
+                                f"⏸️ Trading pausado: ganancia diaria {daily_gain_pct:.2f}% ≥ {self.max_daily_profit_percent:.2f}%"
+                            )
+                        # Pausar ciclo de análisis/trades
+                        return
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error verificando tope diario de ganancia: {e}")
+
+            # Si ya está pausado por tope diario, salir del ciclo
+            if self.daily_pause_active:
+                self.logger.info("⏸️ Trading pausado por tope diario de ganancias - omitiendo ciclo")
+                return
+
             # Verificar si podemos hacer más trades hoy (aplicando multiplicador de fin de semana y lógica adaptativa)
             base_max_trades = int(
                 self.max_daily_trades * weekend_params["max_daily_trades_multiplier"]
@@ -2110,6 +2193,13 @@ class TradingBot:
         Args:
             signals: Lista de señales generadas
         """
+
+        # Pausar ejecución si el tope diario de ganancias está activo
+        if getattr(self, "daily_pause_active", False):
+            self.logger.info(
+                "⏸️ Trading pausado por tope diario de ganancias - no se ejecutarán trades"
+            )
+            return
 
         # Obtener parámetros de fin de semana para ajustar confianza mínima
         weekend_params = get_weekend_trading_params()
@@ -2491,6 +2581,19 @@ class TradingBot:
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
             self.circuit_breaker_activated_at = None
+            # Reiniciar línea base diaria y desactivar pausa por tope diario
+            try:
+                portfolio_summary = self.get_portfolio_summary()
+                self.daily_start_value = float(portfolio_summary.get("total_value", 0.0))
+                self.daily_start_funds = float(portfolio_summary.get("funds_balance", 0.0))
+                self.daily_pause_active = False
+                self.logger.info(
+                    f"📅 Daily reset: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}, modo={self.daily_profit_cap_mode}, trading reanudado"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"⚠️ Error reiniciando línea base diaria durante reset: {e}"
+                )
             self.logger.info(
                 f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset"
             )
@@ -2587,31 +2690,135 @@ class TradingBot:
                 positions = positions_response.get("positions", [])
                 logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
 
-            # El valor total del portfolio es el balance total (equity) que ya incluye las posiciones
-            total_value = total_balance
+            # Capital (equity) = Fondos (balance) + Pérdidas y Ganancias (profit_loss)
+            funds_balance = total_balance
+            total_value = funds_balance + total_pnl
 
             logger.info(f"🔧 DEBUG: final total_value (equity): ${total_value:.2f}")
 
             result = {
-                "total_value": total_value,
-                "available_balance": available_balance,
-                "total_pnl": total_pnl,
+                "total_value": total_value,  # Capital
+                "funds_balance": funds_balance,  # Fondos
+                "available_balance": available_balance,  # Disponible
+                "total_pnl": total_pnl,  # Pérdidas y Ganancias
                 "open_positions": len(positions) if positions else 0,
                 "source": "capital_com",
             }
 
             logger.info(f"🔧 DEBUG: get_portfolio_summary returning: {result}")
             return result
+        except Exception as e:
+            # Fallback: intentar usar PaperTrader si está disponible
+            logger.error(f"❌ Error en get_portfolio_summary: {e}")
+            try:
+                if self.paper_trader:
+                    fallback = self.paper_trader.get_portfolio_summary()
+                    if isinstance(fallback, dict):
+                        fallback["source"] = "paper_trader_fallback"
+                        logger.info(f"🔧 DEBUG: usando fallback de paper trader: {fallback}")
+                        return fallback
+            except Exception as fe:
+                logger.error(f"❌ Error en fallback paper_trader: {fe}")
+
+            # Fallback seguro si también falla el paper trader
+            return {
+                "total_value": 0.0,
+                "available_balance": 0.0,
+                "total_pnl": 0.0,
+                "open_positions": 0,
+                "source": "error",
+                "error": str(e),
+            }
+
+    def _liquidate_all_positions_due_to_daily_cap(self, reason: str = "DAILY_PROFIT_CAP") -> Dict[str, Any]:
+        """
+        🔒 Cerrar todas las posiciones abiertas al alcanzar el tope diario de ganancia.
+
+        Soporta cierre en modo real (Capital.com) y en paper trading.
+
+        Returns:
+            Dict: métricas del cierre (cerradas, errores, modo)
+        """
+        closed_count = 0
+        errors: List[str] = []
+        mode = "paper"
+
+        try:
+            # Intentar cierre en real si está habilitado
+            if getattr(self, "enable_real_trading", False) and self.capital_client:
+                mode = "real"
+                positions_result = self.capital_client.get_positions()
+                positions = positions_result.get("positions", []) if positions_result.get("success") else []
+
+                if not positions and not positions_result.get("success"):
+                    self.logger.warning(f"⚠️ No se pudieron obtener posiciones abiertas: {positions_result.get('error')}")
+
+                for pos_data in positions:
+                    position = pos_data.get("position", {}) if isinstance(pos_data, dict) else {}
+                    deal_id = position.get("dealId") or pos_data.get("dealId")
+                    if not deal_id:
+                        errors.append("Missing dealId in position data")
+                        continue
+                    try:
+                        res = self.capital_client.close_position(deal_id)
+                        if res.get("success"):
+                            closed_count += 1
+                            self.logger.info(f"✅ Posición {deal_id} cerrada por {reason}")
+                        else:
+                            err = res.get("error") or res.get("message") or "Unknown error"
+                            errors.append(f"deal {deal_id}: {err}")
+                            self.logger.error(f"❌ Error al cerrar {deal_id}: {err}")
+                    except Exception as e:
+                        errors.append(f"deal {deal_id}: {e}")
+                        self.logger.error(f"❌ Excepción cerrando {deal_id}: {e}")
+
+            # Cierre en paper trader
+            if self.paper_trader:
+                mode = "paper" if mode != "real" else "real+paper"
+                paper_positions = self.paper_trader.get_open_positions()
+                for p in paper_positions:
+                    try:
+                        symbol = p.get("symbol")
+                        qty = float(p.get("quantity", 0))
+                        price = float(p.get("current_price", 0.0))
+                        if not symbol:
+                            errors.append("Paper position missing symbol")
+                            continue
+                        # Para cerrar: vender si es larga, comprar si es corta
+                        signal_type = "SELL" if qty > 0 else "BUY"
+                        close_signal = TradingSignal(
+                            symbol=symbol,
+                            signal_type=signal_type,
+                            price=price,
+                            confidence=100.0,
+                            timeframe="1h",
+                            strategy_name="AUTO_CLOSE",
+                            indicators={"reason": reason},
+                            stop_loss=0,
+                            take_profit=0,
+                            notes=f"Auto close due to {reason}",
+                        )
+                        result = self.paper_trader.execute_signal(close_signal)
+                        if getattr(result, "success", False):
+                            closed_count += 1
+                            self.logger.info(f"✅ Paper position {symbol} cerrada por {reason}")
+                        else:
+                            msg = getattr(result, "message", "Unknown error")
+                            errors.append(f"paper {symbol}: {msg}")
+                            self.logger.error(f"❌ Error al cerrar paper {symbol}: {msg}")
+                    except Exception as e:
+                        errors.append(f"paper {p.get('symbol')}: {e}")
+                        self.logger.error(f"❌ Excepción cerrando paper {p.get('symbol')}: {e}")
 
         except Exception as e:
-            import traceback
+            errors.append(str(e))
+            self.logger.error(f"❌ Error general en liquidación por tope diario: {e}")
 
-            logger.error(f"❌ Error obteniendo portfolio de Capital.com: {e}")
-            logger.error(f"❌ Traceback completo: {traceback.format_exc()}")
-            # Fallback: usar paper trader si hay error
-            fallback_result = self.paper_trader.get_portfolio_summary()
-            logger.info(f"🔧 DEBUG: using paper trader fallback: {fallback_result}")
-            return fallback_result
+        summary = {"closed_positions": closed_count, "errors": errors, "mode": mode}
+        self.logger.info(
+            f"🔒 Liquidación por tope diario completada: cerradas={closed_count}, errores={len(errors)}, modo={mode}"
+        )
+        return summary
 
     def get_detailed_report(self) -> Dict:
         """

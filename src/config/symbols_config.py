@@ -46,13 +46,12 @@ ENERGY_COMMODITIES = []
 
 # Agricultura - Soft commodities
 AGRICULTURAL = [
-    "CORN",
-    "WHEAT",
+    # Eliminado: sin soft commodities en el portafolio actual
 ]
 
 # Metales industriales
 METALS_INDUSTRIAL = [
-    "COPPER",
+    # Eliminado: sin metales industriales en el portafolio actual
 ]
 
 # ============================================================================
@@ -85,8 +84,6 @@ CORE_SYMBOLS_V1 = [
     "GOLD",
     # Índices
     "US500", "UK100", "FR40", "HK50",
-    # Commodities
-    "COPPER", "CORN", "WHEAT",
 ]
 
 # Lista principal de símbolos para el bot: usar el portafolio core
@@ -149,39 +146,6 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "risk_level": "medium_high",
         "liquidity": "medium",
     },
-    "COPPER": {
-        "category": "metals_industrial",
-        "volatility": "high",
-        "avg_daily_range": 2.1,
-        "optimal_hours": ["08:00-17:00", "14:30-21:00"],
-        "spread_typical": 0.0001,
-        "min_confidence_adjustment": -1,
-        "max_trades_multiplier": 1.0,
-        "risk_level": "medium_high",
-        "liquidity": "high",
-    },
-    "CORN": {
-        "category": "agricultural",
-        "volatility": "high",
-        "avg_daily_range": 2.5,
-        "optimal_hours": ["14:30-21:00"],
-        "spread_typical": 0.04,
-        "min_confidence_adjustment": -1,
-        "max_trades_multiplier": 1.0,
-        "risk_level": "medium_high",
-        "liquidity": "medium",
-    },
-    "WHEAT": {
-        "category": "agricultural",
-        "volatility": "high",
-        "avg_daily_range": 2.8,
-        "optimal_hours": ["14:30-21:00"],
-        "spread_typical": 0.05,
-        "min_confidence_adjustment": -2,
-        "max_trades_multiplier": 1.1,
-        "risk_level": "medium_high",
-        "liquidity": "medium",
-    },
 }
 
 # Alias para compatibilidad: usar siempre la versión CORE
@@ -197,12 +161,9 @@ MARKET_SESSION_SYMBOLS = {
         "UK100",
         "FR40",
         "GOLD",
-        "COPPER",
     ],
     "american": [
         "US500",
-        "CORN",
-        "WHEAT",
         "GOLD",
     ],
 }
@@ -245,14 +206,14 @@ VOLATILITY_CATEGORIES = {
     "very_low": [],
     "low": [],
     "medium": ["GOLD", "US500", "UK100", "FR40"],
-    "high": ["HK50", "COPPER", "CORN", "WHEAT"],
+    "high": ["HK50"],
     "very_high": [],
 }
 
 LIQUIDITY_CATEGORIES = {
     "very_high": ["GOLD", "US500"],
-    "high": ["UK100", "FR40", "COPPER"],
-    "medium": ["HK50", "CORN", "WHEAT"],
+    "high": ["UK100", "FR40"],
+    "medium": ["HK50"],
     "low": [],
 }
 

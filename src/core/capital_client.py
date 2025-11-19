@@ -668,9 +668,10 @@ class CapitalClient:
 
         # Comprehensive commodities symbols from symbols_config.py
         commodity_symbols = [
-            "GOLD", "SILVER", "PLATINUM", "PALLADIUM", "COPPER", "ALUMINIUM", "ZINC", "NICKEL",
+            "GOLD", "SILVER", "PLATINUM", "PALLADIUM",
+            "ALUMINIUM", "ZINC", "NICKEL",
             "OIL", "BRENT", "WTI", "CRUDEOIL", "NATURALGAS", "GAS", "HEATING",
-            "WHEAT", "CORN", "SOYBEANS", "SUGAR", "COFFEE", "COCOA", "COTTON", "RICE"
+            "SOYBEANS", "SUGAR", "COFFEE", "COCOA", "COTTON", "RICE"
         ]
         
         # Check exact match for commodities

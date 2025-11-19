@@ -343,9 +343,9 @@ http://localhost:8000
 ```json
 {
   "status": "success",
-  "current_symbols": ["GOLD", "US500", "UK100", "FR40", "HK50", "COPPER", "CORN", "WHEAT"],
-  "total_symbols": 8,
-  "available_symbols": ["GOLD", "US500", "UK100", "FR40", "HK50", "COPPER", "CORN", "WHEAT"],
+  "current_symbols": ["GOLD", "US500", "UK100", "FR40", "HK50"],
+  "total_symbols": 5,
+  "available_symbols": ["GOLD", "US500", "UK100", "FR40", "HK50"],
   "timestamp": "2025-01-XX..."
 }
 ```
@@ -356,7 +356,7 @@ http://localhost:8000
 **Modelo de Datos**: `SymbolsUpdate`
 ```json
 {
-  "symbols": ["GOLD", "US500", "UK100", "FR40", "HK50", "COPPER", "CORN", "WHEAT"],
+  "symbols": ["GOLD", "US500", "UK100", "FR40", "HK50"],
   "restart_bot": true
 }
 ```

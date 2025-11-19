@@ -72,9 +72,7 @@ class MarketHoursChecker:
             # Commodities
             "GOLD": "COMMODITIES",
             "SILVER": "COMMODITIES",
-            "COPPER": "COMMODITIES",
-            "WHEAT": "COMMODITIES",
-            "CORN": "COMMODITIES",
+            # Eliminados del portafolio actual: COPPER, WHEAT, CORN
             "OIL_CRUDE": "COMMODITIES",
             # Forex
             "EURUSD": "FOREX",

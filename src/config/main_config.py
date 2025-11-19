@@ -834,6 +834,21 @@ class RiskManagerConfig:
         return TradingProfiles.get_current_profile()["max_daily_loss_percent"]
 
     @classmethod
+    def get_max_daily_profit_percent(cls) -> float:
+        """Obtiene el porcentaje máximo de ganancia diaria antes de pausar trading."""
+        return TradingProfiles.get_current_profile().get("max_daily_profit_percent", 0.0)
+
+    @classmethod
+    def get_daily_profit_cap_mode(cls) -> str:
+        """Modo de tope diario: 'equity' (default), 'realized', 'pnl' o 'composite_or'."""
+        mode = TradingProfiles.get_current_profile().get("daily_profit_cap_mode", "equity")
+        # Normalizar valores posibles
+        mode = str(mode).lower().strip()
+        if mode not in {"equity", "realized", "pnl", "composite_or"}:
+            return "equity"
+        return mode
+
+    @classmethod
     @classmethod
     def get_min_confidence_threshold(cls) -> float:
         """Obtiene el umbral mínimo de confianza según perfil activo."""

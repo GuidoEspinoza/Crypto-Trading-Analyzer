@@ -861,6 +861,7 @@ class PaperTrader:
             # Equity simulado: USD disponible + PnL no realizado
             usd_value = self.portfolio.get("USD", {}).get("current_value", 0.0)
             total_value = usd_value + total_pnl
+            funds_balance = usd_value  # Fondos (sin P&L), equivalente a saldo disponible en cash
 
             # Crear lista de assets (posiciones abiertas)
             assets = []
@@ -882,6 +883,7 @@ class PaperTrader:
 
             return {
                 "total_value": total_value,
+                "funds_balance": funds_balance,
                 "initial_balance": self.initial_balance,
                 "available_balance": self.portfolio.get("USD", {}).get("quantity", 0.0),
                 "total_pnl": total_pnl,
