@@ -2690,17 +2690,24 @@ class TradingBot:
                 positions = positions_response.get("positions", [])
                 logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
 
-            # Capital (equity) = Fondos (balance) + Pérdidas y Ganancias (profit_loss)
-            funds_balance = total_balance
-            total_value = funds_balance + total_pnl
+            # Corrección: evitar doble conteo del PnL.
+            # - En Capital.com, 'balance' representa el equity (incluye PnL de posiciones abiertas).
+            # - 'available' representa fondos disponibles (cash / margen libre).
+            # Por lo tanto:
+            #   total_value (equity) = balance
+            #   funds_balance (fondos) = available
+            funds_balance = available_balance
+            total_value = total_balance
 
-            logger.info(f"🔧 DEBUG: final total_value (equity): ${total_value:.2f}")
+            logger.info(
+                f"🔧 DEBUG: final total_value (equity from balance): ${total_value:.2f}"
+            )
 
             result = {
-                "total_value": total_value,  # Capital
-                "funds_balance": funds_balance,  # Fondos
+                "total_value": total_value,  # Capital (equity)
+                "funds_balance": funds_balance,  # Fondos (cash disponible)
                 "available_balance": available_balance,  # Disponible
-                "total_pnl": total_pnl,  # Pérdidas y Ganancias
+                "total_pnl": total_pnl,  # Pérdidas y Ganancias (open PnL)
                 "open_positions": len(positions) if positions else 0,
                 "source": "capital_com",
             }
@@ -2790,12 +2797,11 @@ class TradingBot:
                             symbol=symbol,
                             signal_type=signal_type,
                             price=price,
-                            confidence=100.0,
-                            timeframe="1h",
+                            confidence_score=100.0,
+                            strength="Strong",
                             strategy_name="AUTO_CLOSE",
-                            indicators={"reason": reason},
-                            stop_loss=0,
-                            take_profit=0,
+                            timestamp=datetime.now(),
+                            indicators_data={"reason": reason},
                             notes=f"Auto close due to {reason}",
                         )
                         result = self.paper_trader.execute_signal(close_signal)
