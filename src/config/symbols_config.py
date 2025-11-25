@@ -39,6 +39,7 @@ FOREX_EXOTIC = []
 # Metales preciosos - Safe haven assets
 METALS_PRECIOUS = [
     "GOLD",
+    "SILVER",
 ]
 
 # Energía - Commodities energéticos
@@ -60,17 +61,19 @@ METALS_INDUSTRIAL = [
 
 # Índices americanos
 INDICES_US = [
+    "US100",
     "US500",
 ]
 
 # Índices europeos
 INDICES_EUROPE = [
+    "DE40",
     "UK100",
-    "FR40",
 ]
 
 # Índices asiáticos
 INDICES_ASIA = [
+    "JP225",
     "HK50",
 ]
 
@@ -81,9 +84,9 @@ INDICES_ASIA = [
 # Portafolio core definitivo (v1) sin forex: índices, metales y commodities
 CORE_SYMBOLS_V1 = [
     # Metales
-    "GOLD",
+    "GOLD", "SILVER",
     # Índices
-    "US500", "UK100", "FR40", "HK50",
+    "US100", "US500", "DE40", "UK100", "JP225", "HK50",
 ]
 
 # Lista principal de símbolos para el bot: usar el portafolio core
@@ -102,6 +105,28 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "risk_level": "medium",
         "liquidity": "very_high",
     },
+    "SILVER": {
+        "category": "metals_precious",
+        "volatility": "medium",
+        "avg_daily_range": 1.8,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.08,
+        "min_confidence_adjustment": 0,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "US100": {
+        "category": "indices_us",
+        "volatility": "high",
+        "avg_daily_range": 1.6,
+        "optimal_hours": ["14:30-21:00"],
+        "spread_typical": 0.2,
+        "min_confidence_adjustment": 3,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium_high",
+        "liquidity": "very_high",
+    },
     "US500": {
         "category": "indices_us",
         "volatility": "medium",
@@ -112,6 +137,17 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "max_trades_multiplier": 0.9,
         "risk_level": "medium",
         "liquidity": "very_high",
+    },
+    "DE40": {
+        "category": "indices_europe",
+        "volatility": "medium",
+        "avg_daily_range": 1.4,
+        "optimal_hours": ["08:00-17:30"],
+        "spread_typical": 0.3,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "high",
     },
     "UK100": {
         "category": "indices_europe",
@@ -124,6 +160,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "risk_level": "medium",
         "liquidity": "high",
     },
+    # FR40 queda definido para compatibilidad histórica, pero no está en GLOBAL_SYMBOLS
     "FR40": {
         "category": "indices_europe",
         "volatility": "medium",
@@ -134,6 +171,17 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "max_trades_multiplier": 0.9,
         "risk_level": "medium",
         "liquidity": "high",
+    },
+    "JP225": {
+        "category": "indices_asia",
+        "volatility": "medium",
+        "avg_daily_range": 1.7,
+        "optimal_hours": ["00:00-06:00", "23:00-03:00"],
+        "spread_typical": 2.5,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
     },
     "HK50": {
         "category": "indices_asia",
@@ -154,17 +202,22 @@ SYMBOL_SPECIFIC_CONFIG = SYMBOL_SPECIFIC_CONFIG_CORE
 # Símbolos por sesión de mercado óptima
 MARKET_SESSION_SYMBOLS = {
     "asian": [
+        "JP225",
         "HK50",
         "GOLD",
+        "SILVER",
     ],
     "european": [
+        "DE40",
         "UK100",
-        "FR40",
         "GOLD",
+        "SILVER",
     ],
     "american": [
+        "US100",
         "US500",
         "GOLD",
+        "SILVER",
     ],
 }
 
@@ -205,14 +258,14 @@ def get_symbol_config(symbol: str) -> dict:
 VOLATILITY_CATEGORIES = {
     "very_low": [],
     "low": [],
-    "medium": ["GOLD", "US500", "UK100", "FR40"],
-    "high": ["HK50"],
+    "medium": ["GOLD", "SILVER", "US500", "UK100", "DE40", "JP225"],
+    "high": ["US100", "HK50"],
     "very_high": [],
 }
 
 LIQUIDITY_CATEGORIES = {
-    "very_high": ["GOLD", "US500"],
-    "high": ["UK100", "FR40"],
+    "very_high": ["GOLD", "US100", "US500"],
+    "high": ["UK100", "DE40", "JP225", "SILVER"],
     "medium": ["HK50"],
     "low": [],
 }
