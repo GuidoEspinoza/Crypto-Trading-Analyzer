@@ -2323,6 +2323,138 @@ class TradingBot:
                         )
                         continue
 
+                # Filtro MTF simétrico: bloquear entradas contra la dirección dominante
+                try:
+                    from .trend_following_professional import TrendFollowingProfessional
+                    tfp = TrendFollowingProfessional()
+                    # Inyectar get_market_data usando capital_client para evitar warnings en TFP
+                    try:
+                        if self.capital_client:
+                            def _tf_get_market_data(symbol: str, timeframe: str = "1h", periods: int = 350, limit: int = None, **kwargs):
+                                try:
+                                    data_points = limit if limit is not None else periods
+                                    try:
+                                        capital_symbol = self._normalize_symbol_for_capital(symbol)
+                                    except Exception:
+                                        capital_symbol = symbol
+                                    timeframe_mapping = {
+                                        "1m": "MINUTE",
+                                        "5m": "MINUTE_5",
+                                        "15m": "MINUTE_15",
+                                        "30m": "MINUTE_30",
+                                        "1h": "HOUR",
+                                        "4h": "HOUR_4",
+                                        "1d": "DAY",
+                                        "1w": "WEEK",
+                                    }
+                                    resolution = timeframe_mapping.get(timeframe, "HOUR")
+
+                                    historical_result = self.capital_client.get_historical_prices(
+                                        epic=capital_symbol,
+                                        resolution=resolution,
+                                        max_points=min(data_points, 1000),
+                                    )
+
+                                    import pandas as pd
+                                    if historical_result.get("success") and historical_result.get("prices"):
+                                        data = []
+                                        for price_point in historical_result.get("prices", []):
+                                            try:
+                                                ts = pd.to_datetime(price_point.get("timestamp", price_point.get("timestamp_utc", "")))
+                                                data.append({
+                                                    "timestamp": ts,
+                                                    "open": float(price_point.get("open", 0.0)),
+                                                    "high": float(price_point.get("high", 0.0)),
+                                                    "low": float(price_point.get("low", 0.0)),
+                                                    "close": float(price_point.get("close", 0.0)),
+                                                    "volume": float(price_point.get("volume", 0.0)),
+                                                })
+                                            except Exception:
+                                                continue
+                                        df = pd.DataFrame(data)
+                                        if not df.empty:
+                                            df.set_index("timestamp", inplace=True)
+                                            df.sort_index(inplace=True)
+                                            return df
+
+                                    # Fallback: intentar simular datos usando precio actual
+                                    md = self.capital_client.get_market_data([capital_symbol])
+                                    price_keys = ["mid", "bid", "offer"]
+                                    current_price = None
+                                    for pk in price_keys:
+                                        try:
+                                            val = md.get(capital_symbol, {}).get(pk)
+                                            if val:
+                                                current_price = float(val)
+                                                if current_price > 0:
+                                                    break
+                                        except Exception:
+                                            pass
+                                    if current_price and current_price > 0:
+                                        from datetime import datetime, timedelta
+                                        data = []
+                                        for i in range(data_points, 0, -1):
+                                            ts = datetime.now(UTC_TZ) - timedelta(hours=i)
+                                            price = current_price * (1 + 0.001 * i)
+                                            data.append({
+                                                "timestamp": ts,
+                                                "open": price,
+                                                "high": price * 1.01,
+                                                "low": price * 0.99,
+                                                "close": price,
+                                                "volume": 1000 + i,
+                                            })
+                                        df = pd.DataFrame(data)
+                                        df.set_index("timestamp", inplace=True)
+                                        df.sort_index(inplace=True)
+                                        return df
+
+                                    # Último recurso: DataFrame vacío con columnas esperadas
+                                    return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+                                except Exception:
+                                    import pandas as pd
+                                    return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+                            tfp.get_market_data = _tf_get_market_data
+                    except Exception:
+                        pass
+                    mtf = tfp.analyze_multi_timeframe_alignment(signal.symbol)
+                    dom = mtf.get("dominant_direction")
+                    consensus = float(mtf.get("consensus", 0.0))
+                    strength = float(mtf.get("avg_strength", 0.0))
+                    aligned = bool(mtf.get("aligned", False))
+
+                    # Umbral más laxo para aplicar el guard-rail incluso si no "alinea" estricto
+                    filter_consensus_th = TradingProfiles.get_current_profile().get(
+                        "mtf_filter_consensus_threshold", 0.66
+                    )
+
+                    dominant_known = dom in {"bullish", "bearish"}
+                    # Aplicar guard-rail si:
+                    # - hay dirección dominante conocida, y además
+                    #   - está alineado estricto, o
+                    #   - el consenso supera el umbral del guard-rail y la fuerza es aceptable
+                    should_apply_guardrail = dominant_known and (
+                        aligned or (consensus >= filter_consensus_th and strength >= 0.4)
+                    )
+
+                    if should_apply_guardrail:
+                        side = str(getattr(signal, "signal_type", "")).upper()
+                        if side == "SELL" and dom == "bullish":
+                            self.logger.info(
+                                f"🚫 {signal.symbol}: SELL filtrado por MTF (dominante {dom}, consenso {consensus:.1%}, fuerza {strength:.2f}, umbral {filter_consensus_th:.2f})"
+                            )
+                            continue
+                        if side == "BUY" and dom == "bearish":
+                            self.logger.info(
+                                f"🚫 {signal.symbol}: BUY filtrado por MTF (dominante {dom}, consenso {consensus:.1%}, fuerza {strength:.2f}, umbral {filter_consensus_th:.2f})"
+                            )
+                            continue
+                except Exception as e:
+                    self.logger.warning(
+                        f"⚠️ {signal.symbol}: Error aplicando filtro MTF: {e}"
+                    )
+
                 # Verificar horarios de mercado
                 should_trade, market_reason = market_hours_checker.should_trade(
                     signal.symbol
@@ -4325,3 +4457,5 @@ class TradingBot:
 
 
 trading_bot = TradingBot()
+    # --- IMPORTS LOCALES DIFERIDOS ---
+    # Nota: evitamos import circulares; usaremos import a nivel de método

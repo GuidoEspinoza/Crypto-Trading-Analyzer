@@ -68,7 +68,7 @@ class MarketHoursChecker:
             "UK100": "INDICES",
             "FR40": "INDICES",
             "HK50": "INDICES",
-            "JP225": "INDICES",
+            "J225": "INDICES",
             "DE40": "INDICES",
             # Commodities
             "GOLD": "COMMODITIES",
@@ -134,7 +134,7 @@ class MarketHoursChecker:
                 "always_open": False,
             },
             # Japón (TSE) - simplificado sin pausa de mediodía
-            "JP225": {
+            "J225": {
                 "timezone": pytz.timezone("Asia/Tokyo"),
                 "days": [0, 1, 2, 3, 4],
                 "open_time": time(9, 0),   # 09:00 JST

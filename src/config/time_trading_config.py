@@ -707,7 +707,7 @@ def _detect_market_type(symbol: str) -> str:
         "US500",
         "UK100",
         "GER40",
-        "JP225",
+        "J225",
         "HK50",
     ]
     if any(indicator in symbol_upper for indicator in index_indicators):

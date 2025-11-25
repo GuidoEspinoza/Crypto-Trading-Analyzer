@@ -523,7 +523,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "BUY_CLOSE_SHORT",
+            "direction": "SHORT",
             "quantity": quantity,
+            "quantity_signed": -quantity,
             "entry_price": entry_price,
             "exit_price": price,
             "exit_value": exit_value,
@@ -616,7 +618,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "BUY_OPEN_LONG",
+            "direction": "LONG",
             "quantity": quantity,
+            "quantity_signed": quantity,
             "entry_price": price,
             "entry_value": max_trade_value,
             "fee": fee,
@@ -721,7 +725,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "SELL_CLOSE_LONG",
+            "direction": "LONG",
             "quantity": quantity,
+            "quantity_signed": quantity,
             "entry_price": entry_price,
             "exit_price": price,
             "exit_value": sale_value,
@@ -813,7 +819,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "SELL_OPEN_SHORT",
+            "direction": "SHORT",
             "quantity": abs(quantity),  # Guardar como positivo en el registro
+            "quantity_signed": quantity,
             "entry_price": price,
             "entry_value": max_trade_value,
             "fee": fee,
@@ -867,10 +875,14 @@ class PaperTrader:
             assets = []
             for symbol, position in self.portfolio.items():
                 if symbol != "USD" and position["quantity"] != 0:
+                    qty = position["quantity"]
+                    direction = "LONG" if qty > 0 else "SHORT"
                     assets.append(
                         {
                             "symbol": symbol,
-                            "quantity": position["quantity"],
+                            "quantity": qty,
+                            "abs_quantity": abs(qty),
+                            "direction": direction,
                             "avg_price": position["avg_price"],
                             "current_price": position["current_price"],
                             "current_value": position["current_value"],
@@ -893,7 +905,11 @@ class PaperTrader:
                     else 0.0
                 ),
                 "positions": len(
-                    [pos for pos in self.portfolio.values() if pos["quantity"] != 0]
+                    [
+                        pos
+                        for sym, pos in self.portfolio.items()
+                        if sym != "USD" and pos["quantity"] != 0
+                    ]
                 ),
                 "assets": assets,
                 "last_updated": datetime.now(),

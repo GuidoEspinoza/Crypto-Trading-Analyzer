@@ -73,7 +73,7 @@ INDICES_EUROPE = [
 
 # Índices asiáticos
 INDICES_ASIA = [
-    "JP225",
+    "J225",
     "HK50",
 ]
 
@@ -86,7 +86,7 @@ CORE_SYMBOLS_V1 = [
     # Metales
     "GOLD", "SILVER",
     # Índices
-    "US100", "US500", "DE40", "UK100", "JP225", "HK50",
+    "US100", "US500", "DE40", "UK100", "J225", "HK50",
 ]
 
 # Lista principal de símbolos para el bot: usar el portafolio core
@@ -172,7 +172,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "risk_level": "medium",
         "liquidity": "high",
     },
-    "JP225": {
+    "J225": {
         "category": "indices_asia",
         "volatility": "medium",
         "avg_daily_range": 1.7,
@@ -202,7 +202,7 @@ SYMBOL_SPECIFIC_CONFIG = SYMBOL_SPECIFIC_CONFIG_CORE
 # Símbolos por sesión de mercado óptima
 MARKET_SESSION_SYMBOLS = {
     "asian": [
-        "JP225",
+        "J225",
         "HK50",
         "GOLD",
         "SILVER",
@@ -258,14 +258,14 @@ def get_symbol_config(symbol: str) -> dict:
 VOLATILITY_CATEGORIES = {
     "very_low": [],
     "low": [],
-    "medium": ["GOLD", "SILVER", "US500", "UK100", "DE40", "JP225"],
+    "medium": ["GOLD", "SILVER", "US500", "UK100", "DE40", "J225"],
     "high": ["US100", "HK50"],
     "very_high": [],
 }
 
 LIQUIDITY_CATEGORIES = {
     "very_high": ["GOLD", "US100", "US500"],
-    "high": ["UK100", "DE40", "JP225", "SILVER"],
+    "high": ["UK100", "DE40", "J225", "SILVER"],
     "medium": ["HK50"],
     "low": [],
 }
