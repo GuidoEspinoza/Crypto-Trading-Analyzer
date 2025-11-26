@@ -81,16 +81,18 @@ INDICES_ASIA = [
 # 🎯 CONFIGURACIÓN GLOBAL OPTIMIZADA
 # ============================================================================
 
-# Portafolio core definitivo (v1) sin forex: índices, metales y commodities
-CORE_SYMBOLS_V1 = [
-    # Metales
-    "GOLD", "SILVER",
-    # Índices
-    "US100", "US500", "DE40", "UK100", "J225", "HK50",
+# Portafolio solo índices (preferencia del usuario)
+INDICES_ONLY_PORTFOLIO = [
+    # América
+    "US100", "US500", "US30", "RTY",
+    # Europa
+    "DE40", "UK100", "FR40",
+    # Asia
+    "J225", "HK50", "AU200",
 ]
 
-# Lista principal de símbolos para el bot: usar el portafolio core
-GLOBAL_SYMBOLS = CORE_SYMBOLS_V1
+# Lista principal de símbolos para el bot: usar portafolio solo índices
+GLOBAL_SYMBOLS = INDICES_ONLY_PORTFOLIO
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
 SYMBOL_SPECIFIC_CONFIG_CORE = {
@@ -120,7 +122,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_us",
         "volatility": "high",
         "avg_daily_range": 1.6,
-        "optimal_hours": ["14:30-21:00"],
+        "optimal_hours": ["15:00-20:30"],
         "spread_typical": 0.2,
         "min_confidence_adjustment": 3,
         "max_trades_multiplier": 0.9,
@@ -131,18 +133,40 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_us",
         "volatility": "medium",
         "avg_daily_range": 1.2,
-        "optimal_hours": ["14:30-21:00"],
+        "optimal_hours": ["15:00-20:30"],
         "spread_typical": 0.1,
         "min_confidence_adjustment": 2,
         "max_trades_multiplier": 0.9,
         "risk_level": "medium",
         "liquidity": "very_high",
     },
+    "US30": {
+        "category": "indices_us",
+        "volatility": "medium",
+        "avg_daily_range": 1.1,
+        "optimal_hours": ["15:00-20:30"],
+        "spread_typical": 1.5,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "RTY": {
+        "category": "indices_us",
+        "volatility": "high",
+        "avg_daily_range": 1.9,
+        "optimal_hours": ["15:00-20:30"],
+        "spread_typical": 1.8,
+        "min_confidence_adjustment": 3,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium_high",
+        "liquidity": "high",
+    },
     "DE40": {
         "category": "indices_europe",
         "volatility": "medium",
         "avg_daily_range": 1.4,
-        "optimal_hours": ["08:00-17:30"],
+        "optimal_hours": ["08:30-16:00"],
         "spread_typical": 0.3,
         "min_confidence_adjustment": 1,
         "max_trades_multiplier": 0.9,
@@ -153,7 +177,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_europe",
         "volatility": "medium",
         "avg_daily_range": 1.2,
-        "optimal_hours": ["08:00-17:00"],
+        "optimal_hours": ["08:30-16:00"],
         "spread_typical": 0.3,
         "min_confidence_adjustment": 1,
         "max_trades_multiplier": 0.9,
@@ -165,7 +189,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_europe",
         "volatility": "medium",
         "avg_daily_range": 1.3,
-        "optimal_hours": ["08:00-17:00"],
+        "optimal_hours": ["08:30-16:00"],
         "spread_typical": 0.2,
         "min_confidence_adjustment": 1,
         "max_trades_multiplier": 0.9,
@@ -176,7 +200,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_asia",
         "volatility": "medium",
         "avg_daily_range": 1.7,
-        "optimal_hours": ["00:00-06:00", "23:00-03:00"],
+        "optimal_hours": ["00:30-02:20", "03:40-05:30"],
         "spread_typical": 2.5,
         "min_confidence_adjustment": -1,
         "max_trades_multiplier": 1.0,
@@ -187,11 +211,22 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_asia",
         "volatility": "high",
         "avg_daily_range": 2.0,
-        "optimal_hours": ["01:00-08:00"],
+        "optimal_hours": ["02:00-03:45", "05:05-07:30"],
         "spread_typical": 2.0,
         "min_confidence_adjustment": -1,
         "max_trades_multiplier": 1.0,
         "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "AU200": {
+        "category": "indices_asia",
+        "volatility": "medium",
+        "avg_daily_range": 1.4,
+        "optimal_hours": ["00:30-05:30"],
+        "spread_typical": 1.5,
+        "min_confidence_adjustment": 0,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium",
         "liquidity": "medium",
     },
 }
@@ -204,20 +239,18 @@ MARKET_SESSION_SYMBOLS = {
     "asian": [
         "J225",
         "HK50",
-        "GOLD",
-        "SILVER",
+        "AU200",
     ],
     "european": [
         "DE40",
         "UK100",
-        "GOLD",
-        "SILVER",
+        "FR40",
     ],
     "american": [
         "US100",
         "US500",
-        "GOLD",
-        "SILVER",
+        "US30",
+        "RTY",
     ],
 }
 
@@ -258,15 +291,15 @@ def get_symbol_config(symbol: str) -> dict:
 VOLATILITY_CATEGORIES = {
     "very_low": [],
     "low": [],
-    "medium": ["GOLD", "SILVER", "US500", "UK100", "DE40", "J225"],
-    "high": ["US100", "HK50"],
+    "medium": ["US500", "US30", "UK100", "DE40", "FR40", "J225", "AU200"],
+    "high": ["US100", "HK50", "RTY"],
     "very_high": [],
 }
 
 LIQUIDITY_CATEGORIES = {
-    "very_high": ["GOLD", "US100", "US500"],
-    "high": ["UK100", "DE40", "J225", "SILVER"],
-    "medium": ["HK50"],
+    "very_high": ["US100", "US500", "US30"],
+    "high": ["UK100", "DE40", "FR40", "RTY"],
+    "medium": ["J225", "HK50", "AU200"],
     "low": [],
 }
 

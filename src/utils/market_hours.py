@@ -1,10 +1,10 @@
 """
 Market Hours Checker
-Verifica si los mercados están abiertos antes de ejecutar trades
+Verifica si los mercados están abiertos y si se encuentran en ventanas óptimas de trading
 """
 
 import logging
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, timedelta
 from typing import Dict, Optional, Tuple
 import pytz
 
@@ -65,6 +65,8 @@ class MarketHoursChecker:
             # Indices
             "US100": "INDICES",
             "US500": "INDICES",
+            "US30": "INDICES",
+            "RTY": "INDICES",
             "UK100": "INDICES",
             "FR40": "INDICES",
             "HK50": "INDICES",
@@ -95,6 +97,20 @@ class MarketHoursChecker:
                 "always_open": False,
             },
             "US500": {
+                "timezone": self.ny_tz,
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 30),
+                "close_time": time(16, 0),
+                "always_open": False,
+            },
+            "US30": {
+                "timezone": self.ny_tz,
+                "days": [0, 1, 2, 3, 4],
+                "open_time": time(9, 30),
+                "close_time": time(16, 0),
+                "always_open": False,
+            },
+            "RTY": {
                 "timezone": self.ny_tz,
                 "days": [0, 1, 2, 3, 4],
                 "open_time": time(9, 30),
@@ -141,6 +157,30 @@ class MarketHoursChecker:
                 "close_time": time(15, 0),  # 15:00 JST
                 "always_open": False,
             },
+        }
+
+        # Buffers para evitar apertura/cierre (minutos)
+        # Valores por defecto para índices si no hay override específico
+        self.default_open_buffer_min = 30
+        self.default_close_buffer_min = 30
+
+        # Overrides por símbolo (cuando se requiere mayor cautela)
+        self.symbol_buffers = {
+            # Small caps suelen ser más volátiles en apertura
+            "RTY": {"open_buffer": 45, "close_buffer": 30},
+            # Hong Kong puede requerir mayor margen por gaps
+            "HK50": {"open_buffer": 30, "close_buffer": 30},
+            # Resto usa valores por defecto
+        }
+
+        # Pausas de mediodía por símbolo (horas locales)
+        # Estas ventanas se excluyen del trading aunque el mercado esté abierto
+        self.symbol_lunch_breaks = {
+            # Hong Kong: 12:00 - 13:00 HKT
+            "HK50": [(time(12, 0), time(13, 0))],
+            # Tokio: 11:30 - 12:30 JST
+            "J225": [(time(11, 30), time(12, 30))],
+            # Australia: sin pausa
         }
 
     def get_market_type(self, symbol: str) -> str:
@@ -241,7 +281,8 @@ class MarketHoursChecker:
 
     def should_trade(self, symbol: str) -> Tuple[bool, str]:
         """
-        Determinar si se debe ejecutar un trade para un símbolo
+        Determinar si se debe ejecutar un trade para un símbolo.
+        Considera horario de mercado y ventanas óptimas (evita apertura/cierre y pausas).
 
         Args:
             symbol: Símbolo del activo
@@ -254,7 +295,55 @@ class MarketHoursChecker:
         if not is_open:
             return False, f"Trading blocked: {reason}"
 
-        return True, f"Trading allowed: {reason}"
+        # Aplicar buffers y pausas de mediodía
+        # Obtener configuración del símbolo
+        market_type = self.get_market_type(symbol)
+        market_config = self.symbol_specific_hours.get(symbol, self.market_hours[market_type])
+        market_tz = market_config["timezone"]
+        current_utc = datetime.now(self.utc)
+        local_time = current_utc.astimezone(market_tz)
+
+        # Determinar buffers por símbolo
+        buffers = self.symbol_buffers.get(symbol, {})
+        open_buffer_min = buffers.get("open_buffer", self.default_open_buffer_min)
+        close_buffer_min = buffers.get("close_buffer", self.default_close_buffer_min)
+
+        # Construir ventanas con buffer
+        open_dt = datetime.combine(local_time.date(), market_config["open_time"])  # local
+        close_dt = datetime.combine(local_time.date(), market_config["close_time"])  # local
+        open_dt_buffered = open_dt + timedelta(minutes=open_buffer_min)
+        close_dt_buffered = close_dt - timedelta(minutes=close_buffer_min)
+
+        # Pausas de mediodía
+        lunch_breaks = self.symbol_lunch_breaks.get(symbol, [])
+        current_local_dt = local_time
+        current_local_time = current_local_dt.time()
+
+        for start_time, end_time in lunch_breaks:
+            if start_time <= current_local_time <= end_time:
+                return False, (
+                    f"Trading blocked: lunch break {start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')} "
+                    f"{market_tz.zone} | {current_local_dt.strftime('%H:%M')} local"
+                )
+
+        # Verificar si estamos dentro de la ventana óptima (evitar apertura/cierre)
+        if open_dt_buffered <= current_local_dt <= close_dt_buffered:
+            return True, (
+                f"Trading allowed: buffered window {open_dt_buffered.strftime('%H:%M')}–{close_dt_buffered.strftime('%H:%M')} "
+                f"{market_tz.zone} | now {current_local_dt.strftime('%H:%M')} local"
+            )
+        else:
+            # Determinar motivo específico
+            if current_local_dt < open_dt_buffered:
+                return False, (
+                    f"Trading blocked: within open buffer (first {open_buffer_min}m) | "
+                    f"opens {market_config['open_time'].strftime('%H:%M')} {market_tz.zone}, optimal from {open_dt_buffered.strftime('%H:%M')}"
+                )
+            else:
+                return False, (
+                    f"Trading blocked: within close buffer (last {close_buffer_min}m) | "
+                    f"closes {market_config['close_time'].strftime('%H:%M')} {market_tz.zone}, optimal until {close_dt_buffered.strftime('%H:%M')}"
+                )
 
     def get_general_market_status(self) -> Dict[str, list]:
         """
