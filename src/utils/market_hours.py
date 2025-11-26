@@ -309,8 +309,19 @@ class MarketHoursChecker:
         close_buffer_min = buffers.get("close_buffer", self.default_close_buffer_min)
 
         # Construir ventanas con buffer
-        open_dt = datetime.combine(local_time.date(), market_config["open_time"])  # local
-        close_dt = datetime.combine(local_time.date(), market_config["close_time"])  # local
+        # Crear datetimes conscientes de zona horaria para evitar comparaciones naive/aware
+        open_naive = datetime.combine(local_time.date(), market_config["open_time"])  # naive
+        close_naive = datetime.combine(local_time.date(), market_config["close_time"])  # naive
+        try:
+            open_dt = market_tz.localize(open_naive)
+        except Exception:
+            # Fallback: si ya viene aware o falla localize, asegurar tz con replace
+            open_dt = open_naive.replace(tzinfo=market_tz)
+        try:
+            close_dt = market_tz.localize(close_naive)
+        except Exception:
+            close_dt = close_naive.replace(tzinfo=market_tz)
+
         open_dt_buffered = open_dt + timedelta(minutes=open_buffer_min)
         close_dt_buffered = close_dt - timedelta(minutes=close_buffer_min)
 
