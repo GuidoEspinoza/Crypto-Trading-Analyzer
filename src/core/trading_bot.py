@@ -55,6 +55,17 @@ from .position_monitor import PositionMonitor
 from .capital_client import CapitalClient, create_capital_client_from_env
 from src.utils.market_hours import market_hours_checker
 
+# Indicadores técnicos para filtros adicionales
+try:
+    import pandas as pd
+    from ta.trend import EMAIndicator, ADXIndicator
+    from ta.volatility import AverageTrueRange
+except Exception:
+    pd = None
+    EMAIndicator = None
+    ADXIndicator = None
+    AverageTrueRange = None
+
 # Configurar logging ANTES de la clase
 logging.basicConfig(
     level=logging.WARNING,  # Cambiar a WARNING para reducir verbosidad
@@ -281,6 +292,198 @@ class TradingBot:
         self.logger.info(
             "🤖 Trading Bot initialized with Position Monitor and Trade Cooldown System"
         )
+
+    # ==========================
+    # Helpers de datos/indicadores
+    # ==========================
+    def _get_ohlc_dataframe(self, symbol: str, timeframe: str = "15m", periods: int = 240) -> Any:
+        """Obtener OHLC como DataFrame para aplicar indicadores.
+
+        Usa `capital_client.get_historical_prices` cuando está disponible.
+        """
+        try:
+            if pd is None:
+                return None
+            data_points = max(50, min(periods, 1000))
+            capital_symbol = symbol
+            try:
+                capital_symbol = self._normalize_symbol_for_capital(symbol)
+            except Exception:
+                pass
+
+            timeframe_mapping = {
+                "1m": "MINUTE",
+                "5m": "MINUTE_5",
+                "15m": "MINUTE_15",
+                "30m": "MINUTE_30",
+                "1h": "HOUR",
+                "4h": "HOUR_4",
+                "1d": "DAY",
+                "1w": "WEEK",
+            }
+            resolution = timeframe_mapping.get(timeframe, "MINUTE_15")
+
+            if self.capital_client:
+                historical_result = self.capital_client.get_historical_prices(
+                    epic=capital_symbol,
+                    resolution=resolution,
+                    max_points=data_points,
+                )
+                if historical_result.get("success") and historical_result.get("prices"):
+                    rows = []
+                    for p in historical_result.get("prices", [])[:data_points]:
+                        try:
+                            ts = pd.to_datetime(p.get("timestamp", p.get("timestamp_utc", "")))
+                            rows.append(
+                                {
+                                    "timestamp": ts,
+                                    "open": float(p.get("open", 0.0)),
+                                    "high": float(p.get("high", 0.0)),
+                                    "low": float(p.get("low", 0.0)),
+                                    "close": float(p.get("close", 0.0)),
+                                    "volume": float(p.get("volume", 0.0)),
+                                }
+                            )
+                        except Exception:
+                            continue
+                    df = pd.DataFrame(rows)
+                    if not df.empty:
+                        df.set_index("timestamp", inplace=True)
+                        df.sort_index(inplace=True)
+                        return df
+
+            # Fallback mínimo usando precio actual si no hay datos
+            current_price = None
+            try:
+                current_price = self._get_current_price(symbol)
+            except Exception:
+                pass
+            if current_price:
+                now = datetime.now(UTC_TZ)
+                data = []
+                for i in range(data_points, 0, -1):
+                    ts = now - timedelta(minutes=i * 15)
+                    price = current_price * (1 + 0.0002 * i)
+                    data.append(
+                        {
+                            "timestamp": ts,
+                            "open": price,
+                            "high": price * 1.002,
+                            "low": price * 0.998,
+                            "close": price,
+                            "volume": 1000 + i,
+                        }
+                    )
+                df = pd.DataFrame(data)
+                df.set_index("timestamp", inplace=True)
+                df.sort_index(inplace=True)
+                return df
+            return None
+        except Exception:
+            return None
+
+    def _calculate_chop_metrics(self, df: Any, ema_window: int = 20) -> Dict[str, float]:
+        """Calcular métricas anti-chop: ADX, ATR normalizado y pendiente EMA.
+
+        Retorna ratios normalizados respecto al precio: `atr_ratio` y `ema_slope_ratio`.
+        """
+        try:
+            if df is None or pd is None or df.empty:
+                return {"adx": 25.0, "atr_ratio": 0.0015, "ema_slope_ratio": 0.0004, "atr_percentage": 0.15}
+
+            close = df["close"].astype(float)
+            high = df["high"].astype(float)
+            low = df["low"].astype(float)
+
+            # ADX
+            adx_val = 25.0
+            if ADXIndicator:
+                try:
+                    adx_series = ADXIndicator(high=high, low=low, close=close, window=14).adx()
+                    adx_val = float(adx_series.iloc[-1]) if not pd.isna(adx_series.iloc[-1]) else 25.0
+                except Exception:
+                    adx_val = 25.0
+
+            # ATR y ratios
+            current_price = float(close.iloc[-1])
+            atr_ratio = 0.0015
+            atr_pct = 0.15
+            if AverageTrueRange:
+                try:
+                    atr_series = AverageTrueRange(high=high, low=low, close=close, window=14).average_true_range()
+                    current_atr = float(atr_series.iloc[-1])
+                    atr_ratio = current_atr / current_price if current_price > 0 else 0.0
+                    atr_pct = atr_ratio * 100.0
+                except Exception:
+                    pass
+
+            # Pendiente de EMA normalizada por vela y precio
+            ema_slope_ratio = 0.0004
+            if EMAIndicator:
+                try:
+                    ema = EMAIndicator(close=close, window=ema_window).ema_indicator()
+                    # diferencia de 5 velas para suavizar
+                    step = 5 if len(ema) > 5 else max(1, len(ema) // 4)
+                    slope = abs(float(ema.iloc[-1] - ema.iloc[-step])) / float(step)
+                    ema_slope_ratio = slope / current_price if current_price > 0 else 0.0
+                except Exception:
+                    pass
+
+            return {
+                "adx": float(adx_val),
+                "atr_ratio": float(atr_ratio),
+                "ema_slope_ratio": float(ema_slope_ratio),
+                "atr_percentage": float(atr_pct),
+            }
+        except Exception:
+            return {"adx": 25.0, "atr_ratio": 0.0015, "ema_slope_ratio": 0.0004, "atr_percentage": 0.15}
+
+    def _passes_breakout_retest(self, signal: "TradingSignal", df: Any, atr_percentage: float, cfg: Dict[str, Any]) -> tuple[bool, str]:
+        """Validar breakout seguido de retest simple.
+
+        Para BUY: cierre por encima del máximo previo + umbral, y retest reciente al nivel roto dentro de tolerancia.
+        Para SELL: cierre por debajo del mínimo previo - umbral, y retest reciente.
+        """
+        try:
+            if df is None or pd is None or df.empty:
+                return True, "Sin datos OHLC suficientes para validar"
+
+            window = 20
+            tol_ratio = float(cfg.get("retest_tolerance_ratio", 0.5))
+            brk_ratio = float(cfg.get("breakout_threshold_ratio", 0.6))
+
+            close = df["close"].astype(float)
+            high = df["high"].astype(float)
+            low = df["low"].astype(float)
+            current_close = float(close.iloc[-1])
+
+            # nivel previo
+            prev_max = float(close.iloc[-(window + 1):-1].max()) if len(close) > window else float(close.max())
+            prev_min = float(close.iloc[-(window + 1):-1].min()) if len(close) > window else float(close.min())
+
+            # umbral basado en ATR%
+            threshold_abs = (atr_percentage / 100.0) * current_close * brk_ratio
+            tolerance_abs = (atr_percentage / 100.0) * current_close * tol_ratio
+
+            if str(signal.signal_type).upper() == "BUY":
+                breakout = current_close > (prev_max + threshold_abs)
+                # Retest: alguna de las últimas 5 velas tocó cerca del nivel roto
+                recent_lows = low.tail(5)
+                retest = any(abs(float(l) - prev_max) <= tolerance_abs for l in recent_lows)
+                if breakout and retest:
+                    return True, f"Breakout+Retest OK (Δ>{threshold_abs:.4f}, tol±{tolerance_abs:.4f})"
+                reason = "sin breakout" if not breakout else "sin retest"
+                return False, f"BUY {reason} sobre {prev_max:.2f} (umbral {threshold_abs:.4f}, tol {tolerance_abs:.4f})"
+            else:
+                breakout = current_close < (prev_min - threshold_abs)
+                recent_highs = high.tail(5)
+                retest = any(abs(float(h) - prev_min) <= tolerance_abs for h in recent_highs)
+                if breakout and retest:
+                    return True, f"Breakout+Retest OK (Δ>{threshold_abs:.4f}, tol±{tolerance_abs:.4f})"
+                reason = "sin breakout" if not breakout else "sin retest"
+                return False, f"SELL {reason} bajo {prev_min:.2f} (umbral {threshold_abs:.4f}, tol {tolerance_abs:.4f})"
+        except Exception as e:
+            return True, f"Error validando patrón: {e}"
 
     def _initialize_capital_client(self):
         """🔌 Inicializar cliente de Capital.com"""
@@ -2480,6 +2683,46 @@ class TradingBot:
                     continue
 
                 self.logger.info(f"✅ {signal.symbol}: {market_reason}")
+
+                # 🔍 Filtro Anti-Chop (opcional por perfil)
+                try:
+                    profile_cfg = TradingProfiles.get_current_profile()
+                    if bool(profile_cfg.get("chop_filter_enabled", False)):
+                        tf = str(profile_cfg.get("chop_timeframe", "15m"))
+                        df = self._get_ohlc_dataframe(signal.symbol, timeframe=tf, periods=240)
+                        metrics = self._calculate_chop_metrics(df)
+                        adx_th = float(profile_cfg.get("adx_threshold", 20))
+                        atr_min = float(profile_cfg.get("atr_min_ratio", 0.0012))
+                        ema_min = float(profile_cfg.get("ema_slope_min_ratio", 0.0003))
+
+                        self.logger.info(
+                            f"🧭 {signal.symbol} Anti-Chop metrics: ADX={metrics['adx']:.1f}, ATR%={metrics['atr_percentage']:.2f}%, ATR/Price={metrics['atr_ratio']:.4f}, EMA slope/Price={metrics['ema_slope_ratio']:.4f}"
+                        )
+
+                        blocked_reasons = []
+                        if metrics["adx"] < adx_th:
+                            blocked_reasons.append(f"ADX {metrics['adx']:.1f} < {adx_th:.1f}")
+                        if metrics["atr_ratio"] < atr_min:
+                            blocked_reasons.append(f"ATR ratio {metrics['atr_ratio']:.4f} < {atr_min:.4f}")
+                        if abs(metrics["ema_slope_ratio"]) < ema_min:
+                            blocked_reasons.append(f"EMA slope ratio {metrics['ema_slope_ratio']:.4f} < {ema_min:.4f}")
+
+                        if blocked_reasons:
+                            self.logger.info(
+                                f"🧱 {signal.symbol}: señal filtrada por Anti-Chop -> {', '.join(blocked_reasons)}"
+                            )
+                            continue
+
+                        # Validación opcional de Breakout + Retest
+                        if bool(profile_cfg.get("require_breakout_retest", False)):
+                            ok, reason = self._passes_breakout_retest(signal, df, metrics.get("atr_percentage", 0.15), profile_cfg)
+                            if not ok:
+                                self.logger.info(f"🧪 {signal.symbol}: filtro Breakout+Retest NO pasó -> {reason}")
+                                continue
+                            else:
+                                self.logger.info(f"🧪 {signal.symbol}: filtro Breakout+Retest pasó -> {reason}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {signal.symbol}: Error aplicando filtro Anti-Chop/Breakout: {e}")
 
                 # 🔄 PASO 1: Obtener balance actualizado antes de cada análisis
                 portfolio_summary = self.get_portfolio_summary()

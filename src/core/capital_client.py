@@ -646,13 +646,19 @@ class CapitalClient:
             ):
                 return "CRYPTOCURRENCIES"
 
-        # Comprehensive indices symbols from symbols_config.py
+        # Comprehensive indices symbols from symbols_config.py (incluye variantes usadas en GLOBAL_SYMBOLS)
         index_symbols = [
-            "SPX500", "NAS100", "US30", "FTSE100", "GER40", "FRA40", "ESP35", "ITA40",
-            "AUS200", "JPN225", "HK50", "CHINA50", "IND50", "SING30", "SWISS20",
-            "NLD25", "BEL20", "AUT20", "NOR25", "SWE30", "DEN25", "POL20", "CZE14",
-            "HUN20", "RUS50", "ZAF40", "MEX35", "BRA60", "ARG25", "CHL30", "COL20",
-            "PER15", "ECOM50", "AFRICA40", "GULF20", "MENA30", "ASIA50", "PACIFIC25"
+            # US y variantes comunes
+            "SPX500", "NAS100", "US500", "US100", "US30", "RTY",
+            # Europa
+            "FTSE100", "UK100", "GER40", "DE40", "FRA40", "FR40", "ESP35", "ITA40",
+            # Asia
+            "JPN225", "HK50", "CHINA50", "AUS200",
+            # Otros
+            "IND50", "SING30", "SWISS20", "NLD25", "BEL20", "AUT20", "NOR25",
+            "SWE30", "DEN25", "POL20", "CZE14", "HUN20", "RUS50", "ZAF40", "MEX35",
+            "BRA60", "ARG25", "CHL30", "COL20", "PER15", "ECOM50", "AFRICA40",
+            "GULF20", "MENA30", "ASIA50", "PACIFIC25"
         ]
         
         # Check exact match for indices
@@ -660,8 +666,11 @@ class CapitalClient:
             return "INDICES"
         
         # Check partial matches for indices
-        index_patterns = ["SPX", "NAS", "DOW", "US30", "FTSE", "DAX", "GER", "CAC", "FRA", 
-                         "NIKKEI", "JPN", "ASX", "AUS", "HK", "CHINA", "IND", "SING"]
+        index_patterns = [
+            "SPX", "NAS", "DOW", "US30", "US100", "US500",
+            "FTSE", "UK100", "DAX", "GER", "DE40", "CAC", "FRA", "FR40",
+            "NIKKEI", "JPN", "ASX", "AUS", "HK", "HK50", "CHINA", "IND", "SING"
+        ]
         for pattern in index_patterns:
             if pattern in symbol_upper:
                 return "INDICES"

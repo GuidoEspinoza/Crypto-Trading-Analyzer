@@ -81,18 +81,18 @@ INDICES_ASIA = [
 # 🎯 CONFIGURACIÓN GLOBAL OPTIMIZADA
 # ============================================================================
 
-# Portafolio solo índices (preferencia del usuario)
-INDICES_ONLY_PORTFOLIO = [
+# Lista principal de símbolos para el bot: usar portafolio solo índices
+GLOBAL_SYMBOLS = [
+    # Metales
+    "GOLD",
+    "SILVER",
     # América
-    "US100", "US500", "US30", "RTY",
+    "US100",
     # Europa
     "DE40", "UK100", "FR40",
     # Asia
-    "J225", "HK50", "AU200",
+    "HK50",
 ]
-
-# Lista principal de símbolos para el bot: usar portafolio solo índices
-GLOBAL_SYMBOLS = INDICES_ONLY_PORTFOLIO
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
 SYMBOL_SPECIFIC_CONFIG_CORE = {
