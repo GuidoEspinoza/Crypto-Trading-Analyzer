@@ -7,11 +7,17 @@ Notas importantes:
 - Los mercados de EE. UU. cambian entre EDT (UTC−4) y EST (UTC−5); se muestran ambos para precisión.
 - Fuente: `src/config/time_trading_config.py` y `src/utils/market_hours.py`.
 
+## Reset Diario
+
+- Hora de reset: 11:45 UTC
+- Pre-reset de toma de ganancias: 11:30 UTC (15 minutos antes del reset)
+- Propósito: reiniciar contadores diarios y línea base justo antes del inicio principal (12:00 UTC)
+
 ## Horarios Inteligentes (Smart Trading)
 
 | Tipo | Horario UTC | Chile Verano (CLST) | Chile Invierno (CLT) |
 |---|---|---|---|
-| Principal | 11:00–02:30 (cruza medianoche) | 08:00–23:30 (cruza medianoche) | 07:00–22:30 (cruza medianoche) |
+| Principal | 12:00–02:30 (cruza medianoche) | 09:00–23:30 (cruza medianoche) | 08:00–22:30 (cruza medianoche) |
 | Extendido | 09:00–02:59 (cruza medianoche) | 06:00–23:59 (cruza medianoche) | 05:00–22:59 (cruza medianoche) |
 | Nocturno (Asia) | 01:00–11:00 | 22:00–08:00 (cruza medianoche) | 21:00–07:00 (cruza medianoche) |
 

@@ -56,8 +56,8 @@ UTC_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
 # Hora de reinicio diario del sistema (formato 24h)
 # Este es el momento en que se resetean contadores, estadísticas y límites diarios
 # Ajustado para alinearse con el cierre de la sesión de EE. UU. (US500)
-DAILY_RESET_HOUR = 10  # 10:00 UTC
-DAILY_RESET_MINUTE = 30 # Minuto exacto del reinicio
+DAILY_RESET_HOUR = 11  # 11:00 UTC
+DAILY_RESET_MINUTE = 45 # Minuto exacto del reinicio (15 min antes de las 12:00)
 
 # ============================================================================
 # 🕐 HORARIOS DE TRADING INTELIGENTES
@@ -69,7 +69,7 @@ DAILY_RESET_MINUTE = 30 # Minuto exacto del reinicio
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
     # Optimizado para aprovechar superposición Europa-América
-    "start_time": "11:00",  # 11:00 UTC - Apertura mercados europeos (era 08:00 Chile)
+    "start_time": "12:00",  # 12:00 UTC - Inicio más estable previo al overlap Londres–NY
     "end_time": "02:30",  # 02:30 UTC - Cierre extendido mercados asiáticos (era 23:30 Chile)
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
