@@ -1850,8 +1850,9 @@ class TradingBot:
                     portfolio_init = self.get_portfolio_summary()
                     self.daily_start_value = float(portfolio_init.get("total_value", 0.0))
                     self.daily_start_funds = float(portfolio_init.get("funds_balance", 0.0))
+                    self.daily_start_open_pnl = float(portfolio_init.get("total_pnl", 0.0))
                     self.logger.info(
-                        f"📈 Línea base diaria inicializada: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}"
+                        f"📈 Línea base diaria inicializada: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}, UPL=${self.daily_start_open_pnl:,.2f}"
                     )
             except Exception as e:
                 self.logger.warning(f"⚠️ No se pudo inicializar línea base diaria: {e}")
@@ -1871,15 +1872,30 @@ class TradingBot:
 
                     base_equity = self.daily_start_value or 0.0
                     base_funds = self.daily_start_funds or 0.0
+                    base_open_pnl = getattr(self, "daily_start_open_pnl", 0.0) or 0.0
 
                     if base_equity > 0:
                         daily_gain_equity_pct = ((current_total - base_equity) / base_equity) * 100.0
                         daily_gain_pnl_pct = (current_pnl / base_equity) * 100.0
-                    if base_funds > 0:
-                        daily_gain_realized_pct = ((current_funds - base_funds) / base_funds) * 100.0
+                    # Realized diario robusto: equity_delta menos delta de UPL (no depende de 'available')
+                    # realized_usd_today = (current_total - base_equity) - (current_pnl - base_open_pnl)
+                    realized_usd_today = (current_total - base_equity) - (current_pnl - base_open_pnl)
+                    if base_equity > 0:
+                        daily_gain_realized_pct = (realized_usd_today / base_equity) * 100.0
                     else:
-                        # Fallback si no hay baseline de fondos: usar equity
-                        daily_gain_realized_pct = daily_gain_equity_pct
+                        daily_gain_realized_pct = 0.0
+
+                    # Log de diagnóstico para auditar componentes del tope diario
+                    try:
+                        equity_delta = (current_total - base_equity)
+                        upl_delta = (current_pnl - base_open_pnl)
+                        self.logger.info(
+                            f"📊 Daily cap components: base_equity=${base_equity:,.2f}, base_upl=${base_open_pnl:,.2f}, "
+                            f"equity_now=${current_total:,.2f}, upl_now=${current_pnl:,.2f}, equityΔ=${equity_delta:,.2f}, "
+                            f"UPLΔ=${upl_delta:,.2f}, realized_today=${realized_usd_today:,.2f}"
+                        )
+                    except Exception:
+                        pass
 
                     # Seleccionar métrica según modo
                     if self.daily_profit_cap_mode == "equity":
@@ -2718,9 +2734,10 @@ class TradingBot:
                 portfolio_summary = self.get_portfolio_summary()
                 self.daily_start_value = float(portfolio_summary.get("total_value", 0.0))
                 self.daily_start_funds = float(portfolio_summary.get("funds_balance", 0.0))
+                self.daily_start_open_pnl = float(portfolio_summary.get("total_pnl", 0.0))
                 self.daily_pause_active = False
                 self.logger.info(
-                    f"📅 Daily reset: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}, modo={self.daily_profit_cap_mode}, trading reanudado"
+                    f"📅 Daily reset: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}, UPL=${self.daily_start_open_pnl:,.2f}, modo={self.daily_profit_cap_mode}, trading reanudado"
                 )
             except Exception as e:
                 self.logger.warning(

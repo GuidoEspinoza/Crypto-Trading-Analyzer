@@ -90,7 +90,7 @@ PROFILES = {
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
         "max_daily_loss_percent": 4.5,  # Pérdida máxima diaria - OPTIMIZADA (era 3.0%)
         "max_daily_profit_percent": 5.0,  # Ganancia máxima diaria antes de pausar trading
-        "daily_profit_cap_mode": "composite_or",  # Evaluar equity, pnl y realized (OR)
+        "daily_profit_cap_mode": "pnl",  # Disparar tope por PnL (UPL) ≥ umbral
         "min_confidence_threshold": 0.78,  # Umbral mínimo de confianza para operar
         "position_size_multiplier": 1.5,  # Multiplicador OPTIMIZADO para scalping (era 0.8)
         # === CONFIGURACIÓN DE ESTRATEGIAS ===
@@ -233,7 +233,7 @@ PROFILES = {
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
         "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria ajustada para posiciones más grandes
         "max_daily_profit_percent": 5.0,  # Ganancia máxima diaria antes de pausar trading
-        "daily_profit_cap_mode": "composite_or",  # Evaluar equity, pnl y realized (OR)
+        "daily_profit_cap_mode": "pnl",  # Disparar tope por PnL (UPL) ≥ umbral
         "min_confidence_threshold": 0.72,  # Confianza mínima balanceada
         "position_size_multiplier": 2.0,  # Multiplicador OPTIMIZADO para trades selectivos
         # === CONFIGURACIÓN DE ESTRATEGIAS PARA CRYPTO ===
