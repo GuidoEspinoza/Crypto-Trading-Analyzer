@@ -41,6 +41,28 @@ class MeanReversionAdapter(TradingStrategy):
 
         logger.info(f"✅ {self.name} adapter inicializado")
 
+    def _safe_current_price(self, symbol: str, timeframe: str) -> float:
+        """Obtener precio actual de forma robusta: primero fuente centralizada,
+        luego último `close` de `get_market_data`; nunca retornar 0.0 si es posible."""
+        try:
+            price = self.get_current_price(symbol)
+            if price and price > 0:
+                return float(price)
+        except Exception:
+            pass
+
+        try:
+            df = self.get_market_data(symbol, timeframe, 1)
+            if df is not None and not df.empty:
+                last_close = float(df["close"].iloc[-1])
+                if last_close and last_close > 0:
+                    return last_close
+        except Exception:
+            pass
+
+        # Último recurso: 0.0 (evitar uso en producción)
+        return 0.0
+
     def _create_hold_signal(
         self, symbol: str, price: float, reason: str = "No conditions met"
     ) -> EnhancedSignal:
@@ -189,15 +211,7 @@ class MeanReversionAdapter(TradingStrategy):
                     f"⚠️ No se pudo generar señal Mean Reversion para {symbol}"
                 )
                 # Intentar obtener precio actual para señal HOLD
-                try:
-                    data = self._get_market_data(symbol, timeframe, 1)
-                    current_price = (
-                        data["close"].iloc[-1]
-                        if data is not None and not data.empty
-                        else 0.0
-                    )
-                except:
-                    current_price = 0.0
+                current_price = self._safe_current_price(symbol, timeframe)
 
                 return self._create_hold_signal(symbol, current_price, "Análisis falló")
 
@@ -215,16 +229,7 @@ class MeanReversionAdapter(TradingStrategy):
             logger.error(f"❌ Error en análisis Mean Reversion para {symbol}: {e}")
 
             # Crear señal HOLD de emergencia
-            try:
-                data = self._get_market_data(symbol, timeframe, 1)
-                current_price = (
-                    data["close"].iloc[-1]
-                    if data is not None and not data.empty
-                    else 0.0
-                )
-            except:
-                current_price = 0.0
-
+            current_price = self._safe_current_price(symbol, timeframe)
             return self._create_hold_signal(symbol, current_price, f"Error: {str(e)}")
 
 

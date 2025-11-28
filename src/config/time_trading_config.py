@@ -55,8 +55,9 @@ UTC_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
 
 # Hora de reinicio diario del sistema (formato 24h)
 # Este es el momento en que se resetean contadores, estadísticas y límites diarios
-DAILY_RESET_HOUR = 0  # Medianoche (00:00)
-DAILY_RESET_MINUTE = 0   # Minuto exacto del reinicio
+# Ajustado para alinearse con el cierre de la sesión de EE. UU. (US500)
+DAILY_RESET_HOUR = 11  # 11:00 UTC
+DAILY_RESET_MINUTE = 45 # Minuto exacto del reinicio (15 min antes de las 12:00)
 
 # ============================================================================
 # 🕐 HORARIOS DE TRADING INTELIGENTES
@@ -68,7 +69,7 @@ DAILY_RESET_MINUTE = 0   # Minuto exacto del reinicio
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
     # Optimizado para aprovechar superposición Europa-América
-    "start_time": "11:00",  # 11:00 UTC - Apertura mercados europeos (era 08:00 Chile)
+    "start_time": "12:00",  # 12:00 UTC - Inicio más estable previo al overlap Londres–NY
     "end_time": "02:30",  # 02:30 UTC - Cierre extendido mercados asiáticos (era 23:30 Chile)
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
@@ -80,14 +81,14 @@ SMART_TRADING_HOURS = {
     "night_end": "11:00",  # 11:00 UTC - Fin sesión asiática (era 08:00 Chile)
     # === SESIONES DE ALTA VOLATILIDAD ===
     # Horarios específicos para máxima actividad
-    "high_volatility_sessions": {
+        "high_volatility_sessions": {
         "asian_open": {"start": "22:00", "end": "02:00"},  # Apertura asiática (UTC)
         "london_open": {"start": "08:00", "end": "12:00"},  # Apertura Londres (UTC)
         "ny_open": {"start": "14:30", "end": "18:30"},  # Apertura NY (UTC)
         "overlap_london_ny": {
-            "start": "14:30",
+            "start": "13:00",
             "end": "17:00",
-        },  # Superposición Londres-NY (UTC)
+        },  # Superposición Londres-NY (UTC) ajustada para cubrir variaciones de horario (DST)
     },
     # === CONFIGURACIÓN AVANZADA ===
     "enabled": True,  # Habilitar horarios inteligentes
@@ -300,13 +301,12 @@ def _get_symbols_by_category(category_type: str) -> list:
         return crypto_symbols
     
     elif category_type == "forex":
-        # Obtener todos los símbolos forex de GLOBAL_SYMBOLS
-        forex_symbols = FOREX_MAJOR + FOREX_MINOR[:3] + FOREX_EXOTIC[:2]
-        return forex_symbols
+        # Forex deshabilitado en core: no retornar símbolos
+        return []
     
     elif category_type == "commodities":
-        # Obtener todos los símbolos commodities de GLOBAL_SYMBOLS
-        commodities_symbols = METALS_PRECIOUS + ENERGY_COMMODITIES[:2] + AGRICULTURAL[:2] + METALS_INDUSTRIAL[:2]
+        # Portafolio actual: sólo metales preciosos (GOLD)
+        commodities_symbols = METALS_PRECIOUS
         return commodities_symbols
     
     elif category_type == "indices":
@@ -343,45 +343,51 @@ MARKET_SPECIFIC_CONFIG = {
         "min_confidence_adjustment": -5.0,  # Reducir 5% confianza mínima (más oportunidades)
         "max_trades_multiplier": 1.3,  # 30% más trades permitidos
     },
+    # Forex deshabilitado explícitamente en el portafolio CORE
     "forex": {
         "high_volatility_hours": {
-            # Horarios de mayor volatilidad para forex
-            "london_open": {
-                "start": time(8, 0),
-                "end": time(10, 0),
-            },  # Apertura Londres
-            "ny_open": {
-                "start": time(14, 0),
-                "end": time(16, 0),
-            },  # Apertura Nueva York
-            "london_ny_overlap": {
-                "start": time(14, 0),
-                "end": time(17, 0),
-            },  # Overlap principal
-            "asian_close": {"start": time(7, 0), "end": time(9, 0)},  # Cierre asiático
+            # Mantener estructura por compatibilidad, pero no activar recomendaciones
+            "london_open": {"start": time(8, 0), "end": time(10, 0)},
+            "ny_open": {"start": time(14, 0), "end": time(16, 0)},
+            "london_ny_overlap": {"start": time(14, 0), "end": time(17, 0)},
+            "asian_close": {"start": time(7, 0), "end": time(9, 0)},
         },
-        # Usar símbolos principales de forex desde GLOBAL_SYMBOLS
-        "optimal_symbols": FOREX_MAJOR[:4],  # Top 4 pares mayores
-        "min_confidence_adjustment": 0.0,  # Sin ajuste (mantener estándar)
-        "max_trades_multiplier": 1.0,  # Sin multiplicador
+        # No sugerir ni permitir símbolos FX
+        "optimal_symbols": [],
+        "min_confidence_adjustment": 0.0,
+        "max_trades_multiplier": 0.0,
     },
     "commodities": {
         "high_volatility_hours": {
             # Horarios de mayor volatilidad para commodities
-            "gold_active": {"start": time(9, 0), "end": time(11, 0)},  # Oro más activo
+            "gold_active": {"start": time(13, 30), "end": time(16, 0)},  # Oro más activo durante solapamiento Londres-NY (UTC)
+            "gold_london_fix_morning": {"start": time(10, 30), "end": time(11, 0)},  # Fijación AM de Londres (UTC)
+            "gold_london_fix_afternoon": {"start": time(15, 0), "end": time(15, 30)},  # Fijación PM de Londres (UTC)
             "oil_active": {
-                "start": time(15, 0),
-                "end": time(17, 0),
-            },  # Petróleo más activo
+                "start": time(14, 0),
+                "end": time(18, 0),
+            },  # Petróleo más activo (apertura US y solapamiento EU-US)
+            "oil_eia_window": {"start": time(14, 30), "end": time(16, 30)},  # Ventana típica de publicación inventarios EIA (UTC, variación DST)
             "general_active": {
                 "start": time(14, 0),
                 "end": time(16, 0),
             },  # Actividad general
+            "agri_active": {"start": time(13, 30), "end": time(18, 30)},  # Activos agrícolas (CBOT día) ventana aproximada en UTC
         },
-        # Usar símbolos principales de commodities desde GLOBAL_SYMBOLS
-        "optimal_symbols": METALS_PRECIOUS + ENERGY_COMMODITIES[:2] + METALS_INDUSTRIAL[:1],  # Metales preciosos + energía + industrial
+        # Usar sólo metales preciosos (portafolio actual: GOLD)
+        "optimal_symbols": METALS_PRECIOUS,
         "min_confidence_adjustment": 2.0,  # Aumentar 2% confianza (más conservador)
         "max_trades_multiplier": 0.8,  # 20% menos trades (más selectivo)
+    },
+    "indices": {
+        "high_volatility_hours": {
+            "eu_open": {"start": time(7, 0), "end": time(9, 0)},  # Apertura Europa (DAX/UK100)
+            "us_cash": {"start": time(14, 30), "end": time(21, 0)},  # Mercado al contado US (NYSE/NASDAQ) en UTC
+            "overlap_eu_us": {"start": time(13, 0), "end": time(17, 0)},  # Solapamiento Londres-NY (UTC)
+        },
+        "optimal_symbols": INDICES_US + INDICES_EUROPE[:2] + INDICES_ASIA[:2],
+        "min_confidence_adjustment": 0.0,
+        "max_trades_multiplier": 1.0,
     },
 }
 
@@ -394,9 +400,9 @@ HIGH_VOLATILITY_SESSIONS = {
         "confidence_boost": 5.0,  # Aumentar confianza en señales durante esta sesión
     },
     "afternoon_momentum": {
-        "start": time(17, 30),
-        "end": time(19, 30),
-        "description": "Sesión de momentum vespertino - Overlap EU-US (UTC)",
+        "start": time(13, 0),
+        "end": time(17, 0),
+        "description": "Sesión de momentum vespertino - Solapamiento Londres-NY (UTC)",
         "confidence_boost": 7.0,  # Mayor boost por ser sesión premium
     },
     "evening_continuation": {
@@ -694,8 +700,21 @@ def _detect_market_type(symbol: str) -> str:
     if len(symbol_upper) == 6 and any(pair in symbol_upper for pair in forex_pairs):
         return "forex"
 
+    # Detectar índices (US/EU/ASIA)
+    index_indicators = [
+        "US30",
+        "US100",
+        "US500",
+        "UK100",
+        "GER40",
+        "J225",
+        "HK50",
+    ]
+    if any(indicator in symbol_upper for indicator in index_indicators):
+        return "indices"
+
     # Detectar acciones estadounidenses
-    us_stocks = ["NVDA", "US500", "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+    us_stocks = ["NVDA", "SPY", "QQQ", "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
     if any(stock in symbol_upper for stock in us_stocks):
         return "stocks_us"
 
@@ -720,9 +739,9 @@ def get_smart_trading_status_summary() -> dict:
         # Estado general
         general_status = is_smart_trading_hours_allowed()
 
-        # Estado por tipo de mercado
+        # Estado por tipo de mercado (excluye forex en core)
         market_statuses = {}
-        for market_type in ["crypto", "forex", "stocks_us"]:
+        for market_type in ["crypto", "indices", "stocks_us"]:
             market_statuses[market_type] = is_smart_trading_hours_allowed(
                 f"sample_{market_type}"
             )
@@ -758,7 +777,8 @@ def get_market_specific_config(symbol: str) -> dict:
         dict: Configuración específica del mercado
     """
     market_type = _detect_market_type(symbol)
-    return MARKET_SPECIFIC_CONFIG.get(market_type, MARKET_SPECIFIC_CONFIG["forex"])
+    # Fallback seguro: usar configuración de índices en lugar de forex
+    return MARKET_SPECIFIC_CONFIG.get(market_type, MARKET_SPECIFIC_CONFIG["indices"])
 
 
 def is_high_volatility_session(current_time: time = None) -> dict:

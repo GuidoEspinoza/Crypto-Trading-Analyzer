@@ -23,6 +23,7 @@ import weakref
 from src.config.main_config import (
     TradingBotConfig,
     TradingProfiles,
+    RiskManagerConfig,
     APIConfig,
     CacheConfig,
     GLOBAL_SYMBOLS,
@@ -53,6 +54,17 @@ from .position_monitor import PositionMonitor
 
 from .capital_client import CapitalClient, create_capital_client_from_env
 from src.utils.market_hours import market_hours_checker
+
+# Indicadores técnicos para filtros adicionales
+try:
+    import pandas as pd
+    from ta.trend import EMAIndicator, ADXIndicator
+    from ta.volatility import AverageTrueRange
+except Exception:
+    pd = None
+    EMAIndicator = None
+    ADXIndicator = None
+    AverageTrueRange = None
 
 # Configurar logging ANTES de la clase
 logging.basicConfig(
@@ -190,6 +202,9 @@ class TradingBot:
         self.enable_real_trading = (
             os.getenv("ENABLE_REAL_TRADING", "false").lower() == "true"
         )
+
+        # Previews de órdenes calculadas (para pruebas sin enviar a Capital.com)
+        self.order_previews: List[Dict[str, Any]] = []
         self.real_trading_size_multiplier = float(
             os.getenv("REAL_TRADING_SIZE_MULTIPLIER", "0.1")
         )  # 10% del tamaño de paper trading por defecto
@@ -251,11 +266,24 @@ class TradingBot:
         # Tracking de pérdidas consecutivas para estadísticas
         self.consecutive_losses = 0
 
+        # Línea base diaria y flag de pausa por tope de ganancia diaria
+        self.daily_start_value: Optional[float] = None
+        self.daily_pause_active: bool = False
+        self.max_daily_profit_percent: float = RiskManagerConfig.get_max_daily_profit_percent()
+        self.daily_profit_cap_mode: str = RiskManagerConfig.get_daily_profit_cap_mode()
+        # Baseline para modo 'realized': usar FONDOS (balance sin P&L)
+        self.daily_start_funds: Optional[float] = None
+
         # Sistema de tracking de trades para cooldown
         self.last_trade_times = {}  # {symbol: datetime} - último trade por símbolo
         self.last_signal_types = (
             {}
         )  # {symbol: signal_type} - último tipo de señal por símbolo
+
+        # Estados adicionales para AntiFlip Policy
+        self.last_signal_confidences = {}  # {symbol: float} - última confianza
+        self.antiflip_opposite_counts = {}  # {(symbol, signal_type): int} persistencia de señales opuestas
+        self.last_exit_times = {}  # {symbol: datetime} - último momento de salida/cierre
 
         # Thread para ejecución
         self.analysis_thread = None
@@ -264,6 +292,198 @@ class TradingBot:
         self.logger.info(
             "🤖 Trading Bot initialized with Position Monitor and Trade Cooldown System"
         )
+
+    # ==========================
+    # Helpers de datos/indicadores
+    # ==========================
+    def _get_ohlc_dataframe(self, symbol: str, timeframe: str = "15m", periods: int = 240) -> Any:
+        """Obtener OHLC como DataFrame para aplicar indicadores.
+
+        Usa `capital_client.get_historical_prices` cuando está disponible.
+        """
+        try:
+            if pd is None:
+                return None
+            data_points = max(50, min(periods, 1000))
+            capital_symbol = symbol
+            try:
+                capital_symbol = self._normalize_symbol_for_capital(symbol)
+            except Exception:
+                pass
+
+            timeframe_mapping = {
+                "1m": "MINUTE",
+                "5m": "MINUTE_5",
+                "15m": "MINUTE_15",
+                "30m": "MINUTE_30",
+                "1h": "HOUR",
+                "4h": "HOUR_4",
+                "1d": "DAY",
+                "1w": "WEEK",
+            }
+            resolution = timeframe_mapping.get(timeframe, "MINUTE_15")
+
+            if self.capital_client:
+                historical_result = self.capital_client.get_historical_prices(
+                    epic=capital_symbol,
+                    resolution=resolution,
+                    max_points=data_points,
+                )
+                if historical_result.get("success") and historical_result.get("prices"):
+                    rows = []
+                    for p in historical_result.get("prices", [])[:data_points]:
+                        try:
+                            ts = pd.to_datetime(p.get("timestamp", p.get("timestamp_utc", "")))
+                            rows.append(
+                                {
+                                    "timestamp": ts,
+                                    "open": float(p.get("open", 0.0)),
+                                    "high": float(p.get("high", 0.0)),
+                                    "low": float(p.get("low", 0.0)),
+                                    "close": float(p.get("close", 0.0)),
+                                    "volume": float(p.get("volume", 0.0)),
+                                }
+                            )
+                        except Exception:
+                            continue
+                    df = pd.DataFrame(rows)
+                    if not df.empty:
+                        df.set_index("timestamp", inplace=True)
+                        df.sort_index(inplace=True)
+                        return df
+
+            # Fallback mínimo usando precio actual si no hay datos
+            current_price = None
+            try:
+                current_price = self._get_current_price(symbol)
+            except Exception:
+                pass
+            if current_price:
+                now = datetime.now(UTC_TZ)
+                data = []
+                for i in range(data_points, 0, -1):
+                    ts = now - timedelta(minutes=i * 15)
+                    price = current_price * (1 + 0.0002 * i)
+                    data.append(
+                        {
+                            "timestamp": ts,
+                            "open": price,
+                            "high": price * 1.002,
+                            "low": price * 0.998,
+                            "close": price,
+                            "volume": 1000 + i,
+                        }
+                    )
+                df = pd.DataFrame(data)
+                df.set_index("timestamp", inplace=True)
+                df.sort_index(inplace=True)
+                return df
+            return None
+        except Exception:
+            return None
+
+    def _calculate_chop_metrics(self, df: Any, ema_window: int = 20) -> Dict[str, float]:
+        """Calcular métricas anti-chop: ADX, ATR normalizado y pendiente EMA.
+
+        Retorna ratios normalizados respecto al precio: `atr_ratio` y `ema_slope_ratio`.
+        """
+        try:
+            if df is None or pd is None or df.empty:
+                return {"adx": 25.0, "atr_ratio": 0.0015, "ema_slope_ratio": 0.0004, "atr_percentage": 0.15}
+
+            close = df["close"].astype(float)
+            high = df["high"].astype(float)
+            low = df["low"].astype(float)
+
+            # ADX
+            adx_val = 25.0
+            if ADXIndicator:
+                try:
+                    adx_series = ADXIndicator(high=high, low=low, close=close, window=14).adx()
+                    adx_val = float(adx_series.iloc[-1]) if not pd.isna(adx_series.iloc[-1]) else 25.0
+                except Exception:
+                    adx_val = 25.0
+
+            # ATR y ratios
+            current_price = float(close.iloc[-1])
+            atr_ratio = 0.0015
+            atr_pct = 0.15
+            if AverageTrueRange:
+                try:
+                    atr_series = AverageTrueRange(high=high, low=low, close=close, window=14).average_true_range()
+                    current_atr = float(atr_series.iloc[-1])
+                    atr_ratio = current_atr / current_price if current_price > 0 else 0.0
+                    atr_pct = atr_ratio * 100.0
+                except Exception:
+                    pass
+
+            # Pendiente de EMA normalizada por vela y precio
+            ema_slope_ratio = 0.0004
+            if EMAIndicator:
+                try:
+                    ema = EMAIndicator(close=close, window=ema_window).ema_indicator()
+                    # diferencia de 5 velas para suavizar
+                    step = 5 if len(ema) > 5 else max(1, len(ema) // 4)
+                    slope = abs(float(ema.iloc[-1] - ema.iloc[-step])) / float(step)
+                    ema_slope_ratio = slope / current_price if current_price > 0 else 0.0
+                except Exception:
+                    pass
+
+            return {
+                "adx": float(adx_val),
+                "atr_ratio": float(atr_ratio),
+                "ema_slope_ratio": float(ema_slope_ratio),
+                "atr_percentage": float(atr_pct),
+            }
+        except Exception:
+            return {"adx": 25.0, "atr_ratio": 0.0015, "ema_slope_ratio": 0.0004, "atr_percentage": 0.15}
+
+    def _passes_breakout_retest(self, signal: "TradingSignal", df: Any, atr_percentage: float, cfg: Dict[str, Any]) -> tuple[bool, str]:
+        """Validar breakout seguido de retest simple.
+
+        Para BUY: cierre por encima del máximo previo + umbral, y retest reciente al nivel roto dentro de tolerancia.
+        Para SELL: cierre por debajo del mínimo previo - umbral, y retest reciente.
+        """
+        try:
+            if df is None or pd is None or df.empty:
+                return True, "Sin datos OHLC suficientes para validar"
+
+            window = 20
+            tol_ratio = float(cfg.get("retest_tolerance_ratio", 0.5))
+            brk_ratio = float(cfg.get("breakout_threshold_ratio", 0.6))
+
+            close = df["close"].astype(float)
+            high = df["high"].astype(float)
+            low = df["low"].astype(float)
+            current_close = float(close.iloc[-1])
+
+            # nivel previo
+            prev_max = float(close.iloc[-(window + 1):-1].max()) if len(close) > window else float(close.max())
+            prev_min = float(close.iloc[-(window + 1):-1].min()) if len(close) > window else float(close.min())
+
+            # umbral basado en ATR%
+            threshold_abs = (atr_percentage / 100.0) * current_close * brk_ratio
+            tolerance_abs = (atr_percentage / 100.0) * current_close * tol_ratio
+
+            if str(signal.signal_type).upper() == "BUY":
+                breakout = current_close > (prev_max + threshold_abs)
+                # Retest: alguna de las últimas 5 velas tocó cerca del nivel roto
+                recent_lows = low.tail(5)
+                retest = any(abs(float(l) - prev_max) <= tolerance_abs for l in recent_lows)
+                if breakout and retest:
+                    return True, f"Breakout+Retest OK (Δ>{threshold_abs:.4f}, tol±{tolerance_abs:.4f})"
+                reason = "sin breakout" if not breakout else "sin retest"
+                return False, f"BUY {reason} sobre {prev_max:.2f} (umbral {threshold_abs:.4f}, tol {tolerance_abs:.4f})"
+            else:
+                breakout = current_close < (prev_min - threshold_abs)
+                recent_highs = high.tail(5)
+                retest = any(abs(float(h) - prev_min) <= tolerance_abs for h in recent_highs)
+                if breakout and retest:
+                    return True, f"Breakout+Retest OK (Δ>{threshold_abs:.4f}, tol±{tolerance_abs:.4f})"
+                reason = "sin breakout" if not breakout else "sin retest"
+                return False, f"SELL {reason} bajo {prev_min:.2f} (umbral {threshold_abs:.4f}, tol {tolerance_abs:.4f})"
+        except Exception as e:
+            return True, f"Error validando patrón: {e}"
 
     def _initialize_capital_client(self):
         """🔌 Inicializar cliente de Capital.com"""
@@ -542,46 +762,30 @@ class TradingBot:
 
         # Programar reset diario exacto a la hora configurada en UTC
         try:
-            # Convertir UTC a hora local del sistema para schedule
-            try:
-                import pytz
-                
-                # Crear un datetime UTC para hoy a la hora del reset
-                utc_time = datetime.now(UTC_TZ).replace(
-                    hour=DAILY_RESET_HOUR, 
-                    minute=DAILY_RESET_MINUTE, 
-                    second=0, 
-                    microsecond=0
-                )
-                
-                # Obtener la zona horaria local del sistema (Chile)
-                local_tz = pytz.timezone('America/Santiago')
-                local_time = utc_time.astimezone(local_tz)
-                
-                # Formatear las horas para logging y scheduling
-                local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
-                utc_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+            # Convertir UTC a la zona horaria local del sistema para el scheduler
+            # El scheduler ejecuta en hora local del sistema, por lo que convertimos desde UTC
+            utc_time = datetime.now(UTC_TZ).replace(
+                hour=DAILY_RESET_HOUR,
+                minute=DAILY_RESET_MINUTE,
+                second=0,
+                microsecond=0,
+            )
 
-                # Programar el reset usando la hora local
-                schedule.every().day.at(local_time_str).do(
-                    self._reset_daily_stats_if_needed
-                ).tag("daily_reset")
-                
-                self.logger.info(
-                    f"⏰ Daily reset scheduled at {utc_time_str} UTC ({local_time_str} local Chile time)"
-                )
-                
-            except ImportError:
-                # Fallback si pytz no está disponible
-                reset_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
-                schedule.every().day.at(reset_time_str).do(
-                    self._reset_daily_stats_if_needed
-                ).tag("daily_reset")
-                
-                self.logger.warning(
-                    f"⚠️ pytz not available, using system timezone. Daily reset scheduled at {reset_time_str}"
-                )
-                
+            system_local_tz = datetime.now().astimezone().tzinfo
+            local_time = utc_time.astimezone(system_local_tz)
+            local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
+            utc_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
+            local_tz_name = getattr(system_local_tz, "key", getattr(system_local_tz, "zone", str(system_local_tz)))
+
+            # Programar el reset usando la hora local del sistema
+            schedule.every().day.at(local_time_str).do(
+                self._reset_daily_stats_if_needed
+            ).tag("daily_reset")
+
+            self.logger.info(
+                f"⏰ Daily reset scheduled at {utc_time_str} UTC ({local_time_str} {local_tz_name} local time)"
+            )
+
         except Exception as e:
             self.logger.warning(f"⚠️ Could not schedule daily reset: {e}")
 
@@ -802,9 +1006,507 @@ class TradingBot:
         """📋 Obtener lista de símbolos disponibles en Capital.com desde configuración centralizada"""
         return GLOBAL_SYMBOLS.copy()
 
-    def _check_max_positions_limit(self) -> bool:
+    def _get_tp_max_percent(self, symbol: str) -> Optional[float]:
         """
-        🛡️ Verificar si se puede abrir una nueva posición según el límite max_positions
+        🎯 Retorna el máximo porcentaje permitido para Take Profit por grupo de instrumentos.
+        - Índices: 0.4%
+        - FX mayores: 0.28%
+        - Otros: None (sin clamp)
+        """
+        try:
+            s = (symbol or "").upper()
+            indices = {"US500", "US30", "US100", "DE40", "UK100", "J225", "HK50"}
+            fx_majors = {
+                "EURUSD", "GBPUSD", "USDJPY", "EURJPY", "EURCHF",
+                "USDCAD", "AUDUSD", "NZDUSD", "GBPJPY"
+            }
+            if s in indices:
+                return 0.004  # 0.4%
+            if s in fx_majors:
+                return 0.0028  # 0.28%
+        except Exception:
+            pass
+        return None
+
+    def _get_sl_max_percent(self, symbol: str) -> Optional[float]:
+        """
+        🛡️ Retorna el máximo porcentaje permitido para Stop Loss por grupo de instrumentos.
+        - FX mayores: 0.50%
+        - Otros: None (sin clamp)
+        """
+        try:
+            s = (symbol or "").upper()
+            fx_majors = {
+                "EURUSD", "GBPUSD", "USDJPY", "EURJPY", "EURCHF",
+                "USDCAD", "AUDUSD", "NZDUSD", "GBPJPY"
+            }
+            if s in fx_majors:
+                return 0.005  # 0.50%
+        except Exception:
+            pass
+        return None
+
+    def _build_order_preview(self, signal: "TradingSignal", risk_assessment: "EnhancedRiskAssessment") -> Dict[str, Any]:
+        """
+        🧪 Construir un preview de la orden con SL ajustado por spread y reglas del instrumento.
+
+        No envía trades reales. Útil para validar en pruebas que el SL respeta:
+        - Precio lado (bid/offer)
+        - Spread del instrumento
+        - Dealing rules: minStopOrProfitDistance y minStepDistance
+        """
+        preview: Dict[str, Any] = {
+            "symbol": getattr(signal, "symbol", "UNKNOWN"),
+            "side": getattr(signal, "signal_type", "UNKNOWN"),
+            "entry_price": getattr(signal, "price", None) or getattr(signal, "current_price", None),
+            "bid": None,
+            "offer": None,
+            "spread": None,
+            "dealing_rules": {},
+            "sl_base": None,
+            "sl_after_spread": None,
+            "sl_final": None,
+            "stop_distance_points_preview": None,
+            "tp_base": None,
+            "tp_final": None,
+        }
+
+        try:
+            capital_symbol = self._normalize_symbol_for_capital(signal.symbol)
+            current_price = self._get_current_price(signal.symbol)
+
+            # Precios lado y spread
+            bid = None
+            offer = None
+            spread = None
+            if self.capital_client:
+                md = self.capital_client.get_market_data([capital_symbol])
+                if md and capital_symbol in md:
+                    bid = md[capital_symbol].get("bid")
+                    offer = md[capital_symbol].get("offer")
+                    if bid is not None and offer is not None and offer > bid:
+                        spread = offer - bid
+            preview["bid"] = bid
+            preview["offer"] = offer
+            preview["spread"] = spread
+
+            # Dealing rules
+            dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
+            if dr.get("success"):
+                preview["dealing_rules"] = {
+                    "minStopOrProfitDistance": dr.get("min_stop_distance", {}),
+                    "minStepDistance": dr.get("min_step_distance", {}),
+                    "trailingStopsPreference": dr.get("trailing_stops_preference", None),
+                }
+
+            # Base SL: ROI-based si perfil aplica; si no, usar de signal o risk manager
+            sl_price = None
+            take_profit = None
+            risk_reward = None
+            try:
+                current_profile_config = TradingProfiles.get_current_profile()
+                current_profile = current_profile_config.get("name", "")
+                # Usar ROI-based para perfiles que lo soportan
+                if current_profile in ["Scalping", "Intraday"]:
+                    from .trend_following_professional import TrendFollowingProfessional
+                    strategy_instance = TrendFollowingProfessional()
+                    atr = current_price * 0.02  # estimación de ATR
+                    # Usar tamaño recomendado del risk manager como base
+                    size_units = getattr(risk_assessment.position_sizing, "recommended_size", 0.0) or 0.0
+                    position_size_usd = size_units * current_price
+                    sl_price, take_profit, risk_reward = strategy_instance.calculate_roi_based_risk_reward(
+                        current_price, signal.signal_type, position_size_usd, atr
+                    )
+                # Fallbacks
+                if sl_price is None and hasattr(signal, "stop_loss_price") and signal.stop_loss_price:
+                    sl_price = signal.stop_loss_price
+                if sl_price is None and hasattr(risk_assessment, "dynamic_stop_loss"):
+                    sl_price = risk_assessment.dynamic_stop_loss.stop_loss_price
+            except Exception:
+                pass
+
+            preview["sl_base"] = sl_price
+            preview["tp_base"] = take_profit
+
+            # Aplicar los mismos ajustes de preferencia TP/SL que en ejecución real
+            try:
+                adjustments_info = {
+                    "tp_multiplier": None,
+                    "sl_multiplier": None,
+                    "risk_usd_estimate": None,
+                    "adjustments_applied": False,
+                }
+
+                # Tamaño recomendado en unidades (para estimar riesgoUSD)
+                size_units = getattr(risk_assessment.position_sizing, "recommended_size", 0.0) or 0.0
+
+                # Precio de referencia sensible al lado
+                ref_price_adj = None
+                try:
+                    ref_price_adj = (
+                        bid if signal.signal_type == "BUY" and bid is not None
+                        else offer if signal.signal_type == "SELL" and offer is not None
+                        else current_price
+                    )
+                except Exception:
+                    ref_price_adj = current_price
+
+                if sl_price is not None and take_profit is not None and ref_price_adj is not None:
+                    # Distancias actuales
+                    if signal.signal_type == "BUY":
+                        tp_dist = max(take_profit - ref_price_adj, 0.0)
+                        sl_dist = max(ref_price_adj - sl_price, 0.0)
+                    else:
+                        tp_dist = max(ref_price_adj - take_profit, 0.0)
+                        sl_dist = max(sl_price - ref_price_adj, 0.0)
+
+                    # Estimar riesgo en USD: asume CFD, riesgo ≈ distancia * size_units
+                    risk_usd_estimate = sl_dist * size_units
+                    adjustments_info["risk_usd_estimate"] = risk_usd_estimate
+
+                    # Aplicar reducción TP 50%
+                    new_tp_dist = tp_dist * 0.5
+                    adjustments_info["tp_multiplier"] = 0.5
+
+                    # SL: +50% solo si riesgoUSD en [10, 20] y símbolo != US30
+                    symbol_upper = (getattr(signal, "symbol", "") or "").upper()
+                    keep_sl_unchanged = symbol_upper == "US30"
+                    increase_sl = (not keep_sl_unchanged) and (10.0 <= risk_usd_estimate <= 20.0)
+                    new_sl_dist = sl_dist * (1.5 if increase_sl else 1.0)
+                    adjustments_info["sl_multiplier"] = 1.5 if increase_sl else 1.0
+
+                    # Reconstruir niveles manteniendo orientación
+                    if signal.signal_type == "BUY":
+                        take_profit = ref_price_adj + new_tp_dist
+                        sl_price = ref_price_adj - new_sl_dist
+                    else:
+                        take_profit = ref_price_adj - new_tp_dist
+                        sl_price = ref_price_adj + new_sl_dist
+
+                    adjustments_info["adjustments_applied"] = True
+
+                # Actualizar bases en preview tras ajustes
+                preview["sl_base"] = sl_price
+                preview["tp_base"] = take_profit
+                preview["adjustments"] = adjustments_info
+            except Exception:
+                # Si algo falla, continuar sin bloquear el preview
+                pass
+
+            # Ajuste por spread según lado
+            sl_after_spread = sl_price
+            try:
+                if spread is not None and sl_price is not None:
+                    if signal.signal_type == "BUY":
+                        sl_after_spread = sl_price - spread
+                    elif signal.signal_type == "SELL":
+                        sl_after_spread = sl_price + spread
+            except Exception:
+                pass
+            preview["sl_after_spread"] = sl_after_spread
+
+            # Aplicar mínimos y pasos
+            sl_final = sl_after_spread
+            try:
+                import math
+                ref_price = (
+                    bid if signal.signal_type == "BUY" and bid is not None
+                    else offer if signal.signal_type == "SELL" and offer is not None
+                    else current_price
+                )
+                min_stop = preview["dealing_rules"].get("minStopOrProfitDistance", {}) if preview["dealing_rules"] else {}
+                step = preview["dealing_rules"].get("minStepDistance", {}) if preview["dealing_rules"] else {}
+
+                unit = (min_stop.get("unit") or "").upper()
+                value = float(min_stop.get("value") or 0.0)
+                min_points = 0.0
+                if unit == "PERCENTAGE":
+                    min_points = ref_price * value
+                elif unit == "POINTS":
+                    min_points = value
+
+                if sl_final is not None and ref_price is not None and min_points > 0:
+                    if signal.signal_type == "BUY":
+                        dist = ref_price - sl_final
+                        if dist < min_points:
+                            sl_final = ref_price - min_points
+                    else:
+                        dist = sl_final - ref_price
+                        if dist < min_points:
+                            sl_final = ref_price + min_points
+
+                # Redondeo al paso mínimo
+                step_unit = (step.get("unit") or "").upper()
+                step_value = float(step.get("value") or 0.0)
+                if step_unit == "POINTS" and step_value > 0 and sl_final is not None and ref_price is not None:
+                    if signal.signal_type == "BUY":
+                        dist = ref_price - sl_final
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price - dist
+                    else:
+                        dist = sl_final - ref_price
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price + dist
+
+                # Clamp SL por instrumento (FX mayores)
+                try:
+                    max_sl_pct = self._get_sl_max_percent(getattr(signal, "symbol", ""))
+                    if max_sl_pct is not None and sl_final is not None and ref_price is not None:
+                        max_dist_sl = ref_price * max_sl_pct
+                        if signal.signal_type == "BUY":
+                            dist_sl = ref_price - sl_final
+                            if dist_sl > max_dist_sl:
+                                sl_final = ref_price - max_dist_sl
+                        else:
+                            dist_sl = sl_final - ref_price
+                            if dist_sl > max_dist_sl:
+                                sl_final = ref_price + max_dist_sl
+                        # Reaplicar redondeo al paso si corresponde
+                        if step_unit == "POINTS" and step_value > 0:
+                            if signal.signal_type == "BUY":
+                                dist_sl = ref_price - sl_final
+                                dist_sl = math.ceil(dist_sl / step_value) * step_value
+                                sl_final = ref_price - dist_sl
+                            else:
+                                dist_sl = sl_final - ref_price
+                                dist_sl = math.ceil(dist_sl / step_value) * step_value
+                                sl_final = ref_price + dist_sl
+                except Exception:
+                    pass
+
+                # Distancia de stop en puntos como preview (útil para TSL)
+                if sl_final is not None and ref_price is not None:
+                    if signal.signal_type == "BUY":
+                        preview["stop_distance_points_preview"] = max(0.0, ref_price - sl_final)
+                    else:
+                        preview["stop_distance_points_preview"] = max(0.0, sl_final - ref_price)
+
+                # TP enforcement y redondeo
+                tp_final = None
+                if take_profit is not None and ref_price is not None:
+                    tp_base = take_profit
+                    # Orientación
+                    if signal.signal_type == "BUY" and tp_base <= ref_price:
+                        tp_base = ref_price + max(min_points, step_value)
+                    elif signal.signal_type == "SELL" and tp_base >= ref_price:
+                        tp_base = ref_price - max(min_points, step_value)
+
+                    # Enforce mínimo
+                    if signal.signal_type == "BUY":
+                        dist_tp = tp_base - ref_price
+                        if dist_tp < min_points:
+                            tp_base = ref_price + min_points
+                    else:
+                        dist_tp = ref_price - tp_base
+                        if dist_tp < min_points:
+                            tp_base = ref_price - min_points
+
+                    # Redondeo por pasos
+                    if step_unit == "POINTS" and step_value > 0:
+                        if signal.signal_type == "BUY":
+                            dist_tp = tp_base - ref_price
+                            dist_tp = math.ceil(dist_tp / step_value) * step_value
+                            tp_final = ref_price + dist_tp
+                        else:
+                            dist_tp = ref_price - tp_base
+                            dist_tp = math.ceil(dist_tp / step_value) * step_value
+                            tp_final = ref_price - dist_tp
+                    else:
+                        tp_final = tp_base
+
+                    # Clamp por instrumento (índices / FX)
+                    try:
+                        max_pct = self._get_tp_max_percent(getattr(signal, "symbol", ""))
+                        if max_pct is not None and tp_final is not None:
+                            max_dist = ref_price * max_pct
+                            if signal.signal_type == "BUY":
+                                dist = tp_final - ref_price
+                                if dist > max_dist:
+                                    tp_final = ref_price + max_dist
+                            else:
+                                dist = ref_price - tp_final
+                                if dist > max_dist:
+                                    tp_final = ref_price - max_dist
+                            # Reaplicar redondeo al paso si corresponde
+                            if step_unit == "POINTS" and step_value > 0:
+                                import math
+                                if signal.signal_type == "BUY":
+                                    dist = tp_final - ref_price
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    tp_final = ref_price + dist
+                                else:
+                                    dist = ref_price - tp_final
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    tp_final = ref_price - dist
+                    except Exception:
+                        pass
+                preview["tp_final"] = tp_final
+            except Exception:
+                pass
+
+            preview["sl_final"] = sl_final
+        except Exception as e:
+            self.logger.warning(f"⚠️ No se pudo construir order_preview: {e}")
+
+        return preview
+
+    def _apply_dealing_rules_to_tp_sl(self, signal_type: str, bid: float, offer: float, sl_price: float, tp_price: float, dealing_rules: dict) -> tuple:
+        """
+        Aplicar reglas del instrumento y orientación por spread a SL/TP.
+        Retorna (sl_final, tp_final, stop_distance_points).
+        """
+        try:
+            import math
+            ref_price = offer if signal_type == "BUY" else bid
+            min_stop = dealing_rules.get("min_stop_distance", {}) if dealing_rules else {}
+            step = dealing_rules.get("min_step_distance", {}) if dealing_rules else {}
+
+            unit = (min_stop.get("unit") or "").upper()
+            value = float(min_stop.get("value") or 0.0)
+            min_points = 0.0
+            if unit == "PERCENTAGE" and ref_price:
+                min_points = ref_price * value
+            elif unit == "POINTS":
+                min_points = value
+
+            step_unit = (step.get("unit") or "").upper()
+            step_value = float(step.get("value") or 0.0)
+
+            # SL
+            sl_base = sl_price
+            if sl_base is not None and ref_price is not None:
+                if signal_type == "BUY" and sl_base >= ref_price:
+                    sl_base = ref_price - max(min_points, step_value)
+                elif signal_type == "SELL" and sl_base <= ref_price:
+                    sl_base = ref_price + max(min_points, step_value)
+
+                if signal_type == "BUY":
+                    dist = ref_price - sl_base
+                    if dist < min_points:
+                        sl_base = ref_price - min_points
+                else:
+                    dist = sl_base - ref_price
+                    if dist < min_points:
+                        sl_base = ref_price + min_points
+
+                if step_unit == "POINTS" and step_value > 0:
+                    if signal_type == "BUY":
+                        dist = ref_price - sl_base
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price - dist
+                    else:
+                        dist = sl_base - ref_price
+                        dist = math.ceil(dist / step_value) * step_value
+                        sl_final = ref_price + dist
+                else:
+                    sl_final = sl_base
+            else:
+                sl_final = sl_price
+
+            # Clamp SL por instrumento (FX mayores) basado en ref_price
+            try:
+                symbol = getattr(self, "current_signal_symbol", None)
+                max_sl_pct = self._get_sl_max_percent(symbol) if symbol else None
+                if max_sl_pct is not None and sl_final is not None and ref_price is not None:
+                    max_dist_sl = ref_price * max_sl_pct
+                    if signal_type == "BUY":
+                        dist_sl = ref_price - sl_final
+                        if dist_sl > max_dist_sl:
+                            sl_final = ref_price - max_dist_sl
+                    else:
+                        dist_sl = sl_final - ref_price
+                        if dist_sl > max_dist_sl:
+                            sl_final = ref_price + max_dist_sl
+                    # Reaplicar redondeo al paso si corresponde
+                    if step_unit == "POINTS" and step_value > 0:
+                        import math
+                        if signal_type == "BUY":
+                            dist_sl = ref_price - sl_final
+                            dist_sl = math.ceil(dist_sl / step_value) * step_value
+                            sl_final = ref_price - dist_sl
+                        else:
+                            dist_sl = sl_final - ref_price
+                            dist_sl = math.ceil(dist_sl / step_value) * step_value
+                            sl_final = ref_price + dist_sl
+            except Exception:
+                pass
+
+            # TP
+            tp_final = tp_price
+            if tp_price is not None and ref_price is not None:
+                tp_base = tp_price
+                if signal_type == "BUY" and tp_base <= ref_price:
+                    tp_base = ref_price + max(min_points, step_value)
+                elif signal_type == "SELL" and tp_base >= ref_price:
+                    tp_base = ref_price - max(min_points, step_value)
+
+                if signal_type == "BUY":
+                    dist_tp = tp_base - ref_price
+                    if dist_tp < min_points:
+                        tp_base = ref_price + min_points
+                else:
+                    dist_tp = ref_price - tp_base
+                    if dist_tp < min_points:
+                        tp_base = ref_price - min_points
+
+                if step_unit == "POINTS" and step_value > 0:
+                    if signal_type == "BUY":
+                        dist_tp = tp_base - ref_price
+                        dist_tp = math.ceil(dist_tp / step_value) * step_value
+                        tp_final = ref_price + dist_tp
+                    else:
+                        dist_tp = ref_price - tp_base
+                        dist_tp = math.ceil(dist_tp / step_value) * step_value
+                        tp_final = ref_price - dist_tp
+                else:
+                    tp_final = tp_base
+
+                # Clamp por instrumento (índices / FX) basado en ref_price
+                try:
+                    # No tenemos símbolo aquí; se aplicará en contexto de ejecución
+                    # Usaremos una heurística: si existe atributo 'current_signal_symbol' en self
+                    symbol = getattr(self, "current_signal_symbol", None)
+                    max_pct = self._get_tp_max_percent(symbol) if symbol else None
+                    if max_pct is not None and tp_final is not None:
+                        max_dist = ref_price * max_pct
+                        if signal_type == "BUY":
+                            dist = tp_final - ref_price
+                            if dist > max_dist:
+                                tp_final = ref_price + max_dist
+                        else:
+                            dist = ref_price - tp_final
+                            if dist > max_dist:
+                                tp_final = ref_price - max_dist
+                        # Reaplicar redondeo al paso si corresponde
+                        if step_unit == "POINTS" and step_value > 0:
+                            import math
+                            if signal_type == "BUY":
+                                dist = tp_final - ref_price
+                                dist = math.ceil(dist / step_value) * step_value
+                                tp_final = ref_price + dist
+                            else:
+                                dist = ref_price - tp_final
+                                dist = math.ceil(dist / step_value) * step_value
+                                tp_final = ref_price - dist
+                except Exception:
+                    pass
+
+            stop_distance_points = None
+            if sl_final is not None and ref_price is not None:
+                stop_distance_points = (
+                    ref_price - sl_final if signal_type == "BUY" else sl_final - ref_price
+                )
+                stop_distance_points = max(0.0, stop_distance_points)
+
+            return sl_final, tp_final, stop_distance_points
+        except Exception:
+            return sl_price, tp_price, None
+
+    def _check_max_positions_limit(self, symbol: str | None = None) -> bool:
+        """
+        🛡️ Verificar si se puede abrir una nueva posición según:
+        - Límite global `max_positions`
+        - Límite por símbolo `max_positions_per_symbol` (si se provee `symbol`)
 
         Returns:
             bool: True si se puede abrir nueva posición, False si se alcanzó el límite
@@ -815,6 +1517,9 @@ class TradingBot:
             max_positions = current_profile.get(
                 "max_positions", 8
             )  # Default 8 si no está configurado
+            max_positions_per_symbol = current_profile.get(
+                "max_positions_per_symbol", None
+            )
 
             # Contar posiciones abiertas usando Capital.com
             if self.capital_client and self.enable_real_trading:
@@ -824,10 +1529,26 @@ class TradingBot:
                 if positions_result.get("success"):
                     open_positions = positions_result.get("positions", [])
                     current_positions_count = len(open_positions)
+                    # Conteo por símbolo si aplica
+                    symbol_count = None
+                    if symbol and max_positions_per_symbol is not None:
+                        try:
+                            symbol_count = sum(
+                                1
+                                for pos in open_positions
+                                if pos.get("market", {}).get("epic") == symbol
+                                or pos.get("market", {}).get("instrumentName") == symbol
+                            )
+                        except Exception:
+                            symbol_count = None
 
                     self.logger.info(
                         f"📊 Posiciones abiertas: {current_positions_count}/{max_positions}"
                     )
+                    if symbol_count is not None:
+                        self.logger.info(
+                            f"📊 Posiciones en {symbol}: {symbol_count}/{max_positions_per_symbol}"
+                        )
 
                     # Log detalle de posiciones si hay alguna
                     if open_positions:
@@ -854,7 +1575,12 @@ class TradingBot:
                                 f"   ... y {len(open_positions) - 5} posiciones más"
                             )
 
-                    return current_positions_count < max_positions
+                    # Validar límites
+                    if current_positions_count >= max_positions:
+                        return False
+                    if symbol_count is not None and symbol_count >= max_positions_per_symbol:
+                        return False
+                    return True
                 else:
                     self.logger.warning(
                         f"⚠️ No se pudo obtener posiciones de Capital.com: {positions_result.get('error')}"
@@ -865,10 +1591,23 @@ class TradingBot:
                 # Para paper trading, usar el paper trader
                 paper_positions = self.paper_trader.get_open_positions()
                 current_positions_count = len(paper_positions)
+                # Conteo por símbolo si aplica
+                symbol_count = None
+                if symbol and max_positions_per_symbol is not None:
+                    try:
+                        symbol_count = sum(
+                            1 for pos in paper_positions if pos.get("symbol") == symbol
+                        )
+                    except Exception:
+                        symbol_count = None
 
                 self.logger.info(
                     f"📊 Posiciones paper: {current_positions_count}/{max_positions}"
                 )
+                if symbol_count is not None:
+                    self.logger.info(
+                        f"📊 Posiciones paper en {symbol}: {symbol_count}/{max_positions_per_symbol}"
+                    )
 
                 # Log detalle de posiciones paper si hay alguna
                 if paper_positions:
@@ -886,7 +1625,12 @@ class TradingBot:
                             f"   ... y {len(paper_positions) - 5} posiciones más"
                         )
 
-                return current_positions_count < max_positions
+                # Validar límites
+                if current_positions_count >= max_positions:
+                    return False
+                if symbol_count is not None and symbol_count >= max_positions_per_symbol:
+                    return False
+                return True
 
         except Exception as e:
             self.logger.error(f"❌ Error verificando límite de posiciones: {e}")
@@ -976,6 +1720,15 @@ class TradingBot:
             # Actualizar tracking
             self.last_trade_times[symbol] = current_time
             self.last_signal_types[symbol] = signal_type
+            # Guardar confianza de la última señal
+            try:
+                self.last_signal_confidences[symbol] = float(signal.confidence_score)
+            except Exception:
+                self.last_signal_confidences[symbol] = None
+
+            # Reiniciar contadores de persistencia opuesta para el símbolo
+            self.antiflip_opposite_counts[(symbol, "BUY")] = 0
+            self.antiflip_opposite_counts[(symbol, "SELL")] = 0
 
             self.logger.debug(
                 f"📝 Trade tracking actualizado: {symbol} -> {signal_type} a las {current_time.strftime('%H:%M:%S')}"
@@ -985,6 +1738,151 @@ class TradingBot:
             self.logger.error(
                 f"❌ Error actualizando trade tracking para {signal.symbol}: {e}"
             )
+
+    def _get_open_position_direction(self, symbol: str) -> Optional[str]:
+        """🔎 Obtener dirección de posición abierta para un símbolo usando paper trader.
+
+        Returns: "LONG", "SHORT" o None si no hay posición.
+        """
+        try:
+            positions = self.paper_trader.get_open_positions()
+            for pos in positions:
+                if pos.get("symbol") == symbol:
+                    qty = pos.get("quantity", 0)
+                    if qty > 0:
+                        return "LONG"
+                    elif qty < 0:
+                        return "SHORT"
+                    else:
+                        return None
+            return None
+        except Exception:
+            return None
+
+    def _update_antiflip_persistence(self, signal: "TradingSignal"):
+        """🔄 Actualizar contador de persistencia de señales opuestas.
+
+        Si la señal es opuesta a la última señal para el símbolo, incrementa contador.
+        Si es del mismo lado, reinicia el contador del lado opuesto.
+        """
+        try:
+            symbol = signal.symbol
+            signal_type = signal.signal_type
+            last_type = self.last_signal_types.get(symbol)
+
+            key_buy = (symbol, "BUY")
+            key_sell = (symbol, "SELL")
+            # Inicializar si no existen
+            self.antiflip_opposite_counts.setdefault(key_buy, 0)
+            self.antiflip_opposite_counts.setdefault(key_sell, 0)
+
+            if last_type and last_type != signal_type:
+                # Es opuesta: incrementar contador del tipo actual
+                key = (symbol, signal_type)
+                self.antiflip_opposite_counts[key] = (
+                    self.antiflip_opposite_counts.get(key, 0) + 1
+                )
+            else:
+                # Misma dirección: reiniciar contador del opuesto
+                if signal_type == "BUY":
+                    self.antiflip_opposite_counts[key_sell] = 0
+                else:
+                    self.antiflip_opposite_counts[key_buy] = 0
+        except Exception:
+            pass
+
+    def _passes_antiflip_policy(self, signal: "TradingSignal") -> bool:
+        """🛡️ Evaluar si una señal pasa la política AntiFlip.
+
+        Reglas:
+        - Min hold: no cerrar/revertir antes de X minutos desde la última entrada.
+        - Cooldown después de salida: esperar X minutos antes de nueva entrada opuesta.
+        - Persistencia: requerir N señales opuestas consecutivas antes de flip.
+        - Histeresis: elevar umbral de confianza para flip.
+        - Opuesto fuerte: requerir `strength` fuerte o alta confianza.
+        """
+        try:
+            cfg = TradingProfiles.get_current_profile()
+            min_hold = int(cfg.get("antiflip_min_hold_minutes", 0))
+            exit_cd = int(cfg.get("antiflip_cooldown_after_exit_minutes", 0))
+            persist_n = int(cfg.get("antiflip_opposite_persistence_count", 0))
+            hyst_mult = float(cfg.get("antiflip_hysteresis_multiplier", 1.0))
+            strong_required = bool(cfg.get("antiflip_require_strong_opposite", False))
+
+            symbol = signal.symbol
+            signal_type = signal.signal_type
+            now = datetime.now(UTC_TZ)
+
+            # Dirección actual de posición, si existe
+            pos_dir = self._get_open_position_direction(symbol)
+
+            # Regla: Cooldown posterior a salida
+            last_exit = self.last_exit_times.get(symbol)
+            if last_exit and exit_cd > 0:
+                minutes_since_exit = (now - last_exit).total_seconds() / 60
+                if minutes_since_exit < exit_cd:
+                    remaining = exit_cd - minutes_since_exit
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} bloqueado por cooldown post-exit ({minutes_since_exit:.1f}/{exit_cd}min, quedan {remaining:.1f}min)"
+                    )
+                    return False
+
+            # Regla: Min hold si hay posición abierta y la señal pretende flip
+            if pos_dir is not None:
+                # Señal contraria al lado de la posición
+                is_opposite_to_position = (
+                    (pos_dir == "LONG" and signal_type == "SELL")
+                    or (pos_dir == "SHORT" and signal_type == "BUY")
+                )
+                if is_opposite_to_position and min_hold > 0:
+                    last_trade_time = self.last_trade_times.get(symbol)
+                    if last_trade_time:
+                        minutes_since_entry = (now - last_trade_time).total_seconds() / 60
+                        if minutes_since_entry < min_hold:
+                            remaining = min_hold - minutes_since_entry
+                            self.logger.info(
+                                f"🛑 ANTI-FLIP: {symbol} mantener posición {pos_dir} mínimo {min_hold}min (actual {minutes_since_entry:.1f}min, quedan {remaining:.1f}min)"
+                            )
+                            return False
+
+            # Regla: Persistencia de señal opuesta
+            last_type = self.last_signal_types.get(symbol)
+            if last_type and last_type != signal_type and persist_n > 0:
+                count = self.antiflip_opposite_counts.get((symbol, signal_type), 0)
+                if count < persist_n:
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} espera persistencia opuesta {count}/{persist_n} para {signal_type}"
+                    )
+                    return False
+
+            # Regla: Histeresis de confianza para flip
+            if last_type and last_type != signal_type and hyst_mult > 1.0:
+                # Umbral de confianza ajustado por fin de semana y histeresis
+                wk_params = get_weekend_trading_params()
+                base_thr = self._normalize_percentage_threshold(self.min_confidence_threshold) * wk_params["min_confidence_multiplier"]
+                required_conf = base_thr * hyst_mult
+                if float(signal.confidence_score) < required_conf:
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} confianza {signal.confidence_score:.1f}% < requerido {required_conf:.1f}% por histeresis"
+                    )
+                    return False
+
+            # Regla: Opuesto fuerte requerido
+            if last_type and last_type != signal_type and strong_required:
+                # Usar `strength` si existe, si no, umbral de confianza alto
+                strength = getattr(signal, "strength", None)
+                is_strong = bool(strength) and str(strength).upper() in ["STRONG", "HIGH", "VERY_STRONG"]
+                if not is_strong and float(signal.confidence_score) < 80.0:
+                    self.logger.info(
+                        f"🛑 ANTI-FLIP: {symbol} opuesto requiere fuerte/alta confianza (conf={signal.confidence_score:.1f}%)"
+                    )
+                    return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Error evaluando AntiFlip para {signal.symbol}: {e}")
+            # Fail-safe: permitir señal si hay error en evaluación
+            return True
 
     def _is_weekend_trading(self) -> bool:
         """🗓️ Determinar si estamos en modo de trading de fin de semana"""
@@ -1149,15 +2047,107 @@ class TradingBot:
             # Resetear contador diario si es necesario
             self._reset_daily_stats_if_needed()
 
+            # Inicializar línea base diaria si no está definida
+            try:
+                if self.daily_start_value is None:
+                    portfolio_init = self.get_portfolio_summary()
+                    self.daily_start_value = float(portfolio_init.get("total_value", 0.0))
+                    self.daily_start_funds = float(portfolio_init.get("funds_balance", 0.0))
+                    self.daily_start_open_pnl = float(portfolio_init.get("total_pnl", 0.0))
+                    self.logger.info(
+                        f"📈 Línea base diaria inicializada: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}, UPL=${self.daily_start_open_pnl:,.2f}"
+                    )
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudo inicializar línea base diaria: {e}")
+
+            # Verificación de tope diario de ganancia y pausa de trading
+            if self.max_daily_profit_percent and self.max_daily_profit_percent > 0:
+                try:
+                    portfolio_now = self.get_portfolio_summary()
+                    current_total = float(portfolio_now.get("total_value", 0.0))
+                    current_funds = float(portfolio_now.get("funds_balance", 0.0))
+                    current_pnl = float(portfolio_now.get("total_pnl", 0.0))
+
+                    # Calcular porcentajes por cada métrica con manejo seguro de división
+                    daily_gain_equity_pct = 0.0
+                    daily_gain_pnl_pct = 0.0
+                    daily_gain_realized_pct = 0.0
+
+                    base_equity = self.daily_start_value or 0.0
+                    base_funds = self.daily_start_funds or 0.0
+                    base_open_pnl = getattr(self, "daily_start_open_pnl", 0.0) or 0.0
+
+                    if base_equity > 0:
+                        daily_gain_equity_pct = ((current_total - base_equity) / base_equity) * 100.0
+                        daily_gain_pnl_pct = (current_pnl / base_equity) * 100.0
+                    # Realized diario robusto: equity_delta menos delta de UPL (no depende de 'available')
+                    # realized_usd_today = (current_total - base_equity) - (current_pnl - base_open_pnl)
+                    realized_usd_today = (current_total - base_equity) - (current_pnl - base_open_pnl)
+                    if base_equity > 0:
+                        daily_gain_realized_pct = (realized_usd_today / base_equity) * 100.0
+                    else:
+                        daily_gain_realized_pct = 0.0
+
+                    # Log de diagnóstico para auditar componentes del tope diario
+                    try:
+                        equity_delta = (current_total - base_equity)
+                        upl_delta = (current_pnl - base_open_pnl)
+                        self.logger.info(
+                            f"📊 Daily cap components: base_equity=${base_equity:,.2f}, base_upl=${base_open_pnl:,.2f}, "
+                            f"equity_now=${current_total:,.2f}, upl_now=${current_pnl:,.2f}, equityΔ=${equity_delta:,.2f}, "
+                            f"UPLΔ=${upl_delta:,.2f}, realized_today=${realized_usd_today:,.2f}"
+                        )
+                    except Exception:
+                        pass
+
+                    # Seleccionar métrica según modo
+                    if self.daily_profit_cap_mode == "equity":
+                        daily_gain_pct = daily_gain_equity_pct
+                    elif self.daily_profit_cap_mode == "pnl":
+                        daily_gain_pct = daily_gain_pnl_pct
+                    elif self.daily_profit_cap_mode == "realized":
+                        daily_gain_pct = daily_gain_realized_pct
+                    elif self.daily_profit_cap_mode == "composite_or":
+                        daily_gain_pct = max(
+                            daily_gain_equity_pct, daily_gain_pnl_pct, daily_gain_realized_pct
+                        )
+                        self.logger.info(
+                            f"📊 Modo compuesto (OR): equity={daily_gain_equity_pct:.2f}%, pnl={daily_gain_pnl_pct:.2f}%, realized={daily_gain_realized_pct:.2f}%"
+                        )
+                    else:
+                        daily_gain_pct = daily_gain_equity_pct
+
+                    if daily_gain_pct >= self.max_daily_profit_percent:
+                        self.logger.info(
+                            f"🎯 Tope diario alcanzado (modo={self.daily_profit_cap_mode}): base=${base_equity:,.2f}, equity=${current_total:,.2f}, ganancia={daily_gain_pct:.2f}%"
+                        )
+                        self._liquidate_all_positions_due_to_daily_cap("DAILY_PROFIT_CAP")
+                        if not self.daily_pause_active:
+                            self.daily_pause_active = True
+                            self.logger.info(
+                                f"⏸️ Trading pausado: ganancia diaria {daily_gain_pct:.2f}% ≥ {self.max_daily_profit_percent:.2f}%"
+                            )
+                        # Pausar ciclo de análisis/trades
+                        return
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error verificando tope diario de ganancia: {e}")
+
+            # Si ya está pausado por tope diario, salir del ciclo
+            if self.daily_pause_active:
+                self.logger.info("⏸️ Trading pausado por tope diario de ganancias - omitiendo ciclo")
+                return
+
             # Verificar si podemos hacer más trades hoy (aplicando multiplicador de fin de semana y lógica adaptativa)
             base_max_trades = int(
                 self.max_daily_trades * weekend_params["max_daily_trades_multiplier"]
             )
-            # Usar límite adaptativo que permite trades adicionales para señales de alta confianza
+            # Usar el umbral de calidad del perfil para calcular el máximo adaptativo
+            profile = TradingProfiles.get_current_profile()
+            quality_threshold = profile.get("daily_trades_quality_threshold", 80.0)
             adaptive_max_trades = int(
                 TradingProfiles.get_adaptive_daily_trades_limit(
                     current_trades_count=self.stats["daily_trades"],
-                    signal_confidence=85.0,  # Usar confianza alta como referencia para el límite máximo
+                    signal_confidence=quality_threshold,
                 )
                 * weekend_params["max_daily_trades_multiplier"]
             )
@@ -1396,6 +2386,19 @@ class TradingBot:
         
         self.logger.info(f"✅ Sequential symbol-by-symbol analysis completed for {total_symbols} symbols")
 
+    def _normalize_percentage_threshold(self, value: float) -> float:
+        """Normaliza umbrales que pueden venir en escala 0–1 a 0–100.
+
+        Si el valor es <= 1.0 se asume fracción y se convierte a porcentaje.
+        De lo contrario se retorna tal cual.
+        """
+        try:
+            v = float(value)
+            return v * 100.0 if v <= 1.0 else v
+        except Exception:
+            # Fallback defensivo
+            return 0.0
+
     def _process_signals(self, signals: List[TradingSignal]):
         """
         🎯 Procesar y ejecutar señales de trading con flujo secuencial
@@ -1410,11 +2413,17 @@ class TradingBot:
             signals: Lista de señales generadas
         """
 
+        # Pausar ejecución si el tope diario de ganancias está activo
+        if getattr(self, "daily_pause_active", False):
+            self.logger.info(
+                "⏸️ Trading pausado por tope diario de ganancias - no se ejecutarán trades"
+            )
+            return
+
         # Obtener parámetros de fin de semana para ajustar confianza mínima
         weekend_params = get_weekend_trading_params()
-        adjusted_min_confidence = (
-            self.min_confidence_threshold * weekend_params["min_confidence_multiplier"]
-        )
+        base_threshold = self._normalize_percentage_threshold(self.min_confidence_threshold)
+        adjusted_min_confidence = base_threshold * weekend_params["min_confidence_multiplier"]
 
         # Filtrar señales por confianza mínima (ajustada para fines de semana)
         high_confidence_signals = [
@@ -1454,6 +2463,9 @@ class TradingBot:
                     f"{weekend_indicator} Processing signal {i}/{len(high_confidence_signals)}: {signal.symbol}"
                 )
 
+                # Actualizar persistencia de señales opuestas para AntiFlip
+                self._update_antiflip_persistence(signal)
+
                 # Verificar límite diario adaptativo (aplicando multiplicador de fin de semana)
                 weekend_params_loop = get_weekend_trading_params()
                 base_max_trades_loop = int(
@@ -1485,14 +2497,182 @@ class TradingBot:
                         )
                     break
 
-                # CRÍTICO: Verificar límite de posiciones simultáneas
-                if not self._check_max_positions_limit():
+                # CRÍTICO: Verificar límite de posiciones simultáneas (global y por símbolo)
+                if not self._check_max_positions_limit(symbol=signal.symbol):
                     self.logger.info("⏸️ Maximum positions limit reached")
                     break
 
                 # Verificar cooldown entre trades del mismo símbolo
                 if not self._check_trade_cooldown(signal):
                     continue  # El método ya registra el mensaje de log
+
+                # Filtro estricto adicional para señales de consenso
+                if getattr(signal, "strategy_name", "") == "ConsensusStrategy":
+                    # Umbrales conservadores para mejorar precisión
+                    min_consensus_pct = 70.0
+                    min_coherence_pct = 65.0
+                    # Permitir ejecución con una sola estrategia contribuyente si el consenso es fuerte
+                    # (el consenso sigue siendo el decisor principal; las individuales alimentan)
+                    min_contrib = 1
+                    min_rr = 1.30
+
+                    consensus_pct = float(getattr(signal, "consensus_percentage", 0.0))
+                    coherence = float(getattr(signal, "coherence_score", 0.0))
+                    contrib = int(getattr(signal, "contributing_strategies_count", 0))
+                    rr = float(getattr(signal, "risk_reward_ratio", 0.0))
+
+                    if consensus_pct < min_consensus_pct:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: Consenso insuficiente {consensus_pct:.1f}% < {min_consensus_pct}%"
+                        )
+                        continue
+                    if coherence < min_coherence_pct:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: Coherencia insuficiente {coherence:.1f}% < {min_coherence_pct}%"
+                        )
+                        continue
+                    if contrib < min_contrib:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: Estrategias contribuyentes {contrib} < {min_contrib}"
+                        )
+                        continue
+                    if rr < min_rr:
+                        self.logger.info(
+                            f"❌ {signal.symbol}: R/R insuficiente {rr:.2f} < {min_rr:.2f}"
+                        )
+                        continue
+
+                # Filtro MTF simétrico: bloquear entradas contra la dirección dominante
+                try:
+                    from .trend_following_professional import TrendFollowingProfessional
+                    tfp = TrendFollowingProfessional()
+                    # Inyectar get_market_data usando capital_client para evitar warnings en TFP
+                    try:
+                        if self.capital_client:
+                            def _tf_get_market_data(symbol: str, timeframe: str = "1h", periods: int = 350, limit: int = None, **kwargs):
+                                try:
+                                    data_points = limit if limit is not None else periods
+                                    try:
+                                        capital_symbol = self._normalize_symbol_for_capital(symbol)
+                                    except Exception:
+                                        capital_symbol = symbol
+                                    timeframe_mapping = {
+                                        "1m": "MINUTE",
+                                        "5m": "MINUTE_5",
+                                        "15m": "MINUTE_15",
+                                        "30m": "MINUTE_30",
+                                        "1h": "HOUR",
+                                        "4h": "HOUR_4",
+                                        "1d": "DAY",
+                                        "1w": "WEEK",
+                                    }
+                                    resolution = timeframe_mapping.get(timeframe, "HOUR")
+
+                                    historical_result = self.capital_client.get_historical_prices(
+                                        epic=capital_symbol,
+                                        resolution=resolution,
+                                        max_points=min(data_points, 1000),
+                                    )
+
+                                    import pandas as pd
+                                    if historical_result.get("success") and historical_result.get("prices"):
+                                        data = []
+                                        for price_point in historical_result.get("prices", []):
+                                            try:
+                                                ts = pd.to_datetime(price_point.get("timestamp", price_point.get("timestamp_utc", "")))
+                                                data.append({
+                                                    "timestamp": ts,
+                                                    "open": float(price_point.get("open", 0.0)),
+                                                    "high": float(price_point.get("high", 0.0)),
+                                                    "low": float(price_point.get("low", 0.0)),
+                                                    "close": float(price_point.get("close", 0.0)),
+                                                    "volume": float(price_point.get("volume", 0.0)),
+                                                })
+                                            except Exception:
+                                                continue
+                                        df = pd.DataFrame(data)
+                                        if not df.empty:
+                                            df.set_index("timestamp", inplace=True)
+                                            df.sort_index(inplace=True)
+                                            return df
+
+                                    # Fallback: intentar simular datos usando precio actual
+                                    md = self.capital_client.get_market_data([capital_symbol])
+                                    price_keys = ["mid", "bid", "offer"]
+                                    current_price = None
+                                    for pk in price_keys:
+                                        try:
+                                            val = md.get(capital_symbol, {}).get(pk)
+                                            if val:
+                                                current_price = float(val)
+                                                if current_price > 0:
+                                                    break
+                                        except Exception:
+                                            pass
+                                    if current_price and current_price > 0:
+                                        from datetime import datetime, timedelta
+                                        data = []
+                                        for i in range(data_points, 0, -1):
+                                            ts = datetime.now(UTC_TZ) - timedelta(hours=i)
+                                            price = current_price * (1 + 0.001 * i)
+                                            data.append({
+                                                "timestamp": ts,
+                                                "open": price,
+                                                "high": price * 1.01,
+                                                "low": price * 0.99,
+                                                "close": price,
+                                                "volume": 1000 + i,
+                                            })
+                                        df = pd.DataFrame(data)
+                                        df.set_index("timestamp", inplace=True)
+                                        df.sort_index(inplace=True)
+                                        return df
+
+                                    # Último recurso: DataFrame vacío con columnas esperadas
+                                    return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+                                except Exception:
+                                    import pandas as pd
+                                    return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+                            tfp.get_market_data = _tf_get_market_data
+                    except Exception:
+                        pass
+                    mtf = tfp.analyze_multi_timeframe_alignment(signal.symbol)
+                    dom = mtf.get("dominant_direction")
+                    consensus = float(mtf.get("consensus", 0.0))
+                    strength = float(mtf.get("avg_strength", 0.0))
+                    aligned = bool(mtf.get("aligned", False))
+
+                    # Umbral más laxo para aplicar el guard-rail incluso si no "alinea" estricto
+                    filter_consensus_th = TradingProfiles.get_current_profile().get(
+                        "mtf_filter_consensus_threshold", 0.66
+                    )
+
+                    dominant_known = dom in {"bullish", "bearish"}
+                    # Aplicar guard-rail si:
+                    # - hay dirección dominante conocida, y además
+                    #   - está alineado estricto, o
+                    #   - el consenso supera el umbral del guard-rail y la fuerza es aceptable
+                    should_apply_guardrail = dominant_known and (
+                        aligned or (consensus >= filter_consensus_th and strength >= 0.4)
+                    )
+
+                    if should_apply_guardrail:
+                        side = str(getattr(signal, "signal_type", "")).upper()
+                        if side == "SELL" and dom == "bullish":
+                            self.logger.info(
+                                f"🚫 {signal.symbol}: SELL filtrado por MTF (dominante {dom}, consenso {consensus:.1%}, fuerza {strength:.2f}, umbral {filter_consensus_th:.2f})"
+                            )
+                            continue
+                        if side == "BUY" and dom == "bearish":
+                            self.logger.info(
+                                f"🚫 {signal.symbol}: BUY filtrado por MTF (dominante {dom}, consenso {consensus:.1%}, fuerza {strength:.2f}, umbral {filter_consensus_th:.2f})"
+                            )
+                            continue
+                except Exception as e:
+                    self.logger.warning(
+                        f"⚠️ {signal.symbol}: Error aplicando filtro MTF: {e}"
+                    )
 
                 # Verificar horarios de mercado
                 should_trade, market_reason = market_hours_checker.should_trade(
@@ -1503,6 +2683,46 @@ class TradingBot:
                     continue
 
                 self.logger.info(f"✅ {signal.symbol}: {market_reason}")
+
+                # 🔍 Filtro Anti-Chop (opcional por perfil)
+                try:
+                    profile_cfg = TradingProfiles.get_current_profile()
+                    if bool(profile_cfg.get("chop_filter_enabled", False)):
+                        tf = str(profile_cfg.get("chop_timeframe", "15m"))
+                        df = self._get_ohlc_dataframe(signal.symbol, timeframe=tf, periods=240)
+                        metrics = self._calculate_chop_metrics(df)
+                        adx_th = float(profile_cfg.get("adx_threshold", 20))
+                        atr_min = float(profile_cfg.get("atr_min_ratio", 0.0012))
+                        ema_min = float(profile_cfg.get("ema_slope_min_ratio", 0.0003))
+
+                        self.logger.info(
+                            f"🧭 {signal.symbol} Anti-Chop metrics: ADX={metrics['adx']:.1f}, ATR%={metrics['atr_percentage']:.2f}%, ATR/Price={metrics['atr_ratio']:.4f}, EMA slope/Price={metrics['ema_slope_ratio']:.4f}"
+                        )
+
+                        blocked_reasons = []
+                        if metrics["adx"] < adx_th:
+                            blocked_reasons.append(f"ADX {metrics['adx']:.1f} < {adx_th:.1f}")
+                        if metrics["atr_ratio"] < atr_min:
+                            blocked_reasons.append(f"ATR ratio {metrics['atr_ratio']:.4f} < {atr_min:.4f}")
+                        if abs(metrics["ema_slope_ratio"]) < ema_min:
+                            blocked_reasons.append(f"EMA slope ratio {metrics['ema_slope_ratio']:.4f} < {ema_min:.4f}")
+
+                        if blocked_reasons:
+                            self.logger.info(
+                                f"🧱 {signal.symbol}: señal filtrada por Anti-Chop -> {', '.join(blocked_reasons)}"
+                            )
+                            continue
+
+                        # Validación opcional de Breakout + Retest
+                        if bool(profile_cfg.get("require_breakout_retest", False)):
+                            ok, reason = self._passes_breakout_retest(signal, df, metrics.get("atr_percentage", 0.15), profile_cfg)
+                            if not ok:
+                                self.logger.info(f"🧪 {signal.symbol}: filtro Breakout+Retest NO pasó -> {reason}")
+                                continue
+                            else:
+                                self.logger.info(f"🧪 {signal.symbol}: filtro Breakout+Retest pasó -> {reason}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {signal.symbol}: Error aplicando filtro Anti-Chop/Breakout: {e}")
 
                 # 🔄 PASO 1: Obtener balance actualizado antes de cada análisis
                 portfolio_summary = self.get_portfolio_summary()
@@ -1556,6 +2776,22 @@ class TradingBot:
 
                 # 🔄 PASO 3: Ejecutar trade si está aprobado
                 if risk_assessment.is_approved and self.enable_trading:
+                    # Verificar política AntiFlip antes de ejecutar
+                    pre_position_dir = self._get_open_position_direction(signal.symbol)
+                    if not self._passes_antiflip_policy(signal):
+                        self.logger.info(
+                            f"🛑 {signal.symbol}: señal filtrada por política AntiFlip"
+                        )
+                        continue
+
+                    # Construir preview de orden (SL/TSL ajustados por reglas) antes de ejecutar
+                    try:
+                        preview = self._build_order_preview(signal, risk_assessment)
+                        if isinstance(preview, dict):
+                            self.order_previews.append(preview)
+                    except Exception:
+                        pass
+
                     # Ejecutar paper trade siempre
                     trade_result = self.paper_trader.execute_signal(signal)
 
@@ -1567,13 +2803,38 @@ class TradingBot:
                         )
 
                     if trade_result.success:
+                        # Siempre contar trades ejecutados y métricas por día de semana/fin de semana
                         self.stats["trades_executed"] += 1
-                        self.stats["daily_trades"] += 1
-                        # Tracking separado para fines de semana
                         if self._is_weekend_trading():
                             self.stats["weekend_trades"] += 1
                         else:
                             self.stats["weekday_trades"] += 1
+
+                        # Contar daily_trades SOLO para entradas (aperturas, incrementos y flips de dirección)
+                        post_position_dir = self._get_open_position_direction(
+                            signal.symbol
+                        )
+                        # Apertura: antes no había posición y ahora sí
+                        opened_new_position = (
+                            pre_position_dir is None and post_position_dir is not None
+                        )
+                        # Incremento: misma dirección antes y después, y existe posición
+                        increased_same_direction = (
+                            pre_position_dir == post_position_dir
+                            and post_position_dir is not None
+                        )
+                        # Flip: había posición y ahora hay en dirección opuesta
+                        flipped_direction_open = (
+                            pre_position_dir is not None
+                            and post_position_dir is not None
+                            and pre_position_dir != post_position_dir
+                        )
+                        if (
+                            opened_new_position
+                            or increased_same_direction
+                            or flipped_direction_open
+                        ):
+                            self.stats["daily_trades"] += 1
 
                         # Determinar si fue exitoso basándose en el tipo de trade y PnL real
                         trade_was_profitable = False
@@ -1624,6 +2885,19 @@ class TradingBot:
                         # Actualizar tracking de cooldown para el símbolo
                         self._update_trade_tracking(signal)
 
+                        # Iniciar cooldown post-exit si la operación cerró una posición
+                        try:
+                            symbol = signal.symbol
+                            closed_long = pre_position_dir == "LONG" and signal.signal_type == "SELL"
+                            closed_short = pre_position_dir == "SHORT" and signal.signal_type == "BUY"
+                            if closed_long or closed_short:
+                                self.last_exit_times[symbol] = datetime.now(UTC_TZ)
+                                self.logger.info(
+                                    f"🕒 Exit cooldown iniciado para {symbol} a las {self.last_exit_times[symbol].strftime('%H:%M:%S')}"
+                                )
+                        except Exception:
+                            pass
+
                         # 🔄 PASO 4: Actualizar balance después del trade (implícito en próxima iteración)
 
                         # Emitir evento de trade ejecutado
@@ -1663,7 +2937,7 @@ class TradingBot:
 
     def _reset_daily_stats_if_needed(self):
         """
-        📅 Resetear estadísticas diarias a las 14:00 UTC (11:00 AM Chile convertido)
+        📅 Resetear estadísticas diarias según configuración
         """
         try:
             tz = ZoneInfo(TIMEZONE) if ZoneInfo else None
@@ -1698,6 +2972,20 @@ class TradingBot:
             self.consecutive_losses = 0
             self.circuit_breaker_active = False
             self.circuit_breaker_activated_at = None
+            # Reiniciar línea base diaria y desactivar pausa por tope diario
+            try:
+                portfolio_summary = self.get_portfolio_summary()
+                self.daily_start_value = float(portfolio_summary.get("total_value", 0.0))
+                self.daily_start_funds = float(portfolio_summary.get("funds_balance", 0.0))
+                self.daily_start_open_pnl = float(portfolio_summary.get("total_pnl", 0.0))
+                self.daily_pause_active = False
+                self.logger.info(
+                    f"📅 Daily reset: Capital=${self.daily_start_value:,.2f}, Fondos=${self.daily_start_funds:,.2f}, UPL=${self.daily_start_open_pnl:,.2f}, modo={self.daily_profit_cap_mode}, trading reanudado"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"⚠️ Error reiniciando línea base diaria durante reset: {e}"
+                )
             self.logger.info(
                 f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset"
             )
@@ -1794,31 +3082,141 @@ class TradingBot:
                 positions = positions_response.get("positions", [])
                 logger.info(f"🔧 DEBUG: positions count: {len(positions)}")
 
-            # El valor total del portfolio es el balance total (equity) que ya incluye las posiciones
+            # Corrección: evitar doble conteo del PnL.
+            # - En Capital.com, 'balance' representa el equity (incluye PnL de posiciones abiertas).
+            # - 'available' representa fondos disponibles (cash / margen libre).
+            # Por lo tanto:
+            #   total_value (equity) = balance
+            #   funds_balance (fondos) = available
+            funds_balance = available_balance
             total_value = total_balance
 
-            logger.info(f"🔧 DEBUG: final total_value (equity): ${total_value:.2f}")
+            logger.info(
+                f"🔧 DEBUG: final total_value (equity from balance): ${total_value:.2f}"
+            )
 
             result = {
-                "total_value": total_value,
-                "available_balance": available_balance,
-                "total_pnl": total_pnl,
+                "total_value": total_value,  # Capital (equity)
+                "funds_balance": funds_balance,  # Fondos (cash disponible)
+                "available_balance": available_balance,  # Disponible
+                "total_pnl": total_pnl,  # Pérdidas y Ganancias (open PnL)
                 "open_positions": len(positions) if positions else 0,
                 "source": "capital_com",
             }
 
             logger.info(f"🔧 DEBUG: get_portfolio_summary returning: {result}")
             return result
+        except Exception as e:
+            # Fallback: intentar usar PaperTrader si está disponible
+            logger.error(f"❌ Error en get_portfolio_summary: {e}")
+            try:
+                if self.paper_trader:
+                    fallback = self.paper_trader.get_portfolio_summary()
+                    if isinstance(fallback, dict):
+                        fallback["source"] = "paper_trader_fallback"
+                        logger.info(f"🔧 DEBUG: usando fallback de paper trader: {fallback}")
+                        return fallback
+            except Exception as fe:
+                logger.error(f"❌ Error en fallback paper_trader: {fe}")
+
+            # Fallback seguro si también falla el paper trader
+            return {
+                "total_value": 0.0,
+                "available_balance": 0.0,
+                "total_pnl": 0.0,
+                "open_positions": 0,
+                "source": "error",
+                "error": str(e),
+            }
+
+    def _liquidate_all_positions_due_to_daily_cap(self, reason: str = "DAILY_PROFIT_CAP") -> Dict[str, Any]:
+        """
+        🔒 Cerrar todas las posiciones abiertas al alcanzar el tope diario de ganancia.
+
+        Soporta cierre en modo real (Capital.com) y en paper trading.
+
+        Returns:
+            Dict: métricas del cierre (cerradas, errores, modo)
+        """
+        closed_count = 0
+        errors: List[str] = []
+        mode = "paper"
+
+        try:
+            # Intentar cierre en real si está habilitado
+            if getattr(self, "enable_real_trading", False) and self.capital_client:
+                mode = "real"
+                positions_result = self.capital_client.get_positions()
+                positions = positions_result.get("positions", []) if positions_result.get("success") else []
+
+                if not positions and not positions_result.get("success"):
+                    self.logger.warning(f"⚠️ No se pudieron obtener posiciones abiertas: {positions_result.get('error')}")
+
+                for pos_data in positions:
+                    position = pos_data.get("position", {}) if isinstance(pos_data, dict) else {}
+                    deal_id = position.get("dealId") or pos_data.get("dealId")
+                    if not deal_id:
+                        errors.append("Missing dealId in position data")
+                        continue
+                    try:
+                        res = self.capital_client.close_position(deal_id)
+                        if res.get("success"):
+                            closed_count += 1
+                            self.logger.info(f"✅ Posición {deal_id} cerrada por {reason}")
+                        else:
+                            err = res.get("error") or res.get("message") or "Unknown error"
+                            errors.append(f"deal {deal_id}: {err}")
+                            self.logger.error(f"❌ Error al cerrar {deal_id}: {err}")
+                    except Exception as e:
+                        errors.append(f"deal {deal_id}: {e}")
+                        self.logger.error(f"❌ Excepción cerrando {deal_id}: {e}")
+
+            # Cierre en paper trader
+            if self.paper_trader:
+                mode = "paper" if mode != "real" else "real+paper"
+                paper_positions = self.paper_trader.get_open_positions()
+                for p in paper_positions:
+                    try:
+                        symbol = p.get("symbol")
+                        qty = float(p.get("quantity", 0))
+                        price = float(p.get("current_price", 0.0))
+                        if not symbol:
+                            errors.append("Paper position missing symbol")
+                            continue
+                        # Para cerrar: vender si es larga, comprar si es corta
+                        signal_type = "SELL" if qty > 0 else "BUY"
+                        close_signal = TradingSignal(
+                            symbol=symbol,
+                            signal_type=signal_type,
+                            price=price,
+                            confidence_score=100.0,
+                            strength="Strong",
+                            strategy_name="AUTO_CLOSE",
+                            timestamp=datetime.now(),
+                            indicators_data={"reason": reason},
+                            notes=f"Auto close due to {reason}",
+                        )
+                        result = self.paper_trader.execute_signal(close_signal)
+                        if getattr(result, "success", False):
+                            closed_count += 1
+                            self.logger.info(f"✅ Paper position {symbol} cerrada por {reason}")
+                        else:
+                            msg = getattr(result, "message", "Unknown error")
+                            errors.append(f"paper {symbol}: {msg}")
+                            self.logger.error(f"❌ Error al cerrar paper {symbol}: {msg}")
+                    except Exception as e:
+                        errors.append(f"paper {p.get('symbol')}: {e}")
+                        self.logger.error(f"❌ Excepción cerrando paper {p.get('symbol')}: {e}")
 
         except Exception as e:
-            import traceback
+            errors.append(str(e))
+            self.logger.error(f"❌ Error general en liquidación por tope diario: {e}")
 
-            logger.error(f"❌ Error obteniendo portfolio de Capital.com: {e}")
-            logger.error(f"❌ Traceback completo: {traceback.format_exc()}")
-            # Fallback: usar paper trader si hay error
-            fallback_result = self.paper_trader.get_portfolio_summary()
-            logger.info(f"🔧 DEBUG: using paper trader fallback: {fallback_result}")
-            return fallback_result
+        summary = {"closed_positions": closed_count, "errors": errors, "mode": mode}
+        self.logger.info(
+            f"🔒 Liquidación por tope diario completada: cerradas={closed_count}, errores={len(errors)}, modo={mode}"
+        )
+        return summary
 
     def get_detailed_report(self) -> Dict:
         """
@@ -1849,8 +3247,11 @@ class TradingBot:
                     status.successful_trades / max(1, status.total_trades_executed)
                 )
                 * 100,
-                "daily_trades": self.stats["daily_trades"],
+                # Mostrar daily_trades desde el contador diario real (reseteado a la hora configurada)
+                "daily_trades": self.stats.get("daily_trades", 0),
                 "daily_limit": self.max_daily_trades,
+                # Información adicional para transparencia del reset
+                "last_reset_day": str(self.stats.get("last_reset_day", "")),
                 "weekday_stats": {
                     "signals_generated": self.stats.get("weekday_signals", 0),
                     "trades_executed": self.stats.get("weekday_trades", 0),
@@ -2428,6 +3829,61 @@ class TradingBot:
                         )
                     )
 
+                    # Ajuste del stop loss sensible al spread del instrumento
+                    try:
+                        md = self.capital_client.get_market_data([capital_symbol]) if self.capital_client else {}
+                        if md and capital_symbol in md:
+                            bid = md[capital_symbol].get("bid")
+                            offer = md[capital_symbol].get("offer")
+                            if bid is not None and offer is not None and offer > bid:
+                                spread = offer - bid
+                                if signal.signal_type == "BUY":
+                                    stop_loss = stop_loss - spread
+                                else:
+                                    stop_loss = stop_loss + spread
+                        # Aplicar mínimos de distancia del SL y redondeo según dealing rules
+                        dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
+                        if dr.get("success"):
+                            import math
+                            min_stop = dr.get("min_stop_distance", {})
+                            step = dr.get("min_step_distance", {})
+                            # Precio de referencia según lado
+                            ref_price = (
+                                bid if signal.signal_type == "BUY" and bid is not None
+                                else offer if signal.signal_type == "SELL" and offer is not None
+                                else current_price
+                            )
+                            unit = (min_stop.get("unit") or "").upper()
+                            value = float(min_stop.get("value") or 0.0)
+                            min_points = 0.0
+                            if unit == "PERCENTAGE":
+                                min_points = ref_price * value
+                            elif unit == "POINTS":
+                                min_points = value
+                            # Enforce mínimo
+                            if signal.signal_type == "BUY":
+                                dist = ref_price - stop_loss
+                                if dist < min_points:
+                                    stop_loss = ref_price - min_points
+                            else:
+                                dist = stop_loss - ref_price
+                                if dist < min_points:
+                                    stop_loss = ref_price + min_points
+                            # Redondeo al paso mínimo
+                            step_unit = (step.get("unit") or "").upper()
+                            step_value = float(step.get("value") or 0.0)
+                            if step_unit == "POINTS" and step_value > 0:
+                                if signal.signal_type == "BUY":
+                                    dist = ref_price - stop_loss
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    stop_loss = ref_price - dist
+                                else:
+                                    dist = stop_loss - ref_price
+                                    dist = math.ceil(dist / step_value) * step_value
+                                    stop_loss = ref_price + dist
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ No se pudo ajustar SL por spread: {e}")
+
                     self.logger.info(
                         f"🎯 {current_profile} ROI-based TP/SL calculated:"
                     )
@@ -2473,6 +3929,92 @@ class TradingBot:
                     f"🎯 Take Profit (from risk assessment): ${take_profit:.4f}"
                 )
 
+            # Ajuste de distancias TP/SL según preferencia del usuario:
+            # - Reducir TP en 50% para todos los símbolos
+            # - Aumentar SL en 50% solo si el riesgo en USD está entre 10–20 y el símbolo no es US30
+            try:
+                if stop_loss is not None and take_profit is not None:
+                    # Obtener precio actual para calcular distancias
+                    ref_price = None
+                    try:
+                        ref_price = self._get_current_price(signal.symbol)
+                    except Exception:
+                        ref_price = None
+
+                    # Si no se puede obtener precio actual, usar heurística con TP/SL existentes
+                    if ref_price is None:
+                        # Para BUY, ref es el punto medio; para SELL, igual
+                        ref_price = (take_profit + stop_loss) / 2.0
+
+                    # Calcular distancias actuales
+                    if signal.signal_type == "BUY":
+                        tp_dist = max(take_profit - ref_price, 0.0)
+                        sl_dist = max(ref_price - stop_loss, 0.0)
+                    else:
+                        tp_dist = max(ref_price - take_profit, 0.0)
+                        sl_dist = max(stop_loss - ref_price, 0.0)
+
+                    # Calcular riesgo en USD aproximado para decidir aumento de SL
+                    # Asume relación CFD: riesgo ≈ distancia * tamaño real
+                    risk_usd = sl_dist * real_size
+
+                    # Determinar si aplicar aumento de SL (50%)
+                    symbol_upper = (signal.symbol or "").upper()
+                    keep_sl_unchanged = symbol_upper == "US30"
+                    increase_sl = (not keep_sl_unchanged) and (10.0 <= risk_usd <= 20.0)
+
+                    # Aplicar reducción de TP (50%)
+                    new_tp_dist = tp_dist * 0.5
+
+                    # Aplicar aumento de SL (50%) si corresponde
+                    new_sl_dist = sl_dist * (1.5 if increase_sl else 1.0)
+
+                    # Reconstruir niveles TP/SL manteniendo orientación
+                    if signal.signal_type == "BUY":
+                        take_profit = ref_price + new_tp_dist
+                        stop_loss = ref_price - new_sl_dist
+                    else:
+                        take_profit = ref_price - new_tp_dist
+                        stop_loss = ref_price + new_sl_dist
+
+                    self.logger.info(
+                        f"⚙️ Ajustes TP/SL aplicados: TP -50% (distancia), SL {'+50%' if increase_sl else 'sin cambio'} (distancia), riesgoUSD≈{risk_usd:.2f}"
+                    )
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudo aplicar ajustes de TP/SL preferidos: {e}")
+
+            # 7. Aplicar estrictamente reglas del instrumento (min distance, steps, orientación)
+            try:
+                bid = None
+                offer = None
+                md = self.capital_client.get_market_data([capital_symbol]) if self.capital_client else {}
+                if md and capital_symbol in md:
+                    bid = md[capital_symbol].get("bid")
+                    offer = md[capital_symbol].get("offer")
+                dr = self.capital_client.get_dealing_rules(capital_symbol) if self.capital_client else {"success": False}
+                if not dr.get("success"):
+                    dr = {}
+                # Proveer símbolo actual al helper para clampeo por instrumento
+                try:
+                    self.current_signal_symbol = signal.symbol
+                except Exception:
+                    self.current_signal_symbol = None
+                sl_adj, tp_adj, stop_points = self._apply_dealing_rules_to_tp_sl(
+                    signal.signal_type, bid, offer, stop_loss, take_profit, dr
+                )
+                # Limpiar símbolo temporal
+                try:
+                    self.current_signal_symbol = None
+                except Exception:
+                    pass
+                stop_loss = sl_adj
+                take_profit = tp_adj
+                self.logger.info(
+                    f"🔧 Reglas aplicadas: SL={stop_loss}, TP={take_profit}, stopDistance={stop_points}"
+                )
+            except Exception as e:
+                self.logger.warning(f"⚠️ No se pudo aplicar reglas de instrumento a TP/SL: {e}")
+
             self.logger.info(
                 f"🔴 Executing REAL trade: {signal.signal_type} {capital_symbol} size={real_size}"
             )
@@ -2487,35 +4029,111 @@ class TradingBot:
             trailing_stop_available = False
 
             if use_trailing_stop and stop_loss:
-                # Calcular la distancia correcta según el tipo de operación
-                # Para BUY: stopDistance = current_price - stop_loss (protege hacia abajo)
-                # Para SELL: stopDistance = stop_loss - current_price (protege hacia arriba)
-                if signal.signal_type == "BUY":
-                    trailing_distance = current_price - stop_loss
-                else:  # SELL
-                    trailing_distance = stop_loss - current_price
+                # Obtener bid/offer para calcular distancia sensible al spread
+                bid = None
+                offer = None
+                try:
+                    md = self.capital_client.get_market_data([capital_symbol]) if self.capital_client else {}
+                    if md and capital_symbol in md:
+                        bid = md[capital_symbol].get("bid")
+                        offer = md[capital_symbol].get("offer")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error obteniendo bid/offer para {capital_symbol}: {e}")
 
-                # Verificar que la distancia sea positiva
+                spread = 0.0
+                if bid is not None and offer is not None and offer > bid:
+                    spread = offer - bid
+
+                if signal.signal_type == "BUY":
+                    reference_price = bid if bid is not None else current_price
+                    base_distance = reference_price - stop_loss
+                else:
+                    reference_price = offer if offer is not None else current_price
+                    base_distance = stop_loss - reference_price
+
+                # Si ya calculamos stopDistance por reglas, úsalo como base
+                if 'stop_points' in locals() and isinstance(stop_points, (int, float)) and stop_points > 0:
+                    base_distance = stop_points
+
+                trailing_distance = base_distance + spread
+
                 if trailing_distance > 0:
                     trailing_stop_available = True
                     self.logger.info(
                         f"🎯 Trailing stop enabled for {signal.signal_type}"
                     )
                     self.logger.info(
-                        f"🎯 Current price: {current_price:.4f}, Stop loss: {stop_loss:.4f}"
+                        f"🎯 Price ref: {reference_price:.4f}, SL: {stop_loss:.4f}, Spread: {spread:.4f}"
                     )
                     self.logger.info(
-                        f"🎯 Calculated stopDistance: {trailing_distance:.4f} points"
+                        f"🎯 stopDistance ajustado por spread: {trailing_distance:.4f} puntos"
                     )
                 else:
                     trailing_stop_available = False
                     self.logger.warning(
-                        f"⚠️ Invalid trailing distance: {trailing_distance:.4f} (must be positive)"
+                        f"⚠️ Distancia de trailing inválida: {trailing_distance:.4f} (debe ser positiva)"
                     )
-                    self.logger.warning(f"⚠️ Falling back to traditional stop loss")
+                    self.logger.warning("⚠️ Se usará stop loss tradicional")
 
             # Ejecutar orden según el tipo de señal
             if signal.signal_type == "BUY":
+                # Verificar modo hedging y posición existente para posible flip
+                self.logger.info(
+                    f"🔴 Verificando modo hedging y posiciones existentes para BUY..."
+                )
+
+                preferences_result = self.capital_client.get_account_preferences()
+                hedging_mode = False
+                if preferences_result.get("success"):
+                    hedging_mode = preferences_result.get("hedging_mode", False)
+                    self.logger.info(
+                        f"🔄 Modo hedging: {'ACTIVADO' if hedging_mode else 'DESACTIVADO'}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"⚠️ No se pudo obtener preferencias de cuenta: {preferences_result.get('error')}"
+                    )
+
+                positions_result = self.capital_client.get_positions()
+                if not positions_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": f"Failed to get positions: {positions_result.get('error')}",
+                    }
+
+                open_position = None
+                for position in positions_result.get("positions", []):
+                    if position.get("market", {}).get("epic") == capital_symbol:
+                        open_position = position
+                        break
+
+                # Si existe posición SELL y no hay hedging, cerrar completamente y luego abrir BUY
+                if (
+                    open_position
+                    and not hedging_mode
+                    and str(open_position.get("position", {}).get("direction", "")).upper() == "SELL"
+                ):
+                    deal_id = open_position.get("position", {}).get("dealId")
+                    position_size = abs(
+                        float(open_position.get("position", {}).get("size", 0))
+                    )
+                    close_size = position_size  # cerrar toda la posición opuesta
+
+                    self.logger.info(
+                        f"🔴 Cerrando posición SELL existente antes de abrir BUY - Deal ID: {deal_id}, Size: {close_size}"
+                    )
+                    close_result = self.capital_client.close_position(
+                        deal_id=deal_id, direction="BUY", size=close_size
+                    )
+                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {close_result}")
+
+                    if not close_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": f"Failed to close opposite position: {close_result.get('error')}",
+                        }
+
+                # Abrir BUY (en modo hedging siempre abre; en modo normal abre tras cierre o si no había opuesta)
                 self.logger.info(f"🔴 Enviando orden BUY a Capital.com...")
                 if trailing_stop_available and trailing_distance:
                     result = self.capital_client.buy_market_order(
@@ -2576,57 +4194,65 @@ class TradingBot:
                         open_position = position
                         break
 
-                if open_position and not hedging_mode:
-                    # Solo cerrar posición existente si NO está en modo hedging
+                # Si existe posición BUY y no hay hedging, cerrar completamente y luego abrir SELL
+                if (
+                    open_position
+                    and not hedging_mode
+                    and str(open_position.get("position", {}).get("direction", "")).upper() == "BUY"
+                ):
                     deal_id = open_position.get("position", {}).get("dealId")
                     position_size = abs(
                         float(open_position.get("position", {}).get("size", 0))
                     )
-                    close_size = min(real_size, position_size)
+                    close_size = position_size  # cerrar toda la posición opuesta
 
                     self.logger.info(
-                        f"🔴 Cerrando posición existente (modo normal) - Deal ID: {deal_id}, Size: {close_size}"
+                        f"🔴 Cerrando posición BUY existente antes de abrir SELL - Deal ID: {deal_id}, Size: {close_size}"
                     )
-                    result = self.capital_client.close_position(
+                    close_result = self.capital_client.close_position(
                         deal_id=deal_id, direction="SELL", size=close_size
                     )
-                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {result}")
-                else:
-                    # Abrir nueva posición de venta (siempre en modo hedging, o si no hay posición existente)
-                    if hedging_mode and open_position:
-                        self.logger.info(
-                            f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)"
-                        )
-                    else:
-                        self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+                    self.logger.info(f"🔴 Respuesta de Capital.com CLOSE: {close_result}")
 
-                    if trailing_stop_available and trailing_distance:
-                        result = self.capital_client.sell_market_order(
-                            epic=capital_symbol,
-                            size=real_size,
-                            take_profit=take_profit,
-                            trailing_stop=True,
-                            stop_distance=trailing_distance,
-                        )
+                    if not close_result.get("success"):
+                        return {
+                            "success": False,
+                            "error": f"Failed to close opposite position: {close_result.get('error')}",
+                        }
+
+                # Abrir nueva posición SELL (en hedging siempre abre; en normal abre tras cierre o si no había opuesta)
+                if hedging_mode and open_position:
+                    self.logger.info(
+                        f"🔄 Abriendo nueva posición SELL en modo hedging (manteniendo posición existente)"
+                    )
+                else:
+                    self.logger.info(f"🔴 Enviando orden SELL a Capital.com...")
+
+                if trailing_stop_available and trailing_distance:
+                    result = self.capital_client.sell_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        take_profit=take_profit,
+                        trailing_stop=True,
+                        stop_distance=trailing_distance,
+                    )
+                    self.logger.info(
+                        f"🎯 SELL order with trailing stop - Distance: {trailing_distance}"
+                    )
+                else:
+                    result = self.capital_client.sell_market_order(
+                        epic=capital_symbol,
+                        size=real_size,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                    )
+                    if use_trailing_stop and not trailing_stop_available:
                         self.logger.info(
-                            f"🎯 SELL order with trailing stop - Distance: {trailing_distance}"
+                            f"🔄 SELL order with traditional stop loss (trailing stop not available)"
                         )
                     else:
-                        result = self.capital_client.sell_market_order(
-                            epic=capital_symbol,
-                            size=real_size,
-                            stop_loss=stop_loss,
-                            take_profit=take_profit,
-                        )
-                        if use_trailing_stop and not trailing_stop_available:
-                            self.logger.info(
-                                f"🔄 SELL order with traditional stop loss (trailing stop not available)"
-                            )
-                        else:
-                            self.logger.info(
-                                f"🔴 SELL order with traditional stop loss"
-                            )
-                    self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
+                        self.logger.info(f"🔴 SELL order with traditional stop loss")
+                self.logger.info(f"🔴 Respuesta de Capital.com SELL: {result}")
             else:
                 return {
                     "success": False,
@@ -2896,45 +4522,28 @@ class TradingBot:
             if utc_reset_hour < 0:
                 utc_reset_hour += 24
 
-            # Convertir UTC a hora local del sistema para schedule
-            try:
-                import pytz
-                
-                # Crear un datetime UTC para hoy a la hora del pre-reset
-                utc_time = datetime.now(UTC_TZ).replace(
-                    hour=utc_reset_hour, 
-                    minute=utc_reset_minute, 
-                    second=0, 
-                    microsecond=0
-                )
-                
-                # Obtener la zona horaria local del sistema (Chile)
-                local_tz = pytz.timezone('America/Santiago')
-                local_time = utc_time.astimezone(local_tz)
-                
-                # Formatear las horas para logging y scheduling
-                local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
-                utc_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
+            # Convertir UTC a la zona horaria local del sistema para el scheduler
+            utc_time = datetime.now(UTC_TZ).replace(
+                hour=utc_reset_hour,
+                minute=utc_reset_minute,
+                second=0,
+                microsecond=0,
+            )
 
-                # Programar el cierre automático usando la hora local
-                schedule.every().day.at(local_time_str).do(
-                    self._execute_pre_reset_profit_taking
-                ).tag("pre_reset_profit_taking")
+            system_local_tz = datetime.now().astimezone().tzinfo
+            local_time = utc_time.astimezone(system_local_tz)
+            local_time_str = f"{local_time.hour:02d}:{local_time.minute:02d}"
+            utc_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
+            local_tz_name = getattr(system_local_tz, "key", getattr(system_local_tz, "zone", str(system_local_tz)))
 
-                self.logger.info(
-                    f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC ({local_time_str} local Chile time) - 15 minutes before reset"
-                )
-                
-            except ImportError:
-                # Fallback si pytz no está disponible
-                pre_reset_time_str = f"{utc_reset_hour:02d}:{utc_reset_minute:02d}"
-                schedule.every().day.at(pre_reset_time_str).do(
-                    self._execute_pre_reset_profit_taking
-                ).tag("pre_reset_profit_taking")
-                
-                self.logger.warning(
-                    f"⚠️ pytz not available, using system timezone. Pre-reset scheduled at {pre_reset_time_str}"
-                )
+            # Programar el cierre automático usando la hora local
+            schedule.every().day.at(local_time_str).do(
+                self._execute_pre_reset_profit_taking
+            ).tag("pre_reset_profit_taking")
+
+            self.logger.info(
+                f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC ({local_time_str} {local_tz_name} local time) - 15 minutes before reset"
+            )
 
         except Exception as e:
             self.logger.error(f"❌ Error scheduling pre-reset profit taking: {e}")
@@ -2945,19 +4554,13 @@ class TradingBot:
         """
         try:
             # Mostrar la hora actual en UTC y local para claridad
-            try:
-                import pytz
-                
-                utc_now = datetime.now(UTC_TZ)
-                local_tz = pytz.timezone('America/Santiago')
-                local_now = utc_now.astimezone(local_tz)
-                
-                self.logger.info(
-                    f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
-                    f"({local_now.strftime('%H:%M:%S')} Chile time)..."
-                )
-            except ImportError:
-                self.logger.info("🎯 Executing pre-reset profit taking...")
+            utc_now = datetime.now(UTC_TZ)
+            local_now = utc_now.astimezone(datetime.now().astimezone().tzinfo)
+            local_tz_name = getattr(local_now.tzinfo, "key", getattr(local_now.tzinfo, "zone", str(local_now.tzinfo)))
+            self.logger.info(
+                f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
+                f"({local_now.strftime('%H:%M:%S')} {local_tz_name} local time)..."
+            )
 
             # Cerrar posiciones con UPL > 1 USD
             result = self.close_profitable_positions(min_profit=1.0)
@@ -3114,3 +4717,5 @@ class TradingBot:
 
 
 trading_bot = TradingBot()
+    # --- IMPORTS LOCALES DIFERIDOS ---
+    # Nota: evitamos import circulares; usaremos import a nivel de método

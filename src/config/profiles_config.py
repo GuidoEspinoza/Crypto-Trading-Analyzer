@@ -45,17 +45,17 @@ PROFILES = {
         ],  # Timeframes ultra-rápidos para capturar movimientos inmediatos
         "analysis_interval": 1,  # Análisis cada minuto para máxima reactividad
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
-        "min_confidence": 75.0,  # Confianza mínima alta para reducir señales falsas en alta frecuencia
-        "max_daily_trades": 35,  # Límite optimizado para aprovechar 42 símbolos disponibles
+        "min_confidence": 78.0,  # Confianza mínima alta para reducir señales falsas en alta frecuencia
+        "max_daily_trades": 30,  # Límite optimizado para aprovechar 42 símbolos disponibles
         "max_daily_trades_adaptive": True,  # Permite trades adicionales con señales de alta calidad
-        "daily_trades_quality_threshold": 80.0,  # Umbral de confianza para trades adicionales
+        "daily_trades_quality_threshold": 82.0,  # Umbral de confianza para trades adicionales
         "max_daily_trades_bonus": 15,  # Máximo de trades adicionales con alta confianza (total: 50)
         "max_positions": 18,  # Máximo de posiciones simultáneas para máxima diversificación
         # === CONFIGURACIÓN DE PAPER TRADING - OPTIMIZADA PARA SCALPING ===
         "max_position_size_percent": 8,  # 8% del balance por posición - OPTIMIZADO (era 4%)
         "max_total_exposure_percent": 80,  # 80% de exposición total - OPTIMIZADO (era 60%)
         "min_trade_value": 25.0,  # Valor mínimo por trade - OPTIMIZADO (era 5.0)
-        "paper_min_confidence": 75.0,  # Confianza mínima consistente con trading real
+        "paper_min_confidence": 78.0,  # Confianza mínima consistente con trading real
         "max_slippage": 0.03,  # Slippage máximo permitido (3%)
         "min_liquidity": 8.0,  # Liquidez mínima requerida para ejecución
         # === CONFIGURACIÓN DE GESTIÓN DE RIESGO ===
@@ -82,19 +82,30 @@ PROFILES = {
         # === CONFIGURACIÓN DE TP/SL BASADO EN ROI - OPTIMIZADA PARA SCALPING ===
         # Los porcentajes son sobre el balance total invertido, no sobre el precio del activo
         "tp_min_percent": 0.5,  # Take Profit mínimo: 0.5% ROI - OPTIMIZADO (era 0.35%)
-        "tp_max_percent": 2.0,  # Take Profit máximo: 2.0% ROI - OPTIMIZADO (era 1.5%)
+        "tp_max_percent": 1.2,  # Take Profit máximo: 1.2% ROI - más realista para salidas rápidas
         "sl_min_percent": 0.4,  # Stop Loss mínimo: 0.4% ROI - OPTIMIZADO (era 0.3%)
-        "sl_max_percent": 1.0,  # Stop Loss máximo: 1.0% ROI - OPTIMIZADO (era 0.8%)
+        "sl_max_percent": 0.9,  # Stop Loss máximo: 0.9% ROI - recorte de riesgo
         "tp_increment_percent": 1.2,  # Factor de incremento para TP dinámico
-        "tp_confidence_threshold": 0.65,  # Umbral de confianza para ajustar TP
+        "tp_confidence_threshold": 0.70,  # Umbral de confianza ligeramente más alto para ajustar TP
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
         "max_daily_loss_percent": 4.5,  # Pérdida máxima diaria - OPTIMIZADA (era 3.0%)
+        "max_daily_profit_percent": 5.0,  # Ganancia máxima diaria antes de pausar trading
+        "daily_profit_cap_mode": "pnl",  # Disparar tope por PnL (UPL) ≥ umbral
         "min_confidence_threshold": 0.78,  # Umbral mínimo de confianza para operar
         "position_size_multiplier": 1.5,  # Multiplicador OPTIMIZADO para scalping (era 0.8)
+        # === FILTRO ANTI-CHOP / INDECISIÓN ===
+        "chop_filter_enabled": True,  # Activar filtro de indecisión
+        "chop_timeframe": "15m",  # Timeframe para evaluar chop
+        "adx_threshold": 18,  # ADX mínimo para considerar tendencia
+        "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
+        "ema_slope_min_ratio": 0.0003,  # Pendiente mínima de EMA20 por vela (0.03%)
+        "require_breakout_retest": True,  # Exigir ruptura + retesteo para ejecutar
+        "breakout_threshold_ratio": 0.0005,  # Margen de ruptura (0.05%)
+        "retest_tolerance_ratio": 0.0010,  # Tolerancia en retesteo (0.10%)
         # === CONFIGURACIÓN DE ESTRATEGIAS ===
-        "default_min_confidence": 70.0,  # Confianza mínima por defecto para estrategias
+        "default_min_confidence": 72.0,  # Confianza mínima por defecto para estrategias
         "default_atr_period": 14,  # Período ATR estándar para cálculos
-        "rsi_min_confidence": 75.0,  # Confianza mínima para señales RSI
+        "rsi_min_confidence": 78.0,  # Confianza mínima para señales RSI
         "rsi_oversold": 25,  # Nivel RSI de sobreventa (más extremo para menos señales)
         "rsi_overbought": 75,  # Nivel RSI de sobrecompra (más extremo para menos señales)
         "rsi_period": 14,  # Período RSI estándar
@@ -133,6 +144,11 @@ PROFILES = {
         "risk_management_threshold": -0.008,  # Umbral de gestión de riesgo
         "risk_management_sl_pct": 0.012,  # SL de gestión de riesgo
         "risk_management_tp_pct": 0.015,  # TP de gestión de riesgo
+        # === CONTROL POR SESIÓN (índices y ventanas horarias) ===
+        "session_strict_exits": True,  # Cerrar posiciones fuera de la ventana activa
+        "session_exit_grace_minutes": 15,  # Margen de salida al terminar la sesión
+        "indices_strict_session_only": True,  # Operar índices solo en sus ventanas
+        "indices_tp_ceiling_price_move_pct": 0.004,  # Techo de movimiento de precio ~0.4%
         # === CONFIGURACIÓN AVANZADA DE RIESGO ===
         "kelly_win_rate": 0.62,  # Tasa de ganancia histórica para Kelly
         "kelly_avg_loss": 1.0,  # Pérdida promedio para Kelly
@@ -177,20 +193,21 @@ PROFILES = {
             "30m",
             "1h",
         ],  # Timeframes balanceados para análisis intraday
-        "analysis_interval": 12,  # Análisis cada 12 minutos para mayor selectividad
+        "analysis_interval": 5,  # Análisis más frecuente para captar más oportunidades diarias
         # "analysis_interval": 1,  # Análisis cada 1 minuto para pruebas
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
-        "min_confidence": 75.0,  # Confianza mínima balanceada para intraday
-        "max_daily_trades": 25,  # Límite optimizado para aprovechar diversificación de 42 símbolos
-        "max_daily_trades_adaptive": True,  # Permite trades adicionales con alta confianza
-        "daily_trades_quality_threshold": 80.0,  # Umbral para trades adicionales
-        "max_daily_trades_bonus": 10,  # Máximo de trades adicionales con alta confianza (total: 35)
-        "max_positions": 15,  # Posiciones simultáneas para máxima diversificación
+        "min_confidence": 78.0,  # Ligera flexibilización para aumentar señales de calidad
+        "max_daily_trades": 20,  # Mantener límite base
+        "max_daily_trades_adaptive": False,  # Desactivado: no usar trades adicionales
+        "daily_trades_quality_threshold": 82.0,  # Sin efecto con adaptive desactivado
+        "max_daily_trades_bonus": 0,  # Sin trades adicionales; límite efectivo se mantiene en 20
+        "max_positions": 7,  # Posiciones simultáneas para máxima diversificación
+        "max_positions_per_symbol": 2,  # Límite por símbolo para evitar concentración
         # === CONFIGURACIÓN DE PAPER TRADING ===
         "max_position_size_percent": 12,  # 12% del balance por posición - OPTIMIZADO PARA MEJORES RETORNOS
         "max_total_exposure_percent": 75,  # 75% de exposición total - OPTIMIZADO PARA MEJORES RETORNOS
         "min_trade_value": 50.0,  # Valor mínimo más alto para mejor calidad - OPTIMIZADO
-        "paper_min_confidence": 78.0,  # Confianza consistente con trading real
+        "paper_min_confidence": 78.0,  # Consistente con la ligera flexibilización
         "max_slippage": 0.025,  # Slippage más estricto para intraday
         "min_liquidity": 12.0,  # Liquidez más alta requerida
         # === CONFIGURACIÓN DE GESTIÓN DE RIESGO ===
@@ -217,15 +234,26 @@ PROFILES = {
         # === CONFIGURACIÓN DE TP/SL BASADO EN ROI OPTIMIZADO ===
         # Relación Riesgo:Recompensa 2:1 optimizada para criptomonedas
         "tp_min_percent": 1.5,  # Take Profit mínimo: 1.5% ROI - realista para crypto
-        "tp_max_percent": 4.5,  # Take Profit máximo: 4.5% ROI - ligeramente mayor (era 3.5%)
+        "tp_max_percent": 3.0,  # Take Profit máximo: 3.0% ROI - menor retención
         "sl_min_percent": 1.2,  # Stop Loss mínimo: 1.2% ROI - apropiado para crypto
-        "sl_max_percent": 2.0,  # Stop Loss máximo: 2.0% ROI - más estricto para posiciones grandes (era 2.5%)
+        "sl_max_percent": 1.8,  # Stop Loss máximo: 1.8% ROI - reducción de riesgo
         "tp_increment_percent": 1.0,  # Factor de incremento TP balanceado
         "tp_confidence_threshold": 0.72,  # Umbral moderado para ajustar TP
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
         "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria ajustada para posiciones más grandes
-        "min_confidence_threshold": 0.72,  # Confianza mínima balanceada
+        "max_daily_profit_percent": 5.0,  # Ganancia máxima diaria antes de pausar trading
+        "daily_profit_cap_mode": "pnl",  # Disparar tope por PnL (UPL) ≥ umbral
+        "min_confidence_threshold": 0.70,  # Ligeramente más flexible, manteniendo nivel alto
         "position_size_multiplier": 2.0,  # Multiplicador OPTIMIZADO para trades selectivos
+        # === FILTRO ANTI-CHOP / INDECISIÓN ===
+        "chop_filter_enabled": True,  # Activar filtro de indecisión
+        "chop_timeframe": "15m",  # Timeframe para evaluar chop en índices
+        "adx_threshold": 16,  # Más permisivo sin perder calidad
+        "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
+        "ema_slope_min_ratio": 0.00025,  # Pendiente mínima de EMA20 por vela (0.025%)
+        "require_breakout_retest": True,  # Mantener criterio de ruptura + retesteo
+        "breakout_threshold_ratio": 0.0004,  # Margen de ruptura un poco más amplio
+        "retest_tolerance_ratio": 0.0012,  # Mayor tolerancia al retesteo
         # === CONFIGURACIÓN DE ESTRATEGIAS PARA CRYPTO ===
         "default_min_confidence": 75.0,  # Confianza balanceada para crypto
         "default_atr_period": 14,  # Período estándar más responsivo
@@ -259,7 +287,7 @@ PROFILES = {
         "position_monitoring_interval": 20,  # Monitoreo más frecuente
         "price_cache_duration": 15,  # Cache más fresco
         "max_close_attempts": 3,  # Intentos estándar de cierre
-        "position_timeout_hours": 6,  # Cerrar posiciones después de 6 horas
+        "position_timeout_hours": 5,  # Cerrar posiciones después de 5 horas
         "min_movement_threshold": 0.005,  # Movimiento mínimo 0.5% para progreso
         "sideways_detection_period": 120,  # Detectar lateral en 2 horas
         "profit_scaling_threshold_percent": 1.5,  # Escalado más temprano al 1.5%
@@ -302,7 +330,18 @@ PROFILES = {
         "error_cooldown_seconds": 45,  # Cooldown moderado
         "max_consecutive_errors": 4,  # Tolerancia moderada
         # === CONFIGURACIÓN DE COOLDOWN ENTRE TRADES ===
-        "min_time_between_trades_minutes": 10,  # Tiempo mínimo entre trades del mismo símbolo
+        "min_time_between_trades_minutes": 7,  # Permite más actividad controlada por símbolo
         "min_time_between_opposite_signals_minutes": 15,  # Tiempo mínimo entre señales opuestas
+        # === POLÍTICA ANTIFLIP (estabilidad de señales y reducción de pérdidas pequeñas) ===
+        "antiflip_min_hold_minutes": 45,  # Mantener posición al menos N minutos antes de permitir flip
+        "antiflip_opposite_persistence_count": 2,  # Requerir N señales opuestas consecutivas fuertes
+        "antiflip_hysteresis_multiplier": 1.10,  # Confianza opuesta debe ser >= 110% de la última ejecutada
+        "antiflip_require_strong_opposite": True,  # Solo permitir flip con señales Strong/Very Strong
+        "antiflip_cooldown_after_exit_minutes": 20,  # Cooldown adicional tras cerrar una posición
+        # === CONTROL POR SESIÓN (índices y ventanas horarias) ===
+        "session_strict_exits": True,  # Cerrar posiciones fuera de la ventana activa
+        "session_exit_grace_minutes": 15,  # Margen de salida al terminar la sesión
+        "indices_strict_session_only": True,  # Operar índices solo en sus ventanas
+        "indices_tp_ceiling_price_move_pct": 0.004,  # Techo de movimiento de precio ~0.4%
     },
 }

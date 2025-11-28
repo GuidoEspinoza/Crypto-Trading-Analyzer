@@ -469,10 +469,14 @@ class PaperTrader:
                 position = self.portfolio[symbol]
                 current_quantity = position["quantity"]
 
-                # Si ya tenemos posición corta, cerrarla primero
+                # Si ya tenemos posición corta, cerrarla primero y luego abrir larga
                 if current_quantity < 0:
-                    return self._close_short_position(symbol, price)
-                # Si ya tenemos posición larga, aumentarla o cerrarla según la estrategia
+                    close_result = self._close_short_position(symbol, price)
+                    if not close_result.success:
+                        return close_result
+                    # Abrir nueva posición larga después de cerrar la corta
+                    return self._open_long_position(symbol, price)
+                # Si ya tenemos posición larga, aumentarla según la estrategia
                 elif current_quantity > 0:
                     return self._increase_long_position(symbol, price)
 
@@ -505,11 +509,11 @@ class PaperTrader:
         net_pnl = gross_pnl - fee
 
         # Actualizar portfolio (liberar margen y agregar P&L)
-        margin_released = entry_value + (entry_value * FEE_RATE)  # Margen original
-        self._update_usd_balance(margin_released + net_pnl)
-        self._update_asset_balance(
-            symbol, quantity, price
-        )  # Eliminar posición (cantidad positiva para cancelar negativa)
+        # Liberar margen reservado y sumar PnL neto
+        reserved_margin = position.get("reserved_margin", 0.0)
+        self._update_usd_balance(reserved_margin + net_pnl)
+        # Eliminar posición (cantidad positiva para cancelar negativa)
+        self._update_asset_balance(symbol, quantity, price)
 
         # Crear registro de trade
         trade_id = self.trade_counter
@@ -519,7 +523,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "BUY_CLOSE_SHORT",
+            "direction": "SHORT",
             "quantity": quantity,
+            "quantity_signed": -quantity,
             "entry_price": entry_price,
             "exit_price": price,
             "exit_value": exit_value,
@@ -596,6 +602,13 @@ class PaperTrader:
         # Actualizar portfolio (reservar margen)
         self._update_usd_balance(-total_margin_required)
         self._update_asset_balance(symbol, quantity, price)
+        # Guardar metadata de margen y exposición para cierres consistentes
+        try:
+            self.portfolio[symbol]["reserved_margin"] = required_margin
+            self.portfolio[symbol]["leverage"] = leverage
+            self.portfolio[symbol]["entry_value"] = max_trade_value
+        except Exception:
+            pass
 
         # Crear registro de trade
         trade_id = self.trade_counter
@@ -605,7 +618,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "BUY_OPEN_LONG",
+            "direction": "LONG",
             "quantity": quantity,
+            "quantity_signed": quantity,
             "entry_price": price,
             "entry_value": max_trade_value,
             "fee": fee,
@@ -658,10 +673,14 @@ class PaperTrader:
                 position = self.portfolio[symbol]
                 current_quantity = position["quantity"]
 
-                # Si ya tenemos posición larga, cerrarla primero
+                # Si ya tenemos posición larga, cerrarla primero y luego abrir corta
                 if current_quantity > 0:
-                    return self._close_long_position(symbol, price)
-                # Si ya tenemos posición corta, aumentarla o cerrarla según la estrategia
+                    close_result = self._close_long_position(symbol, price)
+                    if not close_result.success:
+                        return close_result
+                    # Abrir nueva posición corta después de cerrar la larga
+                    return self._open_short_position(symbol, price)
+                # Si ya tenemos posición corta, aumentarla según la estrategia
                 elif current_quantity < 0:
                     return self._increase_short_position(symbol, price)
 
@@ -692,9 +711,11 @@ class PaperTrader:
         fee = sale_value * FEE_RATE
         net_pnl = gross_pnl - fee
 
-        # Actualizar portfolio
-        self._update_usd_balance(sale_value - fee)  # Recibir dinero de la venta
-        self._update_asset_balance(symbol, -quantity, price)  # Eliminar posición
+        # Actualizar portfolio: liberar margen y sumar PnL neto (no sumar valor nominal)
+        reserved_margin = position.get("reserved_margin", 0.0)
+        self._update_usd_balance(reserved_margin + net_pnl)
+        # Eliminar posición
+        self._update_asset_balance(symbol, -quantity, price)
 
         # Crear registro de trade
         trade_id = self.trade_counter
@@ -704,7 +725,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "SELL_CLOSE_LONG",
+            "direction": "LONG",
             "quantity": quantity,
+            "quantity_signed": quantity,
             "entry_price": entry_price,
             "exit_price": price,
             "exit_value": sale_value,
@@ -780,6 +803,13 @@ class PaperTrader:
         total_margin_required = required_margin + fee
         self._update_usd_balance(-total_margin_required)
         self._update_asset_balance(symbol, quantity, price)  # Cantidad negativa
+        # Guardar metadata de margen y exposición para cierres consistentes
+        try:
+            self.portfolio[symbol]["reserved_margin"] = required_margin
+            self.portfolio[symbol]["leverage"] = leverage
+            self.portfolio[symbol]["entry_value"] = max_trade_value
+        except Exception:
+            pass
 
         # Crear registro de trade
         trade_id = self.trade_counter
@@ -789,7 +819,9 @@ class PaperTrader:
             "id": trade_id,
             "symbol": symbol,
             "trade_type": "SELL_OPEN_SHORT",
+            "direction": "SHORT",
             "quantity": abs(quantity),  # Guardar como positivo en el registro
+            "quantity_signed": quantity,
             "entry_price": price,
             "entry_value": max_trade_value,
             "fee": fee,
@@ -828,17 +860,29 @@ class PaperTrader:
             Dict con el resumen del portfolio
         """
         try:
-            total_value = sum(pos["current_value"] for pos in self.portfolio.values())
-            total_pnl = sum(pos["unrealized_pnl"] for pos in self.portfolio.values())
+            # Calcular PnL no realizado sobre posiciones (excluyendo USD)
+            total_pnl = sum(
+                pos["unrealized_pnl"]
+                for symbol, pos in self.portfolio.items()
+                if symbol != "USD"
+            )
+            # Equity simulado: USD disponible + PnL no realizado
+            usd_value = self.portfolio.get("USD", {}).get("current_value", 0.0)
+            total_value = usd_value + total_pnl
+            funds_balance = usd_value  # Fondos (sin P&L), equivalente a saldo disponible en cash
 
             # Crear lista de assets (posiciones abiertas)
             assets = []
             for symbol, position in self.portfolio.items():
                 if symbol != "USD" and position["quantity"] != 0:
+                    qty = position["quantity"]
+                    direction = "LONG" if qty > 0 else "SHORT"
                     assets.append(
                         {
                             "symbol": symbol,
-                            "quantity": position["quantity"],
+                            "quantity": qty,
+                            "abs_quantity": abs(qty),
+                            "direction": direction,
                             "avg_price": position["avg_price"],
                             "current_price": position["current_price"],
                             "current_value": position["current_value"],
@@ -851,6 +895,7 @@ class PaperTrader:
 
             return {
                 "total_value": total_value,
+                "funds_balance": funds_balance,
                 "initial_balance": self.initial_balance,
                 "available_balance": self.portfolio.get("USD", {}).get("quantity", 0.0),
                 "total_pnl": total_pnl,
@@ -860,7 +905,11 @@ class PaperTrader:
                     else 0.0
                 ),
                 "positions": len(
-                    [pos for pos in self.portfolio.values() if pos["quantity"] != 0]
+                    [
+                        pos
+                        for sym, pos in self.portfolio.items()
+                        if sym != "USD" and pos["quantity"] != 0
+                    ]
                 ),
                 "assets": assets,
                 "last_updated": datetime.now(),
@@ -959,27 +1008,41 @@ class PaperTrader:
             old_quantity = position["quantity"]
             new_quantity = old_quantity + quantity_change
 
-            # Actualizar precio promedio si es una compra
-            if quantity_change > 0:
-                if old_quantity > 0:
-                    total_cost = (old_quantity * position["avg_price"]) + (
-                        quantity_change * price
-                    )
-                    position["avg_price"] = total_cost / new_quantity
-                else:
+            # Actualizar precio promedio para largos y cortos
+            if quantity_change != 0:
+                if old_quantity == 0:
                     position["avg_price"] = price
+                else:
+                    # Usar cantidades absolutas para shorts
+                    abs_old = abs(old_quantity)
+                    abs_change = abs(quantity_change)
+                    abs_new = abs(new_quantity)
+                    position["avg_price"] = (
+                        (abs_old * position["avg_price"]) + (abs_change * price)
+                    ) / max(abs_new, 1e-12)
 
             position["quantity"] = new_quantity
             position["current_price"] = price
-            position["current_value"] = new_quantity * price
+            # Exposición actual (valor absoluto)
+            position["current_value"] = abs(new_quantity) * price
 
             # Calcular PnL no realizado
             if new_quantity > 0:
+                # Largo: sube precio, PnL positivo
                 position["unrealized_pnl"] = (
                     price - position["avg_price"]
                 ) * new_quantity
                 position["unrealized_pnl_percentage"] = (
                     (price - position["avg_price"]) / position["avg_price"]
+                ) * 100
+            elif new_quantity < 0:
+                # Corto: baja precio, PnL positivo
+                abs_qty = abs(new_quantity)
+                position["unrealized_pnl"] = (
+                    position["avg_price"] - price
+                ) * abs_qty
+                position["unrealized_pnl_percentage"] = (
+                    (position["avg_price"] - price) / position["avg_price"]
                 ) * 100
             else:
                 position["unrealized_pnl"] = 0.0
@@ -987,8 +1050,8 @@ class PaperTrader:
 
             position["last_updated"] = datetime.now()
 
-            # Eliminar posición si la cantidad es 0
-            if new_quantity <= 0:
+            # Eliminar posición solo si la cantidad es exactamente 0
+            if new_quantity == 0:
                 del self.portfolio[asset_symbol]
 
         except Exception as e:

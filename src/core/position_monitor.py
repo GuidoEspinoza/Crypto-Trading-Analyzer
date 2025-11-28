@@ -531,12 +531,11 @@ class PositionMonitor:
                 symbol=status.symbol,
                 signal_type="SELL" if status.trade_type == "BUY" else "BUY",
                 price=status.current_price,
-                confidence=100.0,  # Cierre automático = 100% confianza
-                timeframe="1h",
+                confidence_score=100.0,  # Cierre automático = 100% confianza
+                strength="Strong",
                 strategy_name="AUTO_CLOSE",
-                indicators={"reason": status.close_reason},
-                stop_loss=0,  # No necesario para cierre
-                take_profit=0,  # No necesario para cierre
+                timestamp=datetime.now(),
+                indicators_data={"reason": status.close_reason},
                 notes=f"Auto close: {status.close_reason} | PnL: {status.unrealized_pnl_percentage:.2f}%",
             )
 

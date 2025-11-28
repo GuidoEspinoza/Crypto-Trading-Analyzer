@@ -646,13 +646,19 @@ class CapitalClient:
             ):
                 return "CRYPTOCURRENCIES"
 
-        # Comprehensive indices symbols from symbols_config.py
+        # Comprehensive indices symbols from symbols_config.py (incluye variantes usadas en GLOBAL_SYMBOLS)
         index_symbols = [
-            "SPX500", "NAS100", "US30", "FTSE100", "GER40", "FRA40", "ESP35", "ITA40",
-            "AUS200", "JPN225", "HK50", "CHINA50", "IND50", "SING30", "SWISS20",
-            "NLD25", "BEL20", "AUT20", "NOR25", "SWE30", "DEN25", "POL20", "CZE14",
-            "HUN20", "RUS50", "ZAF40", "MEX35", "BRA60", "ARG25", "CHL30", "COL20",
-            "PER15", "ECOM50", "AFRICA40", "GULF20", "MENA30", "ASIA50", "PACIFIC25"
+            # US y variantes comunes
+            "SPX500", "NAS100", "US500", "US100", "US30", "RTY",
+            # Europa
+            "FTSE100", "UK100", "GER40", "DE40", "FRA40", "FR40", "ESP35", "ITA40",
+            # Asia
+            "JPN225", "HK50", "CHINA50", "AUS200",
+            # Otros
+            "IND50", "SING30", "SWISS20", "NLD25", "BEL20", "AUT20", "NOR25",
+            "SWE30", "DEN25", "POL20", "CZE14", "HUN20", "RUS50", "ZAF40", "MEX35",
+            "BRA60", "ARG25", "CHL30", "COL20", "PER15", "ECOM50", "AFRICA40",
+            "GULF20", "MENA30", "ASIA50", "PACIFIC25"
         ]
         
         # Check exact match for indices
@@ -660,17 +666,21 @@ class CapitalClient:
             return "INDICES"
         
         # Check partial matches for indices
-        index_patterns = ["SPX", "NAS", "DOW", "US30", "FTSE", "DAX", "GER", "CAC", "FRA", 
-                         "NIKKEI", "JPN", "ASX", "AUS", "HK", "CHINA", "IND", "SING"]
+        index_patterns = [
+            "SPX", "NAS", "DOW", "US30", "US100", "US500",
+            "FTSE", "UK100", "DAX", "GER", "DE40", "CAC", "FRA", "FR40",
+            "NIKKEI", "JPN", "ASX", "AUS", "HK", "HK50", "CHINA", "IND", "SING"
+        ]
         for pattern in index_patterns:
             if pattern in symbol_upper:
                 return "INDICES"
 
         # Comprehensive commodities symbols from symbols_config.py
         commodity_symbols = [
-            "GOLD", "SILVER", "PLATINUM", "PALLADIUM", "COPPER", "ALUMINIUM", "ZINC", "NICKEL",
+            "GOLD", "SILVER", "PLATINUM", "PALLADIUM",
+            "ALUMINIUM", "ZINC", "NICKEL",
             "OIL", "BRENT", "WTI", "CRUDEOIL", "NATURALGAS", "GAS", "HEATING",
-            "WHEAT", "CORN", "SOYBEANS", "SUGAR", "COFFEE", "COCOA", "COTTON", "RICE"
+            "SOYBEANS", "SUGAR", "COFFEE", "COCOA", "COTTON", "RICE"
         ]
         
         # Check exact match for commodities
@@ -862,6 +872,34 @@ class CapitalClient:
                 )
 
         return all_market_data
+
+    def get_dealing_rules(self, epic: str) -> Dict[str, Any]:
+        """Get dealing rules (min stop/profit distance, step, increment, trailing preference).
+
+        Returns a dict with keys:
+            success, min_stop_distance, min_step_distance, min_size_increment, trailing_preference, error (optional)
+        """
+        try:
+            result = self.get_markets(epics=[epic])
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+
+            markets_response = result.get("markets", {})
+            details = markets_response.get("marketDetails")
+            if not details:
+                return {"success": False, "error": "No marketDetails found"}
+
+            dealing_rules = details[0].get("dealingRules", {})
+            return {
+                "success": True,
+                "min_stop_distance": dealing_rules.get("minStopOrProfitDistance", {}),
+                "min_step_distance": dealing_rules.get("minStepDistance", {}),
+                "min_size_increment": dealing_rules.get("minSizeIncrement", {}),
+                "trailing_preference": dealing_rules.get("trailingStopsPreference", "NOT_AVAILABLE"),
+            }
+        except Exception as e:
+            logger.error(f"Error getting dealing rules for {epic}: {e}")
+            return {"success": False, "error": str(e)}
 
     def get_historical_prices(
         self,
