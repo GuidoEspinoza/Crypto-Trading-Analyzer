@@ -246,7 +246,7 @@ PROFILES = {
         "min_confidence_threshold": 0.70,  # Ligeramente más flexible, manteniendo nivel alto
         "position_size_multiplier": 2.0,  # Multiplicador OPTIMIZADO para trades selectivos
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
-        "chop_filter_enabled": True,  # Activar filtro de indecisión
+        "chop_filter_enabled": False,  # Activar filtro de indecisión
         "chop_timeframe": "15m",  # Timeframe para evaluar chop en índices
         "adx_threshold": 16,  # Más permisivo sin perder calidad
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
