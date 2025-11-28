@@ -68,9 +68,9 @@ DAILY_RESET_MINUTE = 45 # Minuto exacto del reinicio (15 min antes de las 12:00)
 
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
-    # Optimizado para aprovechar superposición Europa-América
-    "start_time": "12:00",  # 12:00 UTC - Inicio más estable previo al overlap Londres–NY
-    "end_time": "02:30",  # 02:30 UTC - Cierre extendido mercados asiáticos (era 23:30 Chile)
+    # Ampliado a todo el día para no bloquear análisis por símbolo
+    "start_time": "00:00",  # Cobertura total en UTC
+    "end_time": "23:59",  # Cobertura total en UTC
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
     "extended_start": "09:00",  # 09:00 UTC - Inicio muy temprano (era 06:00 Chile)

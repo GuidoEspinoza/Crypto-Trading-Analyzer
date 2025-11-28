@@ -5,10 +5,18 @@ Verifica si los mercados están abiertos y si se encuentran en ventanas óptimas
 
 import logging
 from datetime import datetime, time, timezone, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 import pytz
 
 logger = logging.getLogger(__name__)
+
+# Importar configuración por símbolo
+try:
+    from src.config.symbols_config import get_symbol_config
+except Exception:
+    # Fallback para evitar errores de import en contextos de test
+    def get_symbol_config(symbol: str) -> dict:
+        return {"optimal_hours": ["09:00-17:00"]}
 
 
 class MarketHoursChecker:
@@ -341,12 +349,7 @@ class MarketHoursChecker:
                 )
 
         # Verificar si estamos dentro de la ventana óptima (evitar apertura/cierre)
-        if open_dt_buffered <= current_local_dt <= close_dt_buffered:
-            return True, (
-                f"Trading allowed: buffered window {open_dt_buffered.strftime('%H:%M')}–{close_dt_buffered.strftime('%H:%M')} "
-                f"{market_tz.zone} | now {current_local_dt.strftime('%H:%M')} local"
-            )
-        else:
+        if not (open_dt_buffered <= current_local_dt <= close_dt_buffered):
             # Determinar motivo específico
             if current_local_dt < open_dt_buffered:
                 return False, (
@@ -358,6 +361,16 @@ class MarketHoursChecker:
                     f"Trading blocked: within close buffer (last {close_buffer_min}m) | "
                     f"closes {market_config['close_time'].strftime('%H:%M')} {market_tz.zone}, optimal until {close_dt_buffered.strftime('%H:%M')}"
                 )
+
+        # Validar ventanas óptimas específicas del símbolo en UTC
+        optimal_ok, optimal_reason = self._is_within_symbol_optimal_hours_utc(symbol)
+        if not optimal_ok:
+            return False, optimal_reason
+
+        return True, (
+            f"Trading allowed: {optimal_reason} | buffered {open_dt_buffered.strftime('%H:%M')}–{close_dt_buffered.strftime('%H:%M')} "
+            f"{market_tz.zone}"
+        )
 
     def get_general_market_status(self) -> Dict[str, list]:
         """
@@ -389,6 +402,58 @@ class MarketHoursChecker:
                     closed_markets.append(market_type)
 
         return {"open_markets": open_markets, "closed_markets": closed_markets}
+
+    # ===== Utilidades internas =====
+    def _parse_time_range(self, range_str: str) -> Tuple[time, time]:
+        start_str, end_str = range_str.split("-")
+        sh, sm = map(int, start_str.split(":"))
+        eh, em = map(int, end_str.split(":"))
+        return time(sh, sm), time(eh, em)
+
+    def _is_time_in_ranges(self, current_t: time, ranges: List[Tuple[time, time]]) -> bool:
+        for start_t, end_t in ranges:
+            if start_t <= end_t:
+                if start_t <= current_t <= end_t:
+                    return True
+            else:
+                # Cruza medianoche
+                if current_t >= start_t or current_t <= end_t:
+                    return True
+        return False
+
+    def _is_within_symbol_optimal_hours_utc(self, symbol: str) -> Tuple[bool, str]:
+        """Verifica si el tiempo actual UTC cae dentro de las ventanas óptimas del símbolo.
+        Las ventanas se definen en UTC en symbols_config.
+        """
+        try:
+            cfg = get_symbol_config(symbol)
+            ranges_raw = cfg.get("optimal_hours", [])
+            if not ranges_raw:
+                return True, f"No optimal hours configured – default allow"
+
+            # Soporte para 24/5
+            if any(r.strip().upper() == "24/5" for r in ranges_raw):
+                return True, f"Symbol optimal hours: 24/5 (UTC)"
+
+            ranges_parsed: List[Tuple[time, time]] = []
+            for r in ranges_raw:
+                try:
+                    ranges_parsed.append(self._parse_time_range(r))
+                except Exception:
+                    logger.warning(f"Invalid optimal_hours range for {symbol}: '{r}'")
+
+            current_utc_time = datetime.now(self.utc).time()
+            in_range = self._is_time_in_ranges(current_utc_time, ranges_parsed)
+            if in_range:
+                # Construir texto de rangos para razón
+                ranges_txt = ", ".join([f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for s, e in ranges_parsed])
+                return True, f"Symbol optimal window active (UTC {ranges_txt})"
+            else:
+                ranges_txt = ", ".join([f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for s, e in ranges_parsed])
+                return False, f"Trading blocked: outside {symbol} optimal hours (UTC {ranges_txt})"
+        except Exception as e:
+            logger.warning(f"Error checking optimal hours for {symbol}: {e}")
+            return True, "Symbol optimal hours check error – default allow"
 
 
 # Instancia global para uso en el bot
