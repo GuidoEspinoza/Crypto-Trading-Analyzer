@@ -121,20 +121,55 @@ ssh root@TU_IP_VPS  # o ssh tradingbot@TU_IP_VPS
 
 ### 📁 **Paso 4.1: Clonar Repositorio**
 
-```bash
-# Clonar repositorio en el directorio correcto
-git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git ~/trading-bot
+Escoge el flujo según tu escenario. Todos evitan directorios anidados y dejan los archivos del proyecto directamente en la carpeta base elegida.
 
-# Ir al directorio de trabajo
+```bash
+# Escenario 1: Ya existe ~/trading-bot con contenido (backup, logs, etc.)
 cd ~/trading-bot
+
+# Clona en subcarpeta temporal para evitar anidar en el destino final
+git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git
+
+# Mueve TODO el contenido (incluye archivos ocultos) al directorio base y elimina el origen
+rsync -a --remove-source-files Smart-Trading-Bot/ ./
+find Smart-Trading-Bot -type d -empty -delete
+rmdir Smart-Trading-Bot 2>/dev/null && echo "✅ Smart-Trading-Bot eliminada" || echo "⚠️ Aún contiene elementos o no existe"
 
 # Verificar archivos (deben estar directamente en ~/trading-bot)
 ls -la
+echo "✅ Verificando estructura de archivos:" && ls -la | grep -E "(main.py|docker-compose.yml|requirements.txt|src/)"
 
-# Verificar estructura correcta
-echo "✅ Verificando estructura de archivos:"
-ls -la | grep -E "(main.py|docker-compose.yml|requirements.txt|src/)"
+# Tip de verificación adicional
+test -d ~/trading-bot/Smart-Trading-Bot && echo "❌ Sigue anidada" || echo "✅ Estructura plana correcta"
 ```
+
+```bash
+# Escenario 2: No existe carpeta base aún (instalación limpia en ~/trading-bot)
+cd ~
+git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git ~/trading-bot
+cd ~/trading-bot
+ls -la
+echo "✅ Verificando estructura de archivos:" && ls -la | grep -E "(main.py|docker-compose.yml|requirements.txt|src/)"
+```
+
+```bash
+# Escenario 3: Prefieres ~/Smart-Trading-Bot como carpeta base
+cd ~
+git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git
+cd ~/Smart-Trading-Bot
+ls -la
+echo "✅ Verificando estructura de archivos:" && ls -la | grep -E "(main.py|docker-compose.yml|requirements.txt|src/)"
+
+# Si ya existe ~/Smart-Trading-Bot y quieres clonar SIN subcarpeta
+# (Asegúrate de que el directorio esté vacío antes de clonar en ".")
+git clone https://github.com/GuidoEspinoza/Smart-Trading-Bot.git .
+```
+
+⚠️ Nota importante
+- Si ejecutas `git clone <URL>` dentro de una carpeta EXISTENTE sin especificar destino, se creará una subcarpeta con el nombre del repositorio. Para evitarlo, especifica el destino (por ejemplo `~/trading-bot`) o clona en el directorio actual con `.` asegurando que esté vacío.
+
+💡 Consistencia de rutas
+- Usa `~/trading-bot` o `~/Smart-Trading-Bot` de forma consistente en los pasos siguientes (cd, rutas de scripts, docker-compose, etc.).
 
 ### ⚙️ **Paso 4.2: Configurar Variables de Entorno**
 
@@ -324,6 +359,41 @@ print('Conexión exitosa!' if client else 'Error de conexión')
 - El comando `ls ~/trading-bot/` muestra una carpeta "Smart-Trading-Bot"
 
 **Solución paso a paso:**
+
+```bash
+# Opción A (recomendada): mover TODO con rsync y eliminar origen
+cd ~/trading-bot
+
+# Mover todo el contenido (incluye ocultos) y eliminar los archivos fuente
+rsync -a --remove-source-files Smart-Trading-Bot/ ./
+
+# Eliminar directorios vacíos remanentes dentro de Smart-Trading-Bot
+find Smart-Trading-Bot -type d -empty -delete
+
+# Verificar si quedó vacío y eliminar la carpeta
+rmdir Smart-Trading-Bot 2>/dev/null && echo "✅ Smart-Trading-Bot eliminada" || echo "⚠️ Aún contiene elementos o no existe"
+```
+
+```bash
+# Opción B (alternativa Bash pura): mover visibles y ocultos
+cd ~/trading-bot
+
+# Activar globbing de archivos ocultos y mover todo (sin . ni ..)
+shopt -s dotglob nullglob
+mv Smart-Trading-Bot/* Smart-Trading-Bot/.[!.]* Smart-Trading-Bot/..?* ./
+shopt -u dotglob nullglob
+
+# Eliminar la carpeta si quedó vacía
+rmdir Smart-Trading-Bot 2>/dev/null && echo "✅ Smart-Trading-Bot eliminada" || echo "⚠️ Aún contiene elementos o no existe"
+```
+
+```bash
+# Verificación rápida de estructura plana
+test -d ~/trading-bot/Smart-Trading-Bot && echo "❌ Sigue anidada" || echo "✅ Estructura plana correcta"
+
+# Listar archivos críticos esperados
+ls -la ~/trading-bot | grep -E "(main.py|docker-compose.yml|requirements.txt|src/)" || true
+```
 
 ```bash
 # 1. Verificar si tienes el problema
