@@ -94,7 +94,7 @@ PROFILES = {
         "min_confidence_threshold": 0.78,  # Umbral mínimo de confianza para operar
         "position_size_multiplier": 1.5,  # Multiplicador OPTIMIZADO para scalping (era 0.8)
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
-        "chop_filter_enabled": True,  # Activar filtro de indecisión
+        "chop_filter_enabled": False,  # Desactivar filtro de indecisión para pruebas
         "chop_timeframe": "15m",  # Timeframe para evaluar chop
         "adx_threshold": 18,  # ADX mínimo para considerar tendencia
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
