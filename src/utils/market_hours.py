@@ -83,6 +83,9 @@ class MarketHoursChecker:
             "USDJPY": "FOREX",
             "NZDUSD": "FOREX",
             "USDNOK": "FOREX",
+            "AUDUSD": "FOREX",
+            "USDCAD": "FOREX",
+            "USDCHF": "FOREX",
         }
 
         # Horarios específicos por símbolo para índices (sesión principal de cada mercado)

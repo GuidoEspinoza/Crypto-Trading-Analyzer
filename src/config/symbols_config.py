@@ -86,12 +86,16 @@ GLOBAL_SYMBOLS = [
     # Metales
     "GOLD",
     "SILVER",
-    # América
-    "US100",
+    # Energía
+    "OIL_CRUDE",
+    # Índices EEUU
+    "US100", "US500", "US30", "RTY",
     # Europa
     "DE40", "UK100", "FR40",
     # Asia
-    "HK50",
+    "HK50", "J225", "AU200",
+    # Forex (pares mayores)
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF",
 ]
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
@@ -228,6 +232,85 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "max_trades_multiplier": 1.0,
         "risk_level": "medium",
         "liquidity": "medium",
+    },
+    # --- Commodities (energía) ---
+    "OIL_CRUDE": {
+        "category": "energy",
+        "volatility": "high",
+        "avg_daily_range": 2.5,
+        "optimal_hours": ["13:00-20:30"],  # Sesión US energía
+        "spread_typical": 0.03,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium_high",
+        "liquidity": "high",
+    },
+    # --- Forex Majors ---
+    "EURUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "optimal_hours": ["24/5"],
+        "spread_typical": 0.00008,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "low_medium",
+        "liquidity": "very_high",
+    },
+    "GBPUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.8,
+        "optimal_hours": ["24/5"],
+        "spread_typical": 0.0001,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "USDJPY": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "optimal_hours": ["24/5"],
+        "spread_typical": 0.01,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "low_medium",
+        "liquidity": "very_high",
+    },
+    "AUDUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "optimal_hours": ["24/5"],
+        "spread_typical": 0.00009,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "low_medium",
+        "liquidity": "high",
+    },
+    "USDCAD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.6,
+        "optimal_hours": ["24/5"],
+        "spread_typical": 0.00009,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "low_medium",
+        "liquidity": "high",
+    },
+    "USDCHF": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.6,
+        "optimal_hours": ["24/5"],
+        "spread_typical": 0.00009,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "low_medium",
+        "liquidity": "high",
     },
 }
 
