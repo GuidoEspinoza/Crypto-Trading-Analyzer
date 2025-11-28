@@ -272,7 +272,7 @@ PROFILES = {
         "mtf_enhanced_confidence": 78.0,  # Confianza MTF más balanceada
         "mtf_min_confidence": 75.0,  # Confianza mínima MTF coherente
         "mtf_min_consensus": 0.66,  # Consenso ajustado para permitir 66.7% (2 de 3 timeframes)
-        "mtf_require_trend_alignment": True,  # Requiere alineación de tendencias
+        "mtf_require_trend_alignment": False,  # Requiere alineación de tendencias
         "mtf_min_timeframe_consensus": 2,  # Consenso en 2 de 3 timeframes
         "mtf_trend_alignment_required": True,  # Alineación obligatoria
         "volume_timeframe": "15m",  # Timeframe de volumen moderado
