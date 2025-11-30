@@ -54,6 +54,7 @@ from .position_monitor import PositionMonitor
 
 from .capital_client import CapitalClient, create_capital_client_from_env
 from src.utils.market_hours import market_hours_checker
+from src.utils.signal_quality import summarize_quality
 
 # Indicadores técnicos para filtros adicionales
 try:
@@ -396,13 +397,15 @@ class TradingBot:
             low = df["low"].astype(float)
 
             # ADX
-            adx_val = 25.0
+            # Fallback neutral: usar un valor por debajo del umbral típico de tendencia fuerte
+            # para evitar permitir señales en entornos donde no podemos calcular ADX.
+            adx_val = 18.0
             if ADXIndicator:
                 try:
                     adx_series = ADXIndicator(high=high, low=low, close=close, window=14).adx()
-                    adx_val = float(adx_series.iloc[-1]) if not pd.isna(adx_series.iloc[-1]) else 25.0
+                    adx_val = float(adx_series.iloc[-1]) if not pd.isna(adx_series.iloc[-1]) else 18.0
                 except Exception:
-                    adx_val = 25.0
+                    adx_val = 18.0
 
             # ATR y ratios
             current_price = float(close.iloc[-1])
@@ -2712,6 +2715,14 @@ class TradingBot:
                                 f"🧱 {signal.symbol}: señal filtrada por Anti-Chop -> {', '.join(blocked_reasons)}"
                             )
                             continue
+
+                        # Diagnóstico adicional de calidad (no bloqueante)
+                        if bool(profile_cfg.get("quality_diagnostics_enabled", True)):
+                            quality = summarize_quality(df)
+                            align_txt = {1: "fast>slow", -1: "fast<slow", 0: "flat"}.get(quality.get("ema_alignment", 0), "flat")
+                            self.logger.info(
+                                f"🔎 Calidad {signal.symbol}: ADX={quality['adx']:.1f}, ATR%={quality['atr_pct']:.2f}%, EMA={align_txt}, Chop={quality['chop_score']:.2f}"
+                            )
 
                         # Validación opcional de Breakout + Retest
                         if bool(profile_cfg.get("require_breakout_retest", False)):

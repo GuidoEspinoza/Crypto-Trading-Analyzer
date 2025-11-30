@@ -661,7 +661,9 @@ class EnhancedTradingStrategy(TradingStrategy):
                     warnings.simplefilter("ignore", UserWarning)
                     adx_value = ADXIndicator(high=high_float, low=low_float, close=close_float, window=14).adx().iloc[-1]
             except Exception:
-                adx_value = 25
+                # Fallback neutral: si ADX no puede calcularse, asumir "sin tendencia"
+                # para evitar clasificar falsamente como tendencia fuerte.
+                adx_value = 15
 
             # Determinar tendencia
             if (
