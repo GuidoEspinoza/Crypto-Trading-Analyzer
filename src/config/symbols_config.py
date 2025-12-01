@@ -62,7 +62,7 @@ METALS_INDUSTRIAL = [
 # Índices americanos
 INDICES_US = [
     "US100",
-    "US500",
+    # "US500",
 ]
 
 # Índices europeos
@@ -86,16 +86,12 @@ GLOBAL_SYMBOLS = [
     # Metales
     "GOLD",
     "SILVER",
-    # Energía
-    "OIL_CRUDE",
     # Índices EEUU
-    "US100", "US500", "US30", "RTY",
+    "US100",
     # Europa
     "DE40", "UK100", "FR40",
     # Asia
-    "HK50", "J225", "AU200",
-    # Forex (pares mayores)
-    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF",
+    "HK50", "J225"
 ]
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
