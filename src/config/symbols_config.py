@@ -89,9 +89,12 @@ GLOBAL_SYMBOLS = [
     # Índices EEUU
     "US100",
     # Europa
-    "DE40", "UK100", "FR40",
+    "DE40",
+    "UK100",
+    "FR40",
     # Asia
-    "HK50", "J225"
+    "HK50",
+    "J225",
 ]
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
@@ -100,6 +103,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "metals_precious",
         "volatility": "medium",
         "avg_daily_range": 1.5,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
         "optimal_hours": ["12:00-17:00"],
         "spread_typical": 0.05,
         "min_confidence_adjustment": 0,
@@ -111,6 +115,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "metals_precious",
         "volatility": "medium",
         "avg_daily_range": 1.8,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
         "optimal_hours": ["12:00-17:00"],
         "spread_typical": 0.08,
         "min_confidence_adjustment": 0,
@@ -122,6 +127,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_us",
         "volatility": "high",
         "avg_daily_range": 1.6,
+        "optimal_hours": ["15:00-20:30"],
         "optimal_hours": ["14:30-21:00"],
         "spread_typical": 0.2,
         "min_confidence_adjustment": 3,
@@ -133,6 +139,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_us",
         "volatility": "medium",
         "avg_daily_range": 1.2,
+        "optimal_hours": ["15:00-20:30"],
         "optimal_hours": ["14:30-21:00"],
         "spread_typical": 0.1,
         "min_confidence_adjustment": 2,
@@ -144,6 +151,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_us",
         "volatility": "medium",
         "avg_daily_range": 1.1,
+        "optimal_hours": ["15:00-20:30"],
         "optimal_hours": ["14:30-21:00"],
         "spread_typical": 1.5,
         "min_confidence_adjustment": 2,
@@ -155,6 +163,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_us",
         "volatility": "high",
         "avg_daily_range": 1.9,
+        "optimal_hours": ["15:00-20:30"],
         "optimal_hours": ["14:30-21:00"],
         "spread_typical": 1.8,
         "min_confidence_adjustment": 3,
@@ -166,6 +175,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_europe",
         "volatility": "medium",
         "avg_daily_range": 1.4,
+        "optimal_hours": ["08:30-16:00"],
         "optimal_hours": ["07:00-10:00"],
         "spread_typical": 0.3,
         "min_confidence_adjustment": 1,
@@ -177,6 +187,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_europe",
         "volatility": "medium",
         "avg_daily_range": 1.2,
+        "optimal_hours": ["08:30-16:00"],
         "optimal_hours": ["08:00-11:00", "13:00-16:30"],
         "spread_typical": 0.3,
         "min_confidence_adjustment": 1,
@@ -189,6 +200,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_europe",
         "volatility": "medium",
         "avg_daily_range": 1.3,
+        "optimal_hours": ["08:30-16:00"],
         "optimal_hours": ["08:00-10:00"],
         "spread_typical": 0.2,
         "min_confidence_adjustment": 1,
@@ -200,6 +212,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_asia",
         "volatility": "medium",
         "avg_daily_range": 1.7,
+        "optimal_hours": ["00:30-02:20", "03:40-05:30"],
         "optimal_hours": ["00:00-02:00"],
         "spread_typical": 2.5,
         "min_confidence_adjustment": -1,
@@ -211,6 +224,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_asia",
         "volatility": "high",
         "avg_daily_range": 2.0,
+        "optimal_hours": ["02:00-03:45", "05:05-07:30"],
         "optimal_hours": ["01:15-04:00"],
         "spread_typical": 2.0,
         "min_confidence_adjustment": -1,
@@ -222,6 +236,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "indices_asia",
         "volatility": "medium",
         "avg_daily_range": 1.4,
+        "optimal_hours": ["00:30-05:30"],
         "optimal_hours": ["23:00-01:00"],
         "spread_typical": 1.5,
         "min_confidence_adjustment": 0,
@@ -234,6 +249,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "energy",
         "volatility": "high",
         "avg_daily_range": 2.5,
+        "optimal_hours": ["13:00-20:30"],  # Sesión US energía
         "optimal_hours": ["13:00-18:00"],  # Sesión US energía
         "spread_typical": 0.03,
         "min_confidence_adjustment": 1,
@@ -246,6 +262,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "forex_major",
         "volatility": "medium",
         "avg_daily_range": 0.7,
+        "optimal_hours": ["24/5"],
         "optimal_hours": ["13:00-17:00"],
         "spread_typical": 0.00008,
         "min_confidence_adjustment": -1,
@@ -257,6 +274,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "forex_major",
         "volatility": "medium",
         "avg_daily_range": 0.8,
+        "optimal_hours": ["24/5"],
         "optimal_hours": ["13:00-17:00"],
         "spread_typical": 0.0001,
         "min_confidence_adjustment": -1,
@@ -268,6 +286,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "forex_major",
         "volatility": "medium",
         "avg_daily_range": 0.7,
+        "optimal_hours": ["24/5"],
         "optimal_hours": ["00:00-07:00", "12:00-15:00"],
         "spread_typical": 0.01,
         "min_confidence_adjustment": -1,
@@ -279,6 +298,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "forex_major",
         "volatility": "medium",
         "avg_daily_range": 0.7,
+        "optimal_hours": ["24/5"],
         "optimal_hours": ["00:00-06:00"],
         "spread_typical": 0.00009,
         "min_confidence_adjustment": -1,
@@ -290,6 +310,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "forex_major",
         "volatility": "medium",
         "avg_daily_range": 0.6,
+        "optimal_hours": ["24/5"],
         "optimal_hours": ["13:30-17:00"],
         "spread_typical": 0.00009,
         "min_confidence_adjustment": -1,
@@ -301,6 +322,7 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "category": "forex_major",
         "volatility": "medium",
         "avg_daily_range": 0.6,
+        "optimal_hours": ["24/5"],
         "optimal_hours": ["13:00-17:00"],
         "spread_typical": 0.00009,
         "min_confidence_adjustment": -1,
@@ -381,6 +403,7 @@ LIQUIDITY_CATEGORIES = {
     "medium": ["J225", "HK50", "AU200"],
     "low": [],
 }
+
 
 def get_symbols_by_volatility(volatility_level: str) -> list:
     """
