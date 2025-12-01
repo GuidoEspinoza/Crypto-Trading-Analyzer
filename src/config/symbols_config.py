@@ -61,8 +61,8 @@ METALS_INDUSTRIAL = [
 
 # Índices americanos
 INDICES_US = [
-    "US100",
-    # "US500",
+    # "US100",
+    "US500",
 ]
 
 # Índices europeos
