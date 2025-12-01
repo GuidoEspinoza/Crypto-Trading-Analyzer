@@ -87,7 +87,7 @@ GLOBAL_SYMBOLS = [
     "GOLD",
     "SILVER",
     # Índices EEUU
-    "US100",
+    "US500",
     # Europa
     "DE40",
     "UK100",
