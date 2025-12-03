@@ -780,9 +780,10 @@ class TradingBot:
             utc_time_str = f"{DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d}"
             local_tz_name = getattr(system_local_tz, "key", getattr(system_local_tz, "zone", str(system_local_tz)))
 
-            # Programar el reset usando la hora local del sistema
+            # Programar el reset usando la hora local del sistema,
+            # invocando un disparador que deja evidencia explícita en logs
             schedule.every().day.at(local_time_str).do(
-                self._reset_daily_stats_if_needed
+                self._trigger_daily_reset
             ).tag("daily_reset")
 
             self.logger.info(
@@ -2997,8 +2998,26 @@ class TradingBot:
                 self.logger.warning(
                     f"⚠️ Error reiniciando línea base diaria durante reset: {e}"
                 )
+            # Log extendido: mostrar también hora del servidor local y America/Santiago
+            try:
+                server_local = datetime.now().astimezone()
+                server_tz_name = getattr(server_local.tzinfo, "key", getattr(server_local.tzinfo, "zone", str(server_local.tzinfo)))
+            except Exception:
+                server_local = None
+                server_tz_name = "local"
+            try:
+                scl_tz = ZoneInfo("America/Santiago") if ZoneInfo else None
+            except Exception:
+                scl_tz = None
+            scl_dt = reset_dt.astimezone(scl_tz) if (scl_tz and reset_dt.tzinfo) else None
+            server_dt_str = server_local.strftime("%H:%M") if server_local else ""
+            scl_dt_str = scl_dt.strftime("%H:%M") if scl_dt else ""
+            extra = (
+                f" | server={server_dt_str} {server_tz_name}"
+                + (f" | America/Santiago={scl_dt_str}" if scl_dt else "")
+            )
             self.logger.info(
-                f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset"
+                f"📅 Daily stats reset at {DAILY_RESET_HOUR:02d}:{DAILY_RESET_MINUTE:02d} ({TIMEZONE}) on {current_day} - Circuit breaker reset{extra}"
             )
         else:
             # Sin acción antes del horario de reset o si ya se realizó en el día
@@ -4552,12 +4571,57 @@ class TradingBot:
                 self._execute_pre_reset_profit_taking
             ).tag("pre_reset_profit_taking")
 
+            # También mostrar hora equivalente en America/Santiago
+            try:
+                scl_tz = ZoneInfo("America/Santiago") if ZoneInfo else None
+            except Exception:
+                scl_tz = None
+            sceq_local = datetime.now(UTC_TZ).replace(
+                hour=utc_reset_hour, minute=utc_reset_minute, second=0, microsecond=0
+            ).astimezone(scl_tz) if scl_tz else None
+            scl_time_str = sceq_local.strftime("%H:%M") if sceq_local else ""
+
             self.logger.info(
-                f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC ({local_time_str} {local_tz_name} local time) - 15 minutes before reset"
+                (
+                    f"⏰ Pre-reset profit taking scheduled at {utc_time_str} UTC "
+                    f"({local_time_str} {local_tz_name} local time"
+                    + (f", {scl_time_str} America/Santiago" if scl_time_str else "")
+                    + ") - 15 minutes before reset"
+                )
             )
 
         except Exception as e:
             self.logger.error(f"❌ Error scheduling pre-reset profit taking: {e}")
+
+    def _trigger_daily_reset(self):
+        """
+        ⏰ Disparador del scheduler para el reset diario que deja evidencia explícita en logs.
+        Mantiene la lógica de reset en UTC.
+        """
+        try:
+            utc_now = datetime.now(UTC_TZ)
+            server_local = utc_now.astimezone(datetime.now().astimezone().tzinfo)
+            server_tz_name = getattr(server_local.tzinfo, "key", getattr(server_local.tzinfo, "zone", str(server_local.tzinfo)))
+            # Hora equivalente en America/Santiago
+            try:
+                scl_tz = ZoneInfo("America/Santiago") if ZoneInfo else None
+            except Exception:
+                scl_tz = None
+            scl_now = utc_now.astimezone(scl_tz) if scl_tz else None
+
+            self.logger.info(
+                (
+                    f"⏰ Daily reset trigger fired by scheduler at {utc_now.strftime('%H:%M:%S')} UTC "
+                    f"({server_local.strftime('%H:%M:%S')} {server_tz_name} local"
+                    + (f", {scl_now.strftime('%H:%M:%S')} America/Santiago" if scl_now else "")
+                    + ")"
+                )
+            )
+
+            # Ejecutar la lógica de reset
+            self._reset_daily_stats_if_needed()
+        except Exception as e:
+            self.logger.error(f"❌ Error in daily reset trigger: {e}")
 
     def _execute_pre_reset_profit_taking(self):
         """
@@ -4568,9 +4632,19 @@ class TradingBot:
             utc_now = datetime.now(UTC_TZ)
             local_now = utc_now.astimezone(datetime.now().astimezone().tzinfo)
             local_tz_name = getattr(local_now.tzinfo, "key", getattr(local_now.tzinfo, "zone", str(local_now.tzinfo)))
+            # También mostrar hora en America/Santiago para evitar confusiones
+            try:
+                scl_tz = ZoneInfo("America/Santiago") if ZoneInfo else None
+            except Exception:
+                scl_tz = None
+            scl_now = utc_now.astimezone(scl_tz) if scl_tz else None
             self.logger.info(
-                f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
-                f"({local_now.strftime('%H:%M:%S')} {local_tz_name} local time)..."
+                (
+                    f"🎯 Executing pre-reset profit taking at {utc_now.strftime('%H:%M:%S')} UTC "
+                    f"({local_now.strftime('%H:%M:%S')} {local_tz_name} local time"
+                    + (f", {scl_now.strftime('%H:%M:%S')} America/Santiago" if scl_now else "")
+                    + ")..."
+                )
             )
 
             # Cerrar posiciones con UPL > 1 USD
@@ -4583,7 +4657,7 @@ class TradingBot:
                 if positions_closed > 0:
                     self.logger.info(
                         f"🎯 Pre-reset profit taking completed: {positions_closed} positions closed, ${total_profit:.2f} profit realized"
-                    )
+            )
 
                     # Emitir evento de cierre automático
                     try:
