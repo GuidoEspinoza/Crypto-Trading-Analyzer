@@ -94,7 +94,7 @@ PROFILES = {
         "min_confidence_threshold": 0.78,  # Umbral mínimo de confianza para operar
         "position_size_multiplier": 1.5,  # Multiplicador OPTIMIZADO para scalping (era 0.8)
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
-        "chop_filter_enabled": False,  # Desactivar filtro de indecisión para pruebas
+        "chop_filter_enabled": True,  # Desactivar filtro de indecisión para pruebas
         "chop_timeframe": "15m",  # Timeframe para evaluar chop
         "adx_threshold": 18,  # ADX mínimo para considerar tendencia
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
@@ -204,7 +204,7 @@ PROFILES = {
         "max_positions": 7,  # Posiciones simultáneas para máxima diversificación
         "max_positions_per_symbol": 2,  # Límite por símbolo para evitar concentración
         # === CONFIGURACIÓN DE PAPER TRADING ===
-        "max_position_size_percent": 12,  # 12% del balance por posición - OPTIMIZADO PARA MEJORES RETORNOS
+        "max_position_size_percent": 8,  # 8% del balance por posición - enfoque más conservador
         "max_total_exposure_percent": 75,  # 75% de exposición total - OPTIMIZADO PARA MEJORES RETORNOS
         "min_trade_value": 50.0,  # Valor mínimo más alto para mejor calidad - OPTIMIZADO
         "paper_min_confidence": 78.0,  # Consistente con la ligera flexibilización
@@ -246,14 +246,14 @@ PROFILES = {
         "min_confidence_threshold": 0.70,  # Ligeramente más flexible, manteniendo nivel alto
         "position_size_multiplier": 2.0,  # Multiplicador OPTIMIZADO para trades selectivos
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
-        "chop_filter_enabled": False,  # Activar filtro de indecisión
+        "chop_filter_enabled": True,  # Activar filtro de indecisión
         "chop_timeframe": "15m",  # Timeframe para evaluar chop en índices
-        "adx_threshold": 16,  # Más permisivo sin perder calidad
+        "adx_threshold": 18,  # ADX mínimo para considerar tendencia
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
-        "ema_slope_min_ratio": 0.00025,  # Pendiente mínima de EMA20 por vela (0.025%)
-        "require_breakout_retest": True,  # Mantener criterio de ruptura + retesteo
-        "breakout_threshold_ratio": 0.0004,  # Margen de ruptura un poco más amplio
-        "retest_tolerance_ratio": 0.0012,  # Mayor tolerancia al retesteo
+        "ema_slope_min_ratio": 0.00030,  # Pendiente mínima de EMA20 por vela (0.03%)
+        "require_breakout_retest": True,  # Exigir ruptura + retesteo para ejecutar
+        "breakout_threshold_ratio": 0.0005,  # Margen de ruptura (0.05%)
+        "retest_tolerance_ratio": 0.0010,  # Tolerancia en retesteo (0.10%)
         # === CONFIGURACIÓN DE ESTRATEGIAS PARA CRYPTO ===
         "default_min_confidence": 75.0,  # Confianza balanceada para crypto
         "default_atr_period": 14,  # Período estándar más responsivo
