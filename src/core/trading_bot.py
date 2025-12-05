@@ -199,6 +199,10 @@ class TradingBot:
         self.max_concurrent_positions = self.config.get_max_concurrent_positions()
         self.enable_trading = True  # Activar/desactivar ejecución de trades
 
+        # Override para pruebas: permitir ignorar ventanas/horarios de mercado
+        # Cuando está activo, el bot no bloqueará operaciones por horario.
+        self.ignore_market_hours: bool = False
+
         # Configuración de trading real vs paper trading
         self.enable_real_trading = (
             os.getenv("ENABLE_REAL_TRADING", "false").lower() == "true"
@@ -1916,11 +1920,17 @@ class TradingBot:
             tradeable_symbols = []
             non_tradeable_symbols = []
 
-            for symbol in self.symbols:
-                if market_hours_checker.should_trade(symbol)[0]:
-                    tradeable_symbols.append(symbol)
-                else:
-                    non_tradeable_symbols.append(symbol)
+            # Si el override está activo, permitir todos los símbolos y avisar
+            if bool(getattr(self, "ignore_market_hours", False)):
+                self.logger.info("⏩ Override activo: ignorando horarios de mercado para pruebas")
+                tradeable_symbols = list(self.symbols)
+                non_tradeable_symbols = []
+            else:
+                for symbol in self.symbols:
+                    if market_hours_checker.should_trade(symbol)[0]:
+                        tradeable_symbols.append(symbol)
+                    else:
+                        non_tradeable_symbols.append(symbol)
 
             if tradeable_symbols:
                 self.logger.info(
@@ -2678,15 +2688,60 @@ class TradingBot:
                         f"⚠️ {signal.symbol}: Error aplicando filtro MTF: {e}"
                     )
 
-                # Verificar horarios de mercado
+                # Guard-rail adicional para índices:
+                # - SELL: bloquear si precio > EMA50 en 30m y 1h
+                # - BUY:  bloquear si precio < EMA50 en 30m y 1h
+                try:
+                    from src.config.symbols_config import get_symbol_config
+                    cfg = get_symbol_config(signal.symbol)
+                    category = str(cfg.get("category", "unknown")).lower()
+                    if category.startswith("indices"):
+                        side = str(getattr(signal, "signal_type", "")).upper()
+                        # Reutilizar TrendFollowingProfessional con get_market_data inyectado arriba
+                        ema_vals = {}
+                        for tf_check in ["30m", "1h"]:
+                            df_tf = tfp.get_market_data(signal.symbol, tf_check, limit=200)
+                            if df_tf is not None and not df_tf.empty and "close" in df_tf.columns:
+                                from ta.trend import EMAIndicator
+                                ema50_series = EMAIndicator(close=df_tf["close"], window=50).ema_indicator()
+                                try:
+                                    ema_vals[tf_check] = float(ema50_series.iloc[-1])
+                                except Exception:
+                                    ema_vals[tf_check] = None
+                            else:
+                                ema_vals[tf_check] = None
+
+                        price_now = float(getattr(signal, "price", 0.0) or getattr(signal, "current_price", 0.0) or 0.0)
+                        ema30 = ema_vals.get("30m")
+                        ema1h = ema_vals.get("1h")
+                        if price_now > 0 and ema30 is not None and ema1h is not None:
+                            if side == "SELL" and price_now > ema30 and price_now > ema1h:
+                                self.logger.info(
+                                    f"🚫 {signal.symbol}: SELL bloqueado (precio {price_now:.2f} > EMA50 30m {ema30:.2f} y 1h {ema1h:.2f})"
+                                )
+                                continue
+                            if side == "BUY" and price_now < ema30 and price_now < ema1h:
+                                self.logger.info(
+                                    f"🚫 {signal.symbol}: BUY bloqueado (precio {price_now:.2f} < EMA50 30m {ema30:.2f} y 1h {ema1h:.2f})"
+                                )
+                                continue
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {signal.symbol}: Error aplicando guard-rail EMA50 índices: {e}")
+
+                # Verificar horarios de mercado (con posibilidad de override)
                 should_trade, market_reason = market_hours_checker.should_trade(
                     signal.symbol
                 )
-                if not should_trade:
+                if not should_trade and not bool(getattr(self, "ignore_market_hours", False)):
                     self.logger.info(f"⏰ {signal.symbol}: {market_reason}")
                     continue
-
-                self.logger.info(f"✅ {signal.symbol}: {market_reason}")
+                else:
+                    if not should_trade and bool(getattr(self, "ignore_market_hours", False)):
+                        self.logger.info(
+                            f"⏩ {signal.symbol}: Horarios ignorados para pruebas – {market_reason}"
+                        )
+                    else:
+                        self.logger.info(f"✅ {signal.symbol}: {market_reason}")
 
                 # 🔍 Filtro Anti-Chop (opcional por perfil)
                 try:

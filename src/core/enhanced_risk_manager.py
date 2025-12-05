@@ -168,6 +168,23 @@ class EnhancedRiskManager:
         logger.debug(f"🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
         return fallback_leverage
 
+    def _should_scale_with_leverage(self, symbol: str) -> bool:
+        """Determina si la exposición debe escalarse con apalancamiento.
+
+        Para índices, desacopla la exposición del leverage (usar leverage solo
+        para el cálculo de margen). Para el resto, mantiene el escalado.
+        """
+        try:
+            from src.config.symbols_config import get_symbol_config
+            cfg = get_symbol_config(symbol)
+            category = str(cfg.get("category", "unknown")).lower()
+            if category.startswith("indices"):
+                return False
+        except Exception:
+            # En caso de no poder determinar la categoría, conservar el comportamiento actual
+            pass
+        return True
+
     def assess_trade_risk(
         self, signal: EnhancedSignal, current_portfolio_value: float
     ) -> EnhancedRiskAssessment:
@@ -338,9 +355,13 @@ class EnhancedRiskManager:
             )
             logger.debug(f"Monto operación ({self.max_position_size*100:.1f}% * {position_multiplier} del balance): ${monto_operacion:.2f}")
 
-            # Paso 2: Calcular valor de negociación (monto * apalancamiento)
-            valor_negociacion = monto_operacion * dynamic_leverage
-            logger.debug(f"Valor negociación: ${valor_negociacion:.2f}")
+            # Paso 2: Calcular valor de negociación
+            # Para índices, NO escalar exposición con apalancamiento.
+            scale_with_leverage = self._should_scale_with_leverage(signal.symbol)
+            valor_negociacion = monto_operacion * (dynamic_leverage if scale_with_leverage else 1.0)
+            logger.debug(
+                f"Valor negociación: ${valor_negociacion:.2f} (scale_with_leverage={scale_with_leverage})"
+            )
 
             # Paso 3: Calcular tamaño de posición (valor / precio actual)
             precio_actual = signal.price
@@ -401,8 +422,12 @@ class EnhancedRiskManager:
             # Reasoning actualizado para nueva estrategia con ajuste de volatilidad
             reasoning = (
                 f"Balance: ${self.portfolio_value:.2f}, Monto operación ({self.max_position_size*100:.1f}% * {position_multiplier}): ${monto_operacion:.2f}, "
-                f"Apalancamiento: {dynamic_leverage}x, Valor negociación: ${valor_negociacion:.2f}, "
-                f"Precio: ${precio_actual:.2f}, Tamaño final: {tamano_posicion:.6f}"
+                f"Apalancamiento: {dynamic_leverage}x, Valor negociación: ${valor_negociacion:.2f}"
+            )
+            if not scale_with_leverage:
+                reasoning += " (exposición no escalada por leverage para índices)"
+            reasoning += (
+                f", Precio: ${precio_actual:.2f}, Tamaño final: {tamano_posicion:.6f}"
             )
 
             # Agregar información del ajuste de volatilidad si aplica

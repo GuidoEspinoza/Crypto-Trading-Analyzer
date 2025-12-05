@@ -335,6 +335,11 @@ def main():
     # Asegurar configuración de prueba: SIN trading real, CON trading en papel.
     bot.enable_real_trading = False
     bot.enable_trading = True
+    # Ignorar horarios de mercado para permitir pruebas en cualquier momento
+    try:
+        bot.ignore_market_hours = True
+    except Exception:
+        pass
 
     # Ajuste temporal para esta prueba: umbral del tope diario a 0.1%
     # Esto fuerza la validación end-to-end de cierre y pausa cuando cualquier
