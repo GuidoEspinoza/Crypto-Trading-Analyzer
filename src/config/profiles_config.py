@@ -87,6 +87,8 @@ PROFILES = {
         "sl_max_percent": 0.9,  # Stop Loss máximo: 0.9% ROI - recorte de riesgo
         "tp_increment_percent": 1.2,  # Factor de incremento para TP dinámico
         "tp_confidence_threshold": 0.70,  # Umbral de confianza ligeramente más alto para ajustar TP
+        # Usar TP/SL basados en ROI como enfoque preferido
+        "use_roi_tp_sl": True,
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
         "max_daily_loss_percent": 4.5,  # Pérdida máxima diaria - OPTIMIZADA (era 3.0%)
         "max_daily_profit_percent": 5.0,  # Ganancia máxima diaria antes de pausar trading
@@ -232,13 +234,15 @@ PROFILES = {
         # === CONFIGURACIÓN DE CAPITAL.COM ===
         "use_trailing_stop": True,  # Usar trailing stops nativos
         # === CONFIGURACIÓN DE TP/SL BASADO EN ROI OPTIMIZADO ===
-        # Relación Riesgo:Recompensa 2:1 optimizada para criptomonedas
-        "tp_min_percent": 1.5,  # Take Profit mínimo: 1.5% ROI - realista para crypto
-        "tp_max_percent": 3.0,  # Take Profit máximo: 3.0% ROI - menor retención
+        # Objetivos ROI consistentes entre activos
+        "tp_min_percent": 3.0,  # Take Profit mínimo: 3.0% ROI
+        "tp_max_percent": 4.0,  # Take Profit máximo: 4.0% ROI
         "sl_min_percent": 1.2,  # Stop Loss mínimo: 1.2% ROI - apropiado para crypto
         "sl_max_percent": 1.8,  # Stop Loss máximo: 1.8% ROI - reducción de riesgo
         "tp_increment_percent": 1.0,  # Factor de incremento TP balanceado
         "tp_confidence_threshold": 0.72,  # Umbral moderado para ajustar TP
+        # Usar TP/SL basados en ROI como enfoque preferido
+        "use_roi_tp_sl": True,
         # === LÍMITES DE PROTECCIÓN ADICIONALES ===
         "max_daily_loss_percent": 6.0,  # Pérdida máxima diaria ajustada para posiciones más grandes
         "max_daily_profit_percent": 5.0,  # Ganancia máxima diaria antes de pausar trading

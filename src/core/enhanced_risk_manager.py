@@ -214,8 +214,8 @@ class EnhancedRiskManager:
             # Configurar stop loss dinámico
             dynamic_stop = self._configure_dynamic_stop_loss(signal)
 
-            # Configurar take profit dinámico
-            dynamic_tp = self._configure_dynamic_take_profit(signal)
+            # Configurar take profit dinámico (preferir ROI si está habilitado)
+            dynamic_tp = self._configure_dynamic_take_profit(signal, position_sizing)
 
             # Métricas de riesgo del portfolio
             portfolio_metrics = self._calculate_portfolio_risk_metrics()
@@ -548,7 +548,7 @@ class EnhancedRiskManager:
             )
 
     def _configure_dynamic_take_profit(
-        self, signal: EnhancedSignal
+        self, signal: EnhancedSignal, position_sizing: PositionSizing
     ) -> DynamicTakeProfit:
         """Configurar take profit dinámico y ajustable"""
         try:
@@ -557,19 +557,67 @@ class EnhancedRiskManager:
 
             # Si no hay take profit en el signal, calcularlo
             if initial_tp == 0:
-                # Verificar que indicators_data no sea None
-                indicators_data = (
-                    signal.indicators_data if signal.indicators_data is not None else {}
-                )
-                atr_data = indicators_data.get("atr", signal.price * 0.02)
-                if signal.signal_type == "BUY":
-                    initial_tp = signal.price + (
-                        3 * atr_data
-                    )  # 3 ATR por encima para BUY
-                else:
-                    initial_tp = signal.price - (
-                        3 * atr_data
-                    )  # 3 ATR por debajo para SELL
+                # Verificar si el perfil prefiere TP/SL basados en ROI
+                profile = TradingProfiles.get_current_profile()
+                use_roi_tp_sl = bool(profile.get("use_roi_tp_sl", False))
+
+                # Intentar cálculo basado en ROI primero si está habilitado
+                if use_roi_tp_sl:
+                    try:
+                        # Obtener balance total actual
+                        from src.config.main_config import RiskManagerConfig, get_global_initial_balance
+                        from src.core.balance_manager import get_current_balance_sync
+
+                        try:
+                            balance_data = get_current_balance_sync()
+                            total_balance = balance_data.get("available", 0.0)
+                            if total_balance <= 0:
+                                total_balance = get_global_initial_balance()
+                        except Exception:
+                            total_balance = get_global_initial_balance()
+
+                        # Rangos dinámicos (decimales) desde configuración del perfil activo
+                        tp_roi_min = RiskManagerConfig.get_tp_min_percentage()
+                        tp_roi_max = RiskManagerConfig.get_tp_max_percentage()
+
+                        # ATR ratio como guía para colocar dentro del rango [min, max]
+                        indicators_data = (
+                            signal.indicators_data if signal.indicators_data is not None else {}
+                        )
+                        atr_value = indicators_data.get("atr", signal.price * 0.02)
+                        atr_ratio = float(atr_value) / float(signal.price) if signal.price else 0.02
+                        atr_tp_factor = atr_ratio * 1.5
+                        if atr_tp_factor <= tp_roi_min:
+                            target_tp_roi = tp_roi_min
+                        elif atr_tp_factor >= tp_roi_max:
+                            target_tp_roi = tp_roi_max
+                        else:
+                            target_tp_roi = atr_tp_factor
+
+                        # Ganancia objetivo en USD como % del balance total
+                        target_profit_usd = total_balance * target_tp_roi
+
+                        # Calcular cantidad con el tamaño de posición recomendado
+                        position_value = float(position_sizing.position_value or position_sizing.recommended_size or 0.0)
+                        if position_value > 0 and signal.price > 0:
+                            quantity = position_value / signal.price
+                            if str(signal.signal_type).upper() == "BUY":
+                                initial_tp = signal.price + (target_profit_usd / quantity)
+                            else:
+                                initial_tp = signal.price - (target_profit_usd / quantity)
+                    except Exception as e:
+                        logger.warning(f"Fallo cálculo TP ROI, se usará fallback ATR: {e}")
+
+                # Fallback: ATR-based si no se pudo calcular ROI o no está habilitado
+                if initial_tp == 0:
+                    indicators_data = (
+                        signal.indicators_data if signal.indicators_data is not None else {}
+                    )
+                    atr_data = indicators_data.get("atr", signal.price * 0.02)
+                    if signal.signal_type == "BUY":
+                        initial_tp = signal.price + (3 * atr_data)
+                    else:
+                        initial_tp = signal.price - (3 * atr_data)
 
             # Obtener configuración desde perfil activo
             from src.config.main_config import RiskManagerConfig

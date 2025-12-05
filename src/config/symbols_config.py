@@ -24,7 +24,15 @@ CRYPTO_EMERGING = []
 # ============================================================================
 
 # Pares mayores - Máxima liquidez, spreads bajos
-FOREX_MAJOR = []
+FOREX_MAJOR = [
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY",
+    "AUDUSD",
+    "USDCHF",
+    "USDCAD",
+    "NZDUSD",
+]
 
 # Pares menores - Buena liquidez, mayor volatilidad
 FOREX_MINOR = []
@@ -43,7 +51,9 @@ METALS_PRECIOUS = [
 ]
 
 # Energía - Commodities energéticos
-ENERGY_COMMODITIES = []
+ENERGY_COMMODITIES = [
+    "OIL_CRUDE",  # WTI (según Capital.com)
+]
 
 # Agricultura - Soft commodities
 AGRICULTURAL = [
@@ -81,8 +91,12 @@ INDICES_ASIA = [
 # 🎯 CONFIGURACIÓN GLOBAL OPTIMIZADA
 # ============================================================================
 
-# Lista principal de símbolos para el bot: usar portafolio solo índices
+# Lista principal de símbolos para el bot: portafolio expandido (Forex + Commodities + Índices + Metales)
 GLOBAL_SYMBOLS = [
+    # Forex majors
+    *FOREX_MAJOR,
+    # Commodities energía
+    *ENERGY_COMMODITIES,
     # Metales
     "GOLD",
     "SILVER",
@@ -99,6 +113,114 @@ GLOBAL_SYMBOLS = [
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
 SYMBOL_SPECIFIC_CONFIG_CORE = {
+    # ==================== FOREX MAJORS ====================
+    "EURUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.8,
+        "avg_daily_range_pct": 0.008,
+        "optimal_hours": ["07:00-12:00", "13:00-17:00"],
+        "spread_typical": 0.00015,
+        "spread_pct": 0.000136,
+        "min_confidence_adjustment": -2,
+        "max_trades_multiplier": 1.2,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "GBPUSD": {
+        "category": "forex_major",
+        "volatility": "medium_high",
+        "avg_daily_range": 1.0,
+        "avg_daily_range_pct": 0.010,
+        "optimal_hours": ["07:00-12:00", "13:00-17:00"],
+        "spread_typical": 0.00020,
+        "spread_pct": 0.000158,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.15,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "USDJPY": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "avg_daily_range_pct": 0.007,
+        "optimal_hours": ["00:00-05:00", "12:00-17:00"],
+        "spread_typical": 0.01,
+        "spread_pct": 0.000067,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.1,
+        "risk_level": "medium",
+        "liquidity": "very_high",
+    },
+    "AUDUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "avg_daily_range_pct": 0.007,
+        "optimal_hours": ["23:00-05:00", "13:00-17:00"],
+        "spread_typical": 0.00018,
+        "spread_pct": 0.000269,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.1,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "USDCHF": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "avg_daily_range_pct": 0.007,
+        "optimal_hours": ["07:00-12:00", "13:00-17:00"],
+        "spread_typical": 0.00020,
+        "spread_pct": 0.000222,
+        "min_confidence_adjustment": 0,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "USDCAD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.8,
+        "avg_daily_range_pct": 0.008,
+        "optimal_hours": ["12:00-18:00"],
+        "spread_typical": 0.00025,
+        "spread_pct": 0.000184,
+        "min_confidence_adjustment": 0,
+        "max_trades_multiplier": 1.0,
+        "risk_level": "medium",
+        "liquidity": "high",
+    },
+    "NZDUSD": {
+        "category": "forex_major",
+        "volatility": "medium",
+        "avg_daily_range": 0.7,
+        "avg_daily_range_pct": 0.007,
+        "optimal_hours": ["22:00-05:00", "13:00-17:00"],
+        "spread_typical": 0.00022,
+        "spread_pct": 0.000355,
+        "min_confidence_adjustment": -1,
+        "max_trades_multiplier": 1.05,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+
+    # ==================== COMMODITIES (ENERGÍA) ====================
+    "OIL_CRUDE": {
+        "category": "commodities_energy",
+        "volatility": "high",
+        "avg_daily_range": 3.5,
+        "avg_daily_range_pct": 0.035,
+        "optimal_hours": ["13:00-20:00", "14:30-18:30"],
+        "spread_typical": 0.03,
+        "spread_pct": 0.0004,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "high",
+        "liquidity": "high",
+    },
+
     "GOLD": {
         "category": "metals_precious",
         "volatility": "medium",
@@ -198,17 +320,29 @@ MARKET_SESSION_SYMBOLS = {
         "J225",
         "HK50",
         "AU200",
+        # Forex actividad asiática
+        "USDJPY",
+        "AUDUSD",
+        "NZDUSD",
     ],
     "european": [
         "DE40",
         "UK100",
         "FR40",
+        # Forex actividad europea
+        "EURUSD",
+        "GBPUSD",
+        "USDCHF",
     ],
     "american": [
         "US100",
         "US500",
         "US30",
         "RTY",
+        # Forex actividad americana y commodities energía
+        "USDCAD",
+        "EURUSD",
+        "OIL_CRUDE",
     ],
 }
 
@@ -249,15 +383,26 @@ def get_symbol_config(symbol: str) -> dict:
 VOLATILITY_CATEGORIES = {
     "very_low": [],
     "low": [],
-    "medium": ["US500", "US30", "UK100", "DE40", "FR40", "J225", "AU200"],
-    "high": ["US100", "HK50", "RTY"],
+    "medium": [
+        # Índices
+        "US500", "US30", "UK100", "DE40", "FR40", "J225", "AU200",
+        # Forex majors
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD", "NZDUSD",
+        # Metales
+        "GOLD", "SILVER",
+    ],
+    "high": [
+        "US100", "HK50", "RTY",
+        # Commodities energía
+        "OIL_CRUDE",
+    ],
     "very_high": [],
 }
 
 LIQUIDITY_CATEGORIES = {
-    "very_high": ["US100", "US500", "US30"],
+    "very_high": ["US100", "US500", "US30", "EURUSD", "USDJPY", "GBPUSD"],
     "high": ["UK100", "DE40", "FR40", "RTY"],
-    "medium": ["J225", "HK50", "AU200"],
+    "medium": ["J225", "HK50", "AU200", "USDCAD", "USDCHF", "AUDUSD"],
     "low": [],
 }
 
