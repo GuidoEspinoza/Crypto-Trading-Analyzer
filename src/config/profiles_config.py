@@ -94,7 +94,7 @@ PROFILES = {
         "min_confidence_threshold": 0.78,  # Umbral mínimo de confianza para operar
         "position_size_multiplier": 1.5,  # Multiplicador OPTIMIZADO para scalping (era 0.8)
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
-        "chop_filter_enabled": False,  # Desactivar filtro de indecisión para pruebas
+        "chop_filter_enabled": True,  # Desactivar filtro de indecisión para pruebas
         "chop_timeframe": "15m",  # Timeframe para evaluar chop
         "adx_threshold": 18,  # ADX mínimo para considerar tendencia
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
@@ -120,7 +120,7 @@ PROFILES = {
         "mtf_enhanced_confidence": 75.0,  # Confianza mejorada con análisis MTF
         "mtf_min_confidence": 80.0,  # Confianza mínima para señales MTF
         "mtf_min_consensus": 0.80,  # Consenso mínimo entre timeframes
-        "mtf_require_trend_alignment": True,  # Requiere alineación de tendencias
+        "mtf_require_trend_alignment": False,  # Requiere alineación de tendencias
         "mtf_min_timeframe_consensus": 3,  # Consenso mínimo en número de timeframes
         "mtf_trend_alignment_required": True,  # Alineación de tendencia obligatoria
         "volume_timeframe": "5m",  # Timeframe para análisis de volumen
@@ -246,7 +246,7 @@ PROFILES = {
         "min_confidence_threshold": 0.70,  # Ligeramente más flexible, manteniendo nivel alto
         "position_size_multiplier": 2.0,  # Multiplicador OPTIMIZADO para trades selectivos
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
-        "chop_filter_enabled": False,  # Activar filtro de indecisión
+        "chop_filter_enabled": True,  # Activar filtro de indecisión
         "chop_timeframe": "15m",  # Timeframe para evaluar chop en índices
         "adx_threshold": 16,  # Más permisivo sin perder calidad
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
