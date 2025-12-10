@@ -68,9 +68,9 @@ DAILY_RESET_MINUTE = 45 # Minuto exacto del reinicio (15 min antes de las 12:00)
 
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
-    # Ampliado a todo el día para no bloquear análisis por símbolo
-    "start_time": "12:00",  # Cobertura total en UTC
-    "end_time": "02:30",  # Cobertura total en UTC
+    # 24/5 en días laborales: permitir operaciones todo el día
+    "start_time": "00:00",  # 24h inicio (UTC)
+    "end_time": "23:59",  # 24h fin (UTC)
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
     "extended_start": "09:00",  # 09:00 UTC - Inicio muy temprano (era 06:00 Chile)
@@ -172,19 +172,19 @@ SCALPING_WEEKEND_TRADING = {
 # Trading de fin de semana para perfil INTRADAY
 # Conservador pero activo, enfocado en movimientos de calidad en crypto 24/7
 INTRADAY_WEEKEND_TRADING = {
-    "enabled": True,  # ✅ HABILITADO para aprovechar oportunidades crypto weekend
+    "enabled": False,  # 24/5: deshabilitar trading de fin de semana para Intraday
     "saturday": {
-        "active": True,  # ✅ Activo los sábados
-        "start_time": "12:00",  # 12:00 UTC - Inicio moderado (era 09:00 Chile)
-        "end_time": "23:00",  # 23:00 UTC - Sesión extendida (era 20:00 Chile)
+        "active": False,
+        "start_time": "12:00",
+        "end_time": "23:00",
         "max_trades": 8,  # Límite moderado para weekend
         "min_confidence": 78.0,  # Confianza alta pero accesible
         "description": "Sábado Intraday - Señales de calidad con menor competencia",
     },
     "sunday": {
-        "active": True,  # ✅ Activo los domingos
-        "start_time": "15:00",  # 15:00 UTC - Inicio tarde (era 12:00 Chile)
-        "end_time": "01:00",  # 01:00 UTC - Hasta tarde (era 22:00 Chile)
+        "active": False,
+        "start_time": "15:00",
+        "end_time": "01:00",
         "max_trades": 6,  # Límite conservador para preparación
         "min_confidence": 80.0,  # Confianza alta para calidad
         "description": "Domingo Intraday - Posicionamiento estratégico semanal",
@@ -359,33 +359,24 @@ MARKET_SPECIFIC_CONFIG = {
     },
     "commodities": {
         "high_volatility_hours": {
-            # Horarios de mayor volatilidad para commodities
-            "gold_active": {"start": time(13, 30), "end": time(16, 0)},  # Oro más activo durante solapamiento Londres-NY (UTC)
-            "gold_london_fix_morning": {"start": time(10, 30), "end": time(11, 0)},  # Fijación AM de Londres (UTC)
-            "gold_london_fix_afternoon": {"start": time(15, 0), "end": time(15, 30)},  # Fijación PM de Londres (UTC)
-            "oil_active": {
-                "start": time(14, 0),
-                "end": time(18, 0),
-            },  # Petróleo más activo (apertura US y solapamiento EU-US)
-            "oil_eia_window": {"start": time(14, 30), "end": time(16, 30)},  # Ventana típica de publicación inventarios EIA (UTC, variación DST)
-            "general_active": {
-                "start": time(14, 0),
-                "end": time(16, 0),
-            },  # Actividad general
-            "agri_active": {"start": time(13, 30), "end": time(18, 30)},  # Activos agrícolas (CBOT día) ventana aproximada en UTC
+            "gold_active": {"start": time(13, 30), "end": time(16, 0)},
+            "gold_london_fix_morning": {"start": time(10, 30), "end": time(11, 0)},
+            "gold_london_fix_afternoon": {"start": time(15, 0), "end": time(15, 30)},
+            "oil_active": {"start": time(14, 0), "end": time(18, 0)},
+            "oil_eia_window": {"start": time(14, 30), "end": time(16, 30)},
+            "agri_active": {"start": time(13, 30), "end": time(18, 30)},
         },
-        # Usar sólo metales preciosos (portafolio actual: GOLD)
-        "optimal_symbols": METALS_PRECIOUS,
-        "min_confidence_adjustment": 2.0,  # Aumentar 2% confianza (más conservador)
-        "max_trades_multiplier": 0.8,  # 20% menos trades (más selectivo)
+        "optimal_symbols": METALS_PRECIOUS + METALS_INDUSTRIAL + ENERGY_COMMODITIES + AGRICULTURAL,
+        "min_confidence_adjustment": 2.0,
+        "max_trades_multiplier": 0.8,
     },
     "indices": {
         "high_volatility_hours": {
-            "eu_open": {"start": time(7, 0), "end": time(9, 0)},  # Apertura Europa (DAX/UK100)
-            "us_cash": {"start": time(14, 30), "end": time(21, 0)},  # Mercado al contado US (NYSE/NASDAQ) en UTC
-            "overlap_eu_us": {"start": time(13, 0), "end": time(17, 0)},  # Solapamiento Londres-NY (UTC)
+            "eu_open": {"start": time(7, 0), "end": time(9, 0)},
+            "us_cash": {"start": time(14, 30), "end": time(21, 0)},
+            "overlap_eu_us": {"start": time(13, 0), "end": time(17, 0)},
         },
-        "optimal_symbols": INDICES_US + INDICES_EUROPE[:2] + INDICES_ASIA[:2],
+        "optimal_symbols": GLOBAL_SYMBOLS,
         "min_confidence_adjustment": 0.0,
         "max_trades_multiplier": 1.0,
     },

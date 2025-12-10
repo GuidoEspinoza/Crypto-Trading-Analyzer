@@ -192,8 +192,7 @@ PROFILES = {
         "timeframes": [
             "15m",
             "30m",
-            "1h",
-            "4h",
+            "1h"
         ],  # Timeframes balanceados para análisis intraday con marco mayor
         "analysis_interval": 5,  # Análisis más frecuente para captar más oportunidades diarias
         # "analysis_interval": 1,  # Análisis cada 1 minuto para pruebas
