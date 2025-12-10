@@ -562,10 +562,19 @@ class PaperTrader:
             usd_balance * self.max_position_size,  # Corregido: multiplicar por balance
         )
 
-        # 🔄 SINCRONIZACIÓN: Usar la misma lógica que el real trader
-        # Considerar apalancamiento típico de Capital.com (1:5 para crypto, 1:10 para forex)
-        # Para simplificar, usamos apalancamiento promedio de 1:5
         leverage = 5.0
+        try:
+            if self.capital_client and hasattr(self.capital_client, "get_leverage_for_symbol"):
+                info = self.capital_client.get_leverage_for_symbol(symbol)
+                if info.get("success"):
+                    leverage = float(info.get("current_leverage", leverage))
+                    from src.config.main_config import TradingProfiles
+                    caps = TradingProfiles.get_current_profile().get("max_effective_leverage", {})
+                    asset_type = info.get("asset_type") or info.get("detected_asset_type") or "DEFAULT"
+                    cap_value = float(caps.get(asset_type, caps.get("DEFAULT", 5)))
+                    leverage = min(leverage, cap_value)
+        except Exception:
+            pass
         required_margin = max_trade_value / leverage
 
         # Validar margen requerido en lugar de valor mínimo fijo
@@ -764,10 +773,19 @@ class PaperTrader:
             usd_balance * self.max_position_size,  # Corregido: multiplicar por balance
         )
 
-        # 🔄 SINCRONIZACIÓN: Usar la misma lógica que el real trader
-        # Considerar apalancamiento típico de Capital.com (1:5 para crypto, 1:10 para forex)
-        # Para simplificar, usamos apalancamiento promedio de 1:5
         leverage = 5.0
+        try:
+            if self.capital_client and hasattr(self.capital_client, "get_leverage_for_symbol"):
+                info = self.capital_client.get_leverage_for_symbol(symbol)
+                if info.get("success"):
+                    leverage = float(info.get("current_leverage", leverage))
+                    from src.config.main_config import TradingProfiles
+                    caps = TradingProfiles.get_current_profile().get("max_effective_leverage", {})
+                    asset_type = info.get("asset_type") or info.get("detected_asset_type") or "DEFAULT"
+                    cap_value = float(caps.get(asset_type, caps.get("DEFAULT", 5)))
+                    leverage = min(leverage, cap_value)
+        except Exception:
+            pass
         required_margin = max_trade_value / leverage
 
         # Validar margen requerido en lugar de valor mínimo fijo

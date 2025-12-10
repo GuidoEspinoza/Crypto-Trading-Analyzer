@@ -246,15 +246,9 @@ class TrendFollowingProfessional:
         timeframes = profile.get("timeframes", ["30m", "1h", "4h"])
         mtf_require_alignment = profile.get("mtf_require_trend_alignment", True)
         mtf_min_consensus = profile.get("mtf_min_consensus", 0.80)
-
-        if not mtf_require_alignment:
-            return {
-                "aligned": True,
-                "consensus": 1.0,
-                "details": "MTF validation disabled",
-                "has_conflict": False,
-                "conflict_details": [],
-            }
+        # En lugar de salir temprano, siempre calcular métricas MTF.
+        # Si mtf_require_alignment es False, no se bloqueará en la estrategia,
+        # pero se expondrán métricas para que el motor aplique guard-rail.
 
         timeframe_analysis = {}
         trend_directions = []
@@ -364,7 +358,7 @@ class TrendFollowingProfessional:
             sum(alignment_scores) / len(alignment_scores) if alignment_scores else 0.0
         )
 
-        # Determinar si está alineado
+        # Determinar si está alineado (solo para evaluación).
         is_aligned = (
             consensus_ratio >= mtf_min_consensus
             and not has_conflict
@@ -391,7 +385,7 @@ class TrendFollowingProfessional:
             logger.info(
                 f"✅ Alineación MTF APROBADA para {symbol}: {result['details']}"
             )
-
+        
         return result
 
     def analyze_momentum(self, df: pd.DataFrame) -> Dict:
@@ -554,8 +548,12 @@ class TrendFollowingProfessional:
             # Esta validación debe ejecutarse ANTES que cualquier otro análisis
             # para evitar trades contradictorios como la venta de GOLD con tendencia alcista en 4h
             mtf_analysis = self.analyze_multi_timeframe_alignment(symbol)
+            from src.config.main_config import TradingProfiles
+            mtf_enforce = TradingProfiles.get_current_profile().get(
+                "mtf_require_trend_alignment", True
+            )
 
-            if not mtf_analysis["aligned"]:
+            if mtf_enforce and not mtf_analysis["aligned"]:
                 logger.warning(
                     f"🚫 TRADE RECHAZADO por conflicto multi-timeframe en {symbol}: {mtf_analysis['details']}"
                 )

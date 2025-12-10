@@ -152,7 +152,21 @@ class EnhancedRiskManager:
                     and "current_leverage" in leverage_info
                 ):
                     dynamic_leverage = float(leverage_info["current_leverage"])
-                    logger.debug(f"✅ Apalancamiento dinámico para {symbol}: {dynamic_leverage}x")
+                    # Aplicar cap efectivo por clase de activo desde perfil
+                    try:
+                        from src.config.main_config import TradingProfiles
+                        profile = TradingProfiles.get_current_profile()
+                        caps = profile.get("max_effective_leverage", {})
+                        asset_type = leverage_info.get("asset_type") or leverage_info.get("detected_asset_type") or "DEFAULT"
+                        cap_value = float(caps.get(asset_type, caps.get("DEFAULT", 5)))
+                        if dynamic_leverage > cap_value:
+                            logger.debug(
+                                f"⚖️ Cap de apalancamiento aplicado para {symbol} ({asset_type}): {dynamic_leverage}x -> {cap_value}x"
+                            )
+                            dynamic_leverage = cap_value
+                    except Exception:
+                        pass
+                    logger.debug(f"✅ Apalancamiento efectivo para {symbol}: {dynamic_leverage}x")
                     return dynamic_leverage
                 else:
                     logger.debug(f"⚠️ No se pudo obtener apalancamiento dinámico para {symbol}")
@@ -164,7 +178,15 @@ class EnhancedRiskManager:
 
         # Fallback al apalancamiento del perfil
         profile = TradingProfiles.get_current_profile()
+        # Aplicar cap también al fallback
         fallback_leverage = profile["default_leverage"]
+        try:
+            caps = profile.get("max_effective_leverage", {})
+            cap_value = float(caps.get("DEFAULT", 5))
+            if fallback_leverage > cap_value:
+                fallback_leverage = cap_value
+        except Exception:
+            pass
         logger.debug(f"🔄 Usando apalancamiento del perfil: {fallback_leverage}x")
         return fallback_leverage
 

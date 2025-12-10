@@ -120,9 +120,10 @@ PROFILES = {
         "mtf_enhanced_confidence": 75.0,  # Confianza mejorada con análisis MTF
         "mtf_min_confidence": 80.0,  # Confianza mínima para señales MTF
         "mtf_min_consensus": 0.80,  # Consenso mínimo entre timeframes
-        "mtf_require_trend_alignment": False,  # Requiere alineación de tendencias
+        "mtf_require_trend_alignment": True,  # Requerir alineación de tendencias
         "mtf_min_timeframe_consensus": 3,  # Consenso mínimo en número de timeframes
         "mtf_trend_alignment_required": True,  # Alineación de tendencia obligatoria
+        "mtf_filter_consensus_threshold": 0.80,  # Umbral del guard-rail MTF en motor
         "volume_timeframe": "5m",  # Timeframe para análisis de volumen
         # === CONFIGURACIÓN DE TRADING EN VIVO ===
         "trading_fees": 0.001,  # Comisiones de trading (0.1%)
@@ -192,7 +193,8 @@ PROFILES = {
             "15m",
             "30m",
             "1h",
-        ],  # Timeframes balanceados para análisis intraday
+            "4h",
+        ],  # Timeframes balanceados para análisis intraday con marco mayor
         "analysis_interval": 5,  # Análisis más frecuente para captar más oportunidades diarias
         # "analysis_interval": 1,  # Análisis cada 1 minuto para pruebas
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
@@ -204,7 +206,7 @@ PROFILES = {
         "max_positions": 7,  # Posiciones simultáneas para máxima diversificación
         "max_positions_per_symbol": 2,  # Límite por símbolo para evitar concentración
         # === CONFIGURACIÓN DE PAPER TRADING ===
-        "max_position_size_percent": 12,  # 12% del balance por posición - OPTIMIZADO PARA MEJORES RETORNOS
+        "max_position_size_percent": 5,
         "max_total_exposure_percent": 75,  # 75% de exposición total - OPTIMIZADO PARA MEJORES RETORNOS
         "min_trade_value": 50.0,  # Valor mínimo más alto para mejor calidad - OPTIMIZADO
         "paper_min_confidence": 78.0,  # Consistente con la ligera flexibilización
@@ -216,7 +218,7 @@ PROFILES = {
         "max_drawdown_threshold_percent": 8,  # 8% de drawdown máximo
         "correlation_threshold": 0.65,  # Correlación moderada entre posiciones
         "min_position_size": 10.0,  # Posición mínima moderada
-        "risk_max_position_size_percent": 6,  # Consistente con max_position_size
+        "risk_max_position_size_percent": 5,
         "kelly_fraction": 0.30,  # Fracción Kelly más agresiva para trades selectivos
         "volatility_adjustment_factor": 1.2,  # Factor de ajuste por volatilidad
         # === CONFIGURACIÓN DE STOP LOSS Y TAKE PROFIT ===
@@ -231,6 +233,16 @@ PROFILES = {
         "dynamic_position_sizing": True,
         # === CONFIGURACIÓN DE CAPITAL.COM ===
         "use_trailing_stop": True,  # Usar trailing stops nativos
+        "max_effective_leverage": {
+            "INDICES": 10,
+            "CURRENCIES": 20,
+            "COMMODITIES": 10,
+            "SHARES": 5,
+            "CRYPTOCURRENCIES": 3,
+            "BONDS": 10,
+            "INTEREST_RATES": 10,
+            "DEFAULT": 5,
+        },
         # === CONFIGURACIÓN DE TP/SL BASADO EN ROI OPTIMIZADO ===
         # Relación Riesgo:Recompensa 2:1 optimizada para criptomonedas
         "tp_min_percent": 1.5,  # Take Profit mínimo: 1.5% ROI - realista para crypto
@@ -271,10 +283,11 @@ PROFILES = {
         # === CONFIGURACIÓN MULTI-TIMEFRAME ===
         "mtf_enhanced_confidence": 78.0,  # Confianza MTF más balanceada
         "mtf_min_confidence": 75.0,  # Confianza mínima MTF coherente
-        "mtf_min_consensus": 0.66,  # Consenso ajustado para permitir 66.7% (2 de 3 timeframes)
-        "mtf_require_trend_alignment": False,  # Requiere alineación de tendencias
+        "mtf_min_consensus": 0.75,  # Consenso más estricto para evitar contra-tendencia
+        "mtf_require_trend_alignment": True,  # Requerir alineación de tendencias
         "mtf_min_timeframe_consensus": 2,  # Consenso en 2 de 3 timeframes
         "mtf_trend_alignment_required": True,  # Alineación obligatoria
+        "mtf_filter_consensus_threshold": 0.75,  # Umbral del guard-rail MTF en motor
         "volume_timeframe": "15m",  # Timeframe de volumen moderado
         # === CONFIGURACIÓN DE TRADING EN VIVO ===
         "trading_fees": 0.001,  # Comisiones de trading (0.1%)
