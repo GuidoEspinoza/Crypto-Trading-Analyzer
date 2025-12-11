@@ -40,19 +40,33 @@ FOREX_EXOTIC = []
 METALS_PRECIOUS = [
     "GOLD",
     "SILVER",
+    "PLATINUM",
+    "PALLADIUM",
 ]
 
 # Energía - Commodities energéticos
-ENERGY_COMMODITIES = []
+ENERGY_COMMODITIES = [
+    "OIL_CRUDE",
+    "OIL_BRENT",
+    "NATURALGAS",
+]
 
 # Agricultura - Soft commodities
 AGRICULTURAL = [
-    # Eliminado: sin soft commodities en el portafolio actual
+    "CORN",
+    "WHEAT",
+    "SOYBEAN",
+    "COFFEEARABICA",
+    "SB",
+    "UKSUGAR",
+    "USCOCOA",
+    "USCOTTON",
 ]
 
 # Metales industriales
 METALS_INDUSTRIAL = [
-    # Eliminado: sin metales industriales en el portafolio actual
+    "COPPER",
+    "ALUMINUM",
 ]
 
 # ============================================================================
@@ -61,20 +75,23 @@ METALS_INDUSTRIAL = [
 
 # Índices americanos
 INDICES_US = [
-    # "US100",
+    "US30",
+    "US100",
     "US500",
 ]
 
 # Índices europeos
 INDICES_EUROPE = [
-    "DE40",
-    "UK100",
+    "DE40", 
+    "UK100", 
+    "FR40"
 ]
 
 # Índices asiáticos
 INDICES_ASIA = [
-    "J225",
-    "HK50",
+    "J225", 
+    "HK50", 
+    "AU200"
 ]
 
 # ============================================================================
@@ -86,8 +103,12 @@ GLOBAL_SYMBOLS = [
     # Metales
     "GOLD",
     "SILVER",
+    "PLATINUM",
+    "PALLADIUM",
     # Índices EEUU
+    "US100",
     "US500",
+    "US30",
     # Europa
     "DE40",
     "UK100",
@@ -95,6 +116,23 @@ GLOBAL_SYMBOLS = [
     # Asia
     "HK50",
     "J225",
+    "AU200",
+    # Energía
+    "OIL_CRUDE",
+    "OIL_BRENT",
+    "NATURALGAS",
+    # Agrícolas
+    "CORN",
+    "WHEAT",
+    "SOYBEAN",
+    "COFFEEARABICA",
+    "SB",
+    "UKSUGAR",
+    "USCOCOA",
+    "USCOTTON",
+    # Metales industriales
+    "COPPER",
+    "ALUMINUM",
 ]
 
 # Configuración específica por símbolo (versión CORE utilizada por el bot)
@@ -311,6 +349,160 @@ SYMBOL_SPECIFIC_CONFIG_CORE = {
         "risk_level": "low_medium",
         "liquidity": "high",
     },
+    "PLATINUM": {
+        "category": "metals_precious",
+        "volatility": "medium",
+        "avg_daily_range": 1.6,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.3,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "PALLADIUM": {
+        "category": "metals_precious",
+        "volatility": "high",
+        "avg_daily_range": 2.0,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.5,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "COPPER": {
+        "category": "metals_industrial",
+        "volatility": "medium",
+        "avg_daily_range": 1.5,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.4,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "ALUMINUM": {
+        "category": "metals_industrial",
+        "volatility": "medium",
+        "avg_daily_range": 1.3,
+        "optimal_hours": ["08:00-17:00", "13:00-22:00"],
+        "spread_typical": 0.4,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "OIL_BRENT": {
+        "category": "energy",
+        "volatility": "high",
+        "avg_daily_range": 2.3,
+        "optimal_hours": ["13:00-20:30"],
+        "spread_typical": 0.03,
+        "min_confidence_adjustment": 1,
+        "max_trades_multiplier": 0.9,
+        "risk_level": "medium_high",
+        "liquidity": "high",
+    },
+    "NATURALGAS": {
+        "category": "energy",
+        "volatility": "high",
+        "avg_daily_range": 3.0,
+        "optimal_hours": ["14:00-20:00"],
+        "spread_typical": 0.02,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "high",
+        "liquidity": "medium",
+    },
+    "CORN": {
+        "category": "agricultural",
+        "volatility": "medium",
+        "avg_daily_range": 1.5,
+        "optimal_hours": ["13:30-18:30"],
+        "spread_typical": 0.2,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "WHEAT": {
+        "category": "agricultural",
+        "volatility": "medium",
+        "avg_daily_range": 1.6,
+        "optimal_hours": ["13:30-18:30"],
+        "spread_typical": 0.2,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "SOYBEAN": {
+        "category": "agricultural",
+        "volatility": "medium",
+        "avg_daily_range": 1.7,
+        "optimal_hours": ["13:30-18:30"],
+        "spread_typical": 0.25,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "COFFEEARABICA": {
+        "category": "agricultural",
+        "volatility": "high",
+        "avg_daily_range": 2.0,
+        "optimal_hours": ["12:15-19:30"],
+        "spread_typical": 0.3,
+        "min_confidence_adjustment": 3,
+        "max_trades_multiplier": 0.7,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "SB": {
+        "category": "agricultural",
+        "volatility": "medium",
+        "avg_daily_range": 1.8,
+        "optimal_hours": ["13:30-20:00"],
+        "spread_typical": 0.2,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "UKSUGAR": {
+        "category": "agricultural",
+        "volatility": "medium",
+        "avg_daily_range": 1.5,
+        "optimal_hours": ["08:00-16:00"],
+        "spread_typical": 0.25,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
+    "USCOCOA": {
+        "category": "agricultural",
+        "volatility": "high",
+        "avg_daily_range": 2.5,
+        "optimal_hours": ["13:30-20:00"],
+        "spread_typical": 0.4,
+        "min_confidence_adjustment": 3,
+        "max_trades_multiplier": 0.7,
+        "risk_level": "medium_high",
+        "liquidity": "medium",
+    },
+    "USCOTTON": {
+        "category": "agricultural",
+        "volatility": "medium",
+        "avg_daily_range": 1.6,
+        "optimal_hours": ["13:30-20:00"],
+        "spread_typical": 0.25,
+        "min_confidence_adjustment": 2,
+        "max_trades_multiplier": 0.8,
+        "risk_level": "medium",
+        "liquidity": "medium",
+    },
 }
 
 # Alias para compatibilidad: usar siempre la versión CORE
@@ -331,8 +523,7 @@ MARKET_SESSION_SYMBOLS = {
     "american": [
         "US100",
         "US500",
-        "US30",
-        "RTY",
+        "US30"
     ],
 }
 

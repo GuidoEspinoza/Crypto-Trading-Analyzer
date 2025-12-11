@@ -57,7 +57,7 @@ UTC_TZ = pytz.timezone(TIMEZONE)  # Objeto timezone para conversiones
 # Este es el momento en que se resetean contadores, estadísticas y límites diarios
 # Ajustado para alinearse con el cierre de la sesión de EE. UU. (US500)
 DAILY_RESET_HOUR = 11  # 11:00 UTC
-DAILY_RESET_MINUTE = 45 # Minuto exacto del reinicio (15 min antes de las 12:00)
+DAILY_RESET_MINUTE = 45  # Minuto exacto del reinicio (15 min antes de las 12:00)
 
 # ============================================================================
 # 🕐 HORARIOS DE TRADING INTELIGENTES
@@ -69,8 +69,9 @@ DAILY_RESET_MINUTE = 45 # Minuto exacto del reinicio (15 min antes de las 12:00)
 SMART_TRADING_HOURS = {
     # === HORARIO PRINCIPAL DE TRADING ===
     # Ampliado a todo el día para no bloquear análisis por símbolo
-    "start_time": "12:00",  # Cobertura total en UTC
-    "end_time": "02:30",  # Cobertura total en UTC
+    # 24/5 en días laborales: permitir operaciones todo el día
+    "start_time": "00:00",  # 24h inicio (UTC)
+    "end_time": "23:59",  # 24h fin (UTC)
     # === HORARIO EXTENDIDO (24/7 CRYPTO) ===
     # Para trading agresivo aprovechando mercados asiáticos
     "extended_start": "09:00",  # 09:00 UTC - Inicio muy temprano (era 06:00 Chile)
@@ -81,7 +82,7 @@ SMART_TRADING_HOURS = {
     "night_end": "11:00",  # 11:00 UTC - Fin sesión asiática (era 08:00 Chile)
     # === SESIONES DE ALTA VOLATILIDAD ===
     # Horarios específicos para máxima actividad
-        "high_volatility_sessions": {
+    "high_volatility_sessions": {
         "asian_open": {"start": "22:00", "end": "02:00"},  # Apertura asiática (UTC)
         "london_open": {"start": "08:00", "end": "12:00"},  # Apertura Londres (UTC)
         "ny_open": {"start": "14:30", "end": "18:30"},  # Apertura NY (UTC)
@@ -150,9 +151,9 @@ TRADING_SCHEDULE = {
 # Trading de fin de semana para perfil SCALPING
 # Aprovecha la menor competencia institucional y movimientos únicos del weekend
 SCALPING_WEEKEND_TRADING = {
-    "enabled": True,  # ✅ HABILITADO para aprovechar mercado crypto 24/7
+    "enabled": False,  # ✅ HABILITADO para aprovechar mercado crypto 24/7
     "saturday": {
-        "active": True,  # ✅ Activo los sábados
+        "active": False,  # ✅ Activo los sábados
         "start_time": "11:00",  # 11:00 UTC - Inicio temprano (era 08:00 Chile)
         "end_time": "01:00",  # 01:00 UTC - Sesión extendida (era 22:00 Chile)
         "max_trades": 15,  # Límite aumentado para fin de semana
@@ -160,7 +161,7 @@ SCALPING_WEEKEND_TRADING = {
         "description": "Sábado Scalping - Aprovechando menor competencia institucional",
     },
     "sunday": {
-        "active": True,  # ✅ Activo los domingos
+        "active": False,  # ✅ Activo los domingos
         "start_time": "13:00",  # 13:00 UTC - Inicio moderado (era 10:00 Chile)
         "end_time": "02:00",  # 02:00 UTC - Hasta tarde (era 23:00 Chile)
         "max_trades": 12,  # Límite moderado para preparación semanal
@@ -172,9 +173,9 @@ SCALPING_WEEKEND_TRADING = {
 # Trading de fin de semana para perfil INTRADAY
 # Conservador pero activo, enfocado en movimientos de calidad en crypto 24/7
 INTRADAY_WEEKEND_TRADING = {
-    "enabled": True,  # ✅ HABILITADO para aprovechar oportunidades crypto weekend
+    "enabled": False,  # ✅ HABILITADO para aprovechar oportunidades crypto weekend
     "saturday": {
-        "active": True,  # ✅ Activo los sábados
+        "active": False,  # ✅ Activo los sábados
         "start_time": "12:00",  # 12:00 UTC - Inicio moderado (era 09:00 Chile)
         "end_time": "23:00",  # 23:00 UTC - Sesión extendida (era 20:00 Chile)
         "max_trades": 8,  # Límite moderado para weekend
@@ -182,7 +183,7 @@ INTRADAY_WEEKEND_TRADING = {
         "description": "Sábado Intraday - Señales de calidad con menor competencia",
     },
     "sunday": {
-        "active": True,  # ✅ Activo los domingos
+        "active": False,  # ✅ Activo los domingos
         "start_time": "15:00",  # 15:00 UTC - Inicio tarde (era 12:00 Chile)
         "end_time": "01:00",  # 01:00 UTC - Hasta tarde (era 22:00 Chile)
         "max_trades": 6,  # Límite conservador para preparación
@@ -280,18 +281,20 @@ def get_schedule_info() -> dict:
         "weekend_intraday": INTRADAY_WEEKEND_TRADING["enabled"],
     }
 
+
 # ============================================================================
 # 🌍 CONFIGURACIÓN ESPECÍFICA POR TIPO DE MERCADO
 # ============================================================================
+
 
 # Función auxiliar para obtener símbolos por categoría desde GLOBAL_SYMBOLS
 def _get_symbols_by_category(category_type: str) -> list:
     """
     Obtiene símbolos de GLOBAL_SYMBOLS filtrados por categoría.
-    
+
     Args:
         category_type: Tipo de categoría ('crypto', 'forex', 'commodities', 'indices')
-    
+
     Returns:
         list: Lista de símbolos de la categoría especificada
     """
@@ -299,22 +302,23 @@ def _get_symbols_by_category(category_type: str) -> list:
         # Obtener todos los símbolos crypto de GLOBAL_SYMBOLS
         crypto_symbols = CRYPTO_MAJOR + CRYPTO_LARGE_CAP[:4] + CRYPTO_EMERGING[:2]
         return crypto_symbols
-    
+
     elif category_type == "forex":
         # Forex deshabilitado en core: no retornar símbolos
         return []
-    
+
     elif category_type == "commodities":
         # Portafolio actual: sólo metales preciosos (GOLD)
         commodities_symbols = METALS_PRECIOUS
         return commodities_symbols
-    
+
     elif category_type == "indices":
         # Obtener todos los símbolos índices de GLOBAL_SYMBOLS
         indices_symbols = INDICES_US + INDICES_EUROPE[:2] + INDICES_ASIA[:2]
         return indices_symbols
-    
+
     return []
+
 
 # Configuración optimizada según volatilidad y características de cada mercado
 MARKET_SPECIFIC_CONFIG = {
@@ -359,33 +363,28 @@ MARKET_SPECIFIC_CONFIG = {
     },
     "commodities": {
         "high_volatility_hours": {
-            # Horarios de mayor volatilidad para commodities
-            "gold_active": {"start": time(13, 30), "end": time(16, 0)},  # Oro más activo durante solapamiento Londres-NY (UTC)
-            "gold_london_fix_morning": {"start": time(10, 30), "end": time(11, 0)},  # Fijación AM de Londres (UTC)
-            "gold_london_fix_afternoon": {"start": time(15, 0), "end": time(15, 30)},  # Fijación PM de Londres (UTC)
-            "oil_active": {
-                "start": time(14, 0),
-                "end": time(18, 0),
-            },  # Petróleo más activo (apertura US y solapamiento EU-US)
-            "oil_eia_window": {"start": time(14, 30), "end": time(16, 30)},  # Ventana típica de publicación inventarios EIA (UTC, variación DST)
-            "general_active": {
-                "start": time(14, 0),
-                "end": time(16, 0),
-            },  # Actividad general
-            "agri_active": {"start": time(13, 30), "end": time(18, 30)},  # Activos agrícolas (CBOT día) ventana aproximada en UTC
+            "gold_active": {"start": time(13, 30), "end": time(16, 0)},
+            "gold_london_fix_morning": {"start": time(10, 30), "end": time(11, 0)},
+            "gold_london_fix_afternoon": {"start": time(15, 0), "end": time(15, 30)},
+            "oil_active": {"start": time(14, 0), "end": time(18, 0)},
+            "oil_eia_window": {"start": time(14, 30), "end": time(16, 30)},
+            "agri_active": {"start": time(13, 30), "end": time(18, 30)},
         },
         # Usar sólo metales preciosos (portafolio actual: GOLD)
-        "optimal_symbols": METALS_PRECIOUS,
-        "min_confidence_adjustment": 2.0,  # Aumentar 2% confianza (más conservador)
-        "max_trades_multiplier": 0.8,  # 20% menos trades (más selectivo)
+        "optimal_symbols": METALS_PRECIOUS
+        + METALS_INDUSTRIAL
+        + ENERGY_COMMODITIES
+        + AGRICULTURAL,
+        "min_confidence_adjustment": 2.0,
+        "max_trades_multiplier": 0.8,
     },
     "indices": {
         "high_volatility_hours": {
-            "eu_open": {"start": time(7, 0), "end": time(9, 0)},  # Apertura Europa (DAX/UK100)
-            "us_cash": {"start": time(14, 30), "end": time(21, 0)},  # Mercado al contado US (NYSE/NASDAQ) en UTC
-            "overlap_eu_us": {"start": time(13, 0), "end": time(17, 0)},  # Solapamiento Londres-NY (UTC)
+            "eu_open": {"start": time(7, 0), "end": time(9, 0)},
+            "us_cash": {"start": time(14, 30), "end": time(21, 0)},
+            "overlap_eu_us": {"start": time(13, 0), "end": time(17, 0)},
         },
-        "optimal_symbols": INDICES_US + INDICES_EUROPE[:2] + INDICES_ASIA[:2],
+        "optimal_symbols": GLOBAL_SYMBOLS,
         "min_confidence_adjustment": 0.0,
         "max_trades_multiplier": 1.0,
     },
@@ -603,7 +602,7 @@ def is_smart_trading_hours_allowed(
             start_time_str = start_time_str.strftime("%H:%M")
         if isinstance(end_time_str, time):
             end_time_str = end_time_str.strftime("%H:%M")
-            
+
         start_hour, start_minute = map(int, start_time_str.split(":"))
         end_hour, end_minute = map(int, end_time_str.split(":"))
 
@@ -621,15 +620,15 @@ def is_smart_trading_hours_allowed(
         current_time_only = current_time_utc.time()
         start_time_only = start_datetime_utc.time()
         end_time_only = end_datetime_utc.time()
-        
+
         if start_time_only <= end_time_only:
             # Horario normal (no cruza medianoche): ej. 08:00 - 17:00
             is_within_hours = start_time_only <= current_time_only <= end_time_only
         else:
             # Horario que cruza medianoche: ej. 11:00 - 02:30
             is_within_hours = (
-                current_time_only >= start_time_only or 
-                current_time_only <= end_time_only
+                current_time_only >= start_time_only
+                or current_time_only <= end_time_only
             )
 
         if is_within_hours:
