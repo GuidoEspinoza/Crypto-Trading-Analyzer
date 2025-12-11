@@ -191,9 +191,8 @@ PROFILES = {
         # === CONFIGURACIÓN TEMPORAL ===
         "timeframes": [
             "15m",
-            "30m",
-            "1h"
-        ],  # Timeframes balanceados para análisis intraday con marco mayor
+            "30m"
+        ],  # Pruebas: intradía solo 15m/30m
         "analysis_interval": 5,  # Análisis más frecuente para captar más oportunidades diarias
         # "analysis_interval": 1,  # Análisis cada 1 minuto para pruebas
         # === CONFIGURACIÓN DE CALIDAD DE SEÑALES ===
@@ -259,9 +258,9 @@ PROFILES = {
         # === FILTRO ANTI-CHOP / INDECISIÓN ===
         "chop_filter_enabled": True,  # Activar filtro de indecisión
         "chop_timeframe": "15m",  # Timeframe para evaluar chop en índices
-        "adx_threshold": 16,  # Más permisivo sin perder calidad
+        "adx_threshold": 14,  # Pruebas: un poco más permisivo
         "atr_min_ratio": 0.0012,  # ATR/Precio mínimo (0.12%)
-        "ema_slope_min_ratio": 0.00025,  # Pendiente mínima de EMA20 por vela (0.025%)
+        "ema_slope_min_ratio": 0.00020,  # Pruebas: permitir pendientes más bajas
         "require_breakout_retest": True,  # Mantener criterio de ruptura + retesteo
         "breakout_threshold_ratio": 0.0004,  # Margen de ruptura un poco más amplio
         "retest_tolerance_ratio": 0.0012,  # Mayor tolerancia al retesteo
@@ -282,7 +281,7 @@ PROFILES = {
         # === CONFIGURACIÓN MULTI-TIMEFRAME ===
         "mtf_enhanced_confidence": 78.0,  # Confianza MTF más balanceada
         "mtf_min_confidence": 75.0,  # Confianza mínima MTF coherente
-        "mtf_min_consensus": 0.75,  # Consenso más estricto para evitar contra-tendencia
+        "mtf_min_consensus": 0.70,  # Pruebas: consenso ligeramente más flexible
         "mtf_require_trend_alignment": True,  # Requerir alineación de tendencias
         "mtf_min_timeframe_consensus": 2,  # Consenso en 2 de 3 timeframes
         "mtf_trend_alignment_required": True,  # Alineación obligatoria
