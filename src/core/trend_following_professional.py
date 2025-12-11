@@ -555,17 +555,17 @@ class TrendFollowingProfessional:
             # para evitar trades contradictorios como la venta de GOLD con tendencia alcista en 4h
             mtf_analysis = self.analyze_multi_timeframe_alignment(symbol)
 
-            if not mtf_analysis["aligned"]:
+            if not mtf_analysis.get("aligned", False):
                 logger.warning(
-                    f"🚫 TRADE RECHAZADO por conflicto multi-timeframe en {symbol}: {mtf_analysis['details']}"
+                    f"🚫 TRADE RECHAZADO por conflicto multi-timeframe en {symbol}: {mtf_analysis.get('details', 'sin detalles')}"
                 )
-                if mtf_analysis["has_conflict"]:
-                    for conflict in mtf_analysis["conflict_details"]:
+                if mtf_analysis.get("has_conflict", False):
+                    for conflict in mtf_analysis.get("conflict_details", []):
                         logger.warning(f"   ⚠️ {conflict}")
                 return None
 
             logger.info(
-                f"✅ Validación multi-timeframe APROBADA para {symbol}: {mtf_analysis['details']}"
+                f"✅ Validación multi-timeframe APROBADA para {symbol}: {mtf_analysis.get('details', 'sin detalles')}"
             )
 
             # 2.5. NUEVO: Filtro de horario de trading para mercados estadounidenses
@@ -623,7 +623,7 @@ class TrendFollowingProfessional:
                 and structure_analysis["structure"]
                 in ["uptrend"]  # REMOVIDO "sideways"
                 and not sideways_analysis["is_sideways"]  # FILTRO ADICIONAL
-                and mtf_analysis["dominant_direction"] == "bullish"
+                and mtf_analysis.get("dominant_direction", mtf_analysis.get("direction", "neutral")) == "bullish"
             ):  # 🎯 NUEVA VALIDACIÓN MTF
 
                 signal_type = "BUY"
@@ -633,7 +633,7 @@ class TrendFollowingProfessional:
                 # Confluencia adicional por alineación MTF
                 confluence_count += 1
                 confluence_details.append(
-                    f"Alineación MTF alcista (consenso: {mtf_analysis['consensus']:.1%})"
+                    f"Alineación MTF alcista (consenso: {mtf_analysis.get('consensus', 0.0):.1%})"
                 )
 
                 if momentum_analysis["strength"] > 0.6:  # AJUSTADO de 0.7 a 0.6 para ser menos estricto
@@ -663,7 +663,7 @@ class TrendFollowingProfessional:
                 and structure_analysis["structure"]
                 in ["downtrend"]  # REMOVIDO "sideways"
                 and not sideways_analysis["is_sideways"]  # FILTRO ADICIONAL
-                and mtf_analysis["dominant_direction"] == "bearish"
+                and mtf_analysis.get("dominant_direction", mtf_analysis.get("direction", "neutral")) == "bearish"
             ):  # 🎯 NUEVA VALIDACIÓN MTF
 
                 signal_type = "SELL"
@@ -673,7 +673,7 @@ class TrendFollowingProfessional:
                 # Confluencia adicional por alineación MTF
                 confluence_count += 1
                 confluence_details.append(
-                    f"Alineación MTF bajista (consenso: {mtf_analysis['consensus']:.1%})"
+                    f"Alineación MTF bajista (consenso: {mtf_analysis.get('consensus', 0.0):.1%})"
                 )
 
                 if momentum_analysis["strength"] > 0.6:  # AJUSTADO de 0.7 a 0.6 para ser menos estricto
